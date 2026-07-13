@@ -1,15 +1,19 @@
 import { describe, expect, it } from "vitest";
 
-import type { RaceSnapshot } from "@/domain/race";
-import { cancelCarPit, checksumFor, createInitialSnapshot, estimatePitOutPosition, PIT_BOX_DISTANCE, PIT_ENTRY_START, setCarEnergyMode, setCarPace, setCarPit, setCarStartingTyre, setCarTyreMode, stepSnapshot } from "@/simulation/engine";
+import type { RaceSnapshot, TyreTemperatureState } from "@/domain/race";
+import { averageTyreTemperature, cancelCarPit, checksumFor, createInitialSnapshot, estimatePitOutPosition, PIT_BOX_DISTANCE, PIT_ENTRY_START, setCarEnergyMode, setCarPace, setCarPit, setCarStartingTyre, setCarTyreMode, stepSnapshot } from "@/simulation/engine";
 import { SILVERSTONE_REFERENCE_LAP_SECONDS, telemetryReferenceLapTime, telemetrySpeedAtDistance } from "@/simulation/silverstone-telemetry";
 import { strategyRecommendation } from "@/simulation/strategy";
-import { SILVERSTONE_CIRCUIT } from "@/simulation/track";
+import { segmentIndexAtDistance, SILVERSTONE_CIRCUIT, SILVERSTONE_CORNERS } from "@/simulation/track";
 
 function runTicks(seed: number, ticks: number) {
   let state: RaceSnapshot = { ...createInitialSnapshot(seed), status: "RUNNING" };
   for (let index = 0; index < ticks; index += 1) state = stepSnapshot(state);
   return state;
+}
+
+function uniformTyres(temperature: number): TyreTemperatureState {
+  return { frontLeft: temperature, frontRight: temperature, rearLeft: temperature, rearRight: temperature };
 }
 
 describe("race simulation", () => {
@@ -468,6 +472,100 @@ describe("race simulation", () => {
     const hardCar = hard.cars.find((car) => car.carId === carId)!;
     expect(softCar.totalDistance).toBeGreaterThan(hardCar.totalDistance);
     expect(softCar.tyreLife).toBeLessThan(hardCar.tyreLife);
+  });
+
+  it("loads the outside tyres independently through Silverstone's left and right corners", () => {
+    const initial = createInitialSnapshot(2_626);
+    const carId = "mercedes-1";
+    const sideSplits = SILVERSTONE_CORNERS.map((corner) => {
+      const temperatures = uniformTyres(96);
+      const positioned: RaceSnapshot = {
+        ...initial,
+        status: "RUNNING",
+        cars: initial.cars.map((car) => car.carId === carId
+          ? {
+            ...car,
+            totalDistance: corner.distanceMeters,
+            lapDistance: corner.distanceMeters,
+            currentSegment: segmentIndexAtDistance(corner.distanceMeters),
+            currentSpeed: 245,
+            reactionTime: 0,
+            tyreTemperatures: temperatures,
+            tyreTemperature: averageTyreTemperature(temperatures),
+          }
+          : { ...car, totalDistance: -800 - car.gridPosition * 20, currentSpeed: 0 },
+        ),
+      };
+      const next = stepSnapshot(positioned).cars.find((car) => car.carId === carId)!.tyreTemperatures;
+      const leftAverage = (next.frontLeft + next.rearLeft) / 2;
+      const rightAverage = (next.frontRight + next.rearRight) / 2;
+      return leftAverage - rightAverage;
+    });
+
+    expect(Math.max(...sideSplits)).toBeGreaterThan(0.02);
+    expect(Math.min(...sideSplits)).toBeLessThan(-0.02);
+  });
+
+  it("cools every tyre faster on a wet, rainy local surface", () => {
+    const initial = createInitialSnapshot(3_737);
+    const carId = "mercedes-1";
+    const hotTyres = uniformTyres(118);
+    const cars = initial.cars.map((car) => car.carId === carId
+      ? { ...car, totalDistance: 1_200, lapDistance: 1_200, currentSegment: segmentIndexAtDistance(1_200), currentSpeed: 250, reactionTime: 0, tyreTemperatures: hotTyres, tyreTemperature: 118 }
+      : car);
+    const dryWeather = {
+      ...initial.weather,
+      condition: "DRY" as const,
+      rainIntensity: 0,
+      trackWetness: 0,
+      airTemperature: 22,
+      trackTemperature: 31,
+      surfaceZones: initial.weather.surfaceZones!.map((zone) => ({ ...zone, rainIntensity: 0, wetness: 0, standingWater: 0, dryingLine: 1 })),
+    };
+    const wetWeather = {
+      ...dryWeather,
+      condition: "HEAVY_RAIN" as const,
+      rainIntensity: 0.9,
+      trackWetness: 0.92,
+      airTemperature: 18,
+      trackTemperature: 20,
+      surfaceZones: dryWeather.surfaceZones.map((zone) => ({ ...zone, rainIntensity: 0.9, wetness: 0.92, standingWater: 0.32, dryingLine: 0.02 })),
+    };
+    const dryCar = stepSnapshot({ ...initial, status: "RUNNING", cars, weather: dryWeather }).cars.find((car) => car.carId === carId)!;
+    const wetCar = stepSnapshot({ ...initial, status: "RUNNING", cars, weather: wetWeather }).cars.find((car) => car.carId === carId)!;
+
+    expect(wetCar.tyreTemperature).toBeLessThan(dryCar.tyreTemperature);
+    expect(Object.values(wetCar.tyreTemperatures).every((temperature, index) => temperature < Object.values(dryCar.tyreTemperatures)[index])).toBe(true);
+  });
+
+  it("responds independently to tyre compound and management mode", () => {
+    const carId = "mercedes-1";
+    const initial = createInitialSnapshot(4_848);
+    const coldTyres = uniformTyres(78);
+    const configure = (compound: "SOFT" | "MEDIUM" | "HARD", tyreMode: "GRIP" | "BALANCED" | "SAVE") => ({
+      ...initial,
+      status: "RUNNING" as const,
+      cars: initial.cars.map((car) => car.carId === carId
+        ? { ...car, totalDistance: 2_100, lapDistance: 2_100, currentSegment: segmentIndexAtDistance(2_100), currentSpeed: 230, reactionTime: 0, tyreCompound: compound, tyreMode, tyreTemperatures: coldTyres, tyreTemperature: 78 }
+        : car),
+    });
+    const soft = stepSnapshot(configure("SOFT", "BALANCED")).cars.find((car) => car.carId === carId)!;
+    const hard = stepSnapshot(configure("HARD", "BALANCED")).cars.find((car) => car.carId === carId)!;
+    const grip = stepSnapshot(configure("MEDIUM", "GRIP")).cars.find((car) => car.carId === carId)!;
+    const save = stepSnapshot(configure("MEDIUM", "SAVE")).cars.find((car) => car.carId === carId)!;
+
+    expect(soft.tyreTemperature).toBeGreaterThan(hard.tyreTemperature);
+    expect(grip.tyreTemperature).toBeGreaterThan(save.tyreTemperature);
+  });
+
+  it("keeps four-wheel temperatures deterministic, bounded and aggregate-compatible", () => {
+    const first = runTicks(5_959, 1_200);
+    const second = runTicks(5_959, 1_200);
+    expect(first.cars.map((car) => car.tyreTemperatures)).toEqual(second.cars.map((car) => car.tyreTemperatures));
+    for (const car of first.cars) {
+      expect(car.tyreTemperature).toBeCloseTo(averageTyreTemperature(car.tyreTemperatures), 10);
+      expect(Object.values(car.tyreTemperatures).every((temperature) => temperature >= 45 && temperature <= 145)).toBe(true);
+    }
   });
 
   it("builds rain and track wetness during the forecast weather window", () => {

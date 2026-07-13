@@ -1,4 +1,4 @@
-import type { ActiveAeroMode, ActiveIncident, BattleStatus, EnergyMode, EnergyState, PaceMode, PitStopIssue, RaceCarState, RaceControlStatus, RaceEvent, RaceSnapshot, RaceStatus, RacingLineMode, RadioMessage, TyreCompound, TyreMode, TyreSetState, WeatherState } from "@/domain/race";
+import type { ActiveAeroMode, ActiveIncident, BattleStatus, EnergyMode, EnergyState, PaceMode, PitStopIssue, RaceCarState, RaceControlStatus, RaceEvent, RaceSnapshot, RaceStatus, RacingLineMode, RadioMessage, TyreCompound, TyreMode, TyreSetState, TyreTemperatureState, WeatherState } from "@/domain/race";
 import { DRIVER_BY_ID, DRIVERS, TEAM_BY_ID } from "@/fixtures/grid";
 import { buildAiStrategyDecision } from "@/simulation/ai-strategy";
 import { signedNoise } from "@/simulation/random";
@@ -16,7 +16,7 @@ import {
   type SafetyCarFormation,
 } from "@/simulation/race-control";
 import { telemetrySpeedAtDistance } from "@/simulation/silverstone-telemetry";
-import { normalizeLapDistance, sectorAtDistance, segmentIndexAtDistance, SILVERSTONE_CIRCUIT, SILVERSTONE_CORNERS } from "@/simulation/track";
+import { normalizeLapDistance, pointAtDistance, sectorAtDistance, segmentIndexAtDistance, SILVERSTONE_CIRCUIT, SILVERSTONE_CORNERS } from "@/simulation/track";
 import { createSpatialWeather, effectiveWaterAtDistance, updateSpatialWeather, WEATHER_SURFACE_ZONE_COUNT } from "@/simulation/weather";
 
 export const FIXED_STEP_SECONDS = 0.1;
@@ -31,6 +31,10 @@ const TYRE_WEAR: Record<TyreMode, number> = { GRIP: 1.16, BALANCED: 1, SAVE: 0.7
 const COMPOUND_SPEED: Record<TyreCompound, number> = { SOFT: 1.012, MEDIUM: 1, HARD: 0.992, INTERMEDIATE: 0.91, WET: 0.85 };
 const COMPOUND_WEAR: Record<TyreCompound, number> = { SOFT: 1.34, MEDIUM: 1, HARD: 0.76, INTERMEDIATE: 1.12, WET: 0.92 };
 const COMPOUND_TEMPERATURE: Record<TyreCompound, number> = { SOFT: 2, MEDIUM: 0, HARD: -3, INTERMEDIATE: -8, WET: -12 };
+const TYRE_MODE_TEMPERATURE: Record<TyreMode, number> = { GRIP: 4, BALANCED: 0, SAVE: -4, TEMPERATURE: -9 };
+const COMPOUND_THERMAL_RESPONSE: Record<TyreCompound, number> = { SOFT: 1.16, MEDIUM: 1, HARD: 0.86, INTERMEDIATE: 1.08, WET: 1.14 };
+const TYRE_TEMPERATURE_MIN = 45;
+const TYRE_TEMPERATURE_MAX = 145;
 const DRY_COMPOUNDS: readonly TyreCompound[] = ["SOFT", "MEDIUM", "HARD"];
 const ENERGY_DEPLOYMENT: Record<EnergyMode, number> = { ATTACK: 1.05, BALANCED: 0.12, DEFEND: 0.82, RECHARGE: 0 };
 const ENERGY_HARVEST: Record<EnergyMode, number> = { ATTACK: 0.05, BALANCED: 0.28, DEFEND: 0.08, RECHARGE: 0.92 };
@@ -49,6 +53,14 @@ const TYRE_SET_ALLOCATION: Readonly<Record<TyreCompound, number>> = {
   INTERMEDIATE: 2,
   WET: 1,
 };
+
+function uniformTyreTemperatures(temperature: number): TyreTemperatureState {
+  return { frontLeft: temperature, frontRight: temperature, rearLeft: temperature, rearRight: temperature };
+}
+
+export function averageTyreTemperature(temperatures: TyreTemperatureState): number {
+  return (temperatures.frontLeft + temperatures.frontRight + temperatures.rearLeft + temperatures.rearRight) / 4;
+}
 
 function createTyreSets(carId: string, fittedCompound: TyreCompound): TyreSetState[] {
   let fitted = false;
@@ -121,6 +133,7 @@ function createCar(driverId: string, index: number): RaceCarState {
     tyreCompound,
     tyreAgeLaps: 0,
     tyreLife: 100,
+    tyreTemperatures: uniformTyreTemperatures(88),
     tyreTemperature: 88,
     tyreSets,
     activeTyreSetId,
@@ -232,13 +245,117 @@ function targetSpeedKph(car: RaceCarState, index: number, seed: number, tick: nu
   return Math.max(65, telemetryTarget * performance);
 }
 
-function tyreTemperatureTarget(car: RaceCarState, localWater = 0): number {
-  const segment = SILVERSTONE_CIRCUIT.segments[car.currentSegment];
-  const segmentLoad = segment.kind === "FAST" ? 3 : segment.kind === "MEDIUM" ? 1 : segment.kind === "SLOW" ? -1 : -3;
-  const tyreModeOffset = car.tyreMode === "GRIP" ? 3 : car.tyreMode === "SAVE" ? -3 : car.tyreMode === "TEMPERATURE" ? -6 : 0;
-  const wetCompound = car.tyreCompound === "INTERMEDIATE" || car.tyreCompound === "WET";
-  const surfaceOffset = wetCompound ? (1 - localWater) * 14 : -localWater * 8;
-  return PACE_TEMPERATURE[car.paceMode] + COMPOUND_TEMPERATURE[car.tyreCompound] + segmentLoad + tyreModeOffset + surfaceOffset;
+function clamp(value: number, minimum: number, maximum: number): number {
+  return Math.max(minimum, Math.min(maximum, value));
+}
+
+interface CornerThermalLoad {
+  intensity: number;
+  hotterSide: "LEFT" | "RIGHT" | null;
+}
+
+/**
+ * Samples the centreline either side of the car. The signed cross product
+ * identifies the outside tyres without baking Silverstone's corner sequence
+ * into the thermal model.
+ */
+function cornerThermalLoadAtDistance(distanceMeters: number): CornerThermalLoad {
+  const sampleRadiusMeters = 32;
+  const before = pointAtDistance(distanceMeters - sampleRadiusMeters);
+  const centre = pointAtDistance(distanceMeters);
+  const after = pointAtDistance(distanceMeters + sampleRadiusMeters);
+  const incomingX = centre.x - before.x;
+  const incomingY = centre.y - before.y;
+  const outgoingX = after.x - centre.x;
+  const outgoingY = after.y - centre.y;
+  const cross = incomingX * outgoingY - incomingY * outgoingX;
+  const dot = incomingX * outgoingX + incomingY * outgoingY;
+  const signedAngle = Math.atan2(cross, dot);
+  const intensity = clamp(Math.abs(signedAngle) / 0.24, 0, 1);
+  if (intensity < 0.025) return { intensity: 0, hotterSide: null };
+  // A positive screen-space turn loads the left side of the car; a negative
+  // turn loads the right. Only the relative outside/inside split matters.
+  return { intensity, hotterSide: signedAngle > 0 ? "LEFT" : "RIGHT" };
+}
+
+interface TyreThermalContext {
+  previousSpeedKph: number;
+  currentSpeedKph: number;
+  lapDistance: number;
+  localWater: number;
+  rainIntensity: number;
+  airTemperature: number;
+  trackTemperature: number;
+  pitStatus: RaceCarState["pitStatus"];
+}
+
+function advanceTyreTemperatures(
+  car: RaceCarState,
+  temperatures: TyreTemperatureState,
+  compound: TyreCompound,
+  context: TyreThermalContext,
+): TyreTemperatureState {
+  const segment = SILVERSTONE_CIRCUIT.segments[segmentIndexAtDistance(context.lapDistance)];
+  const water = clamp(context.localWater, 0, 1);
+  const speed = Math.max(0, context.currentSpeedKph);
+  const brakingRate = Math.max(0, context.previousSpeedKph - speed) / FIXED_STEP_SECONDS;
+  const tractionRate = Math.max(0, speed - context.previousSpeedKph) / FIXED_STEP_SECONDS;
+  const corner = cornerThermalLoadAtDistance(context.lapDistance);
+
+  const climateOffset = (context.trackTemperature - 31) * 0.22 + (context.airTemperature - 22) * 0.1;
+  const segmentOffset = segment.kind === "FAST" ? 2.5 : segment.kind === "MEDIUM" ? 1 : segment.kind === "SLOW" ? -0.5 : -2.5;
+  const speedHeat = clamp((speed - 170) * 0.025, -3.5, 4.5);
+  const wetCompound = compound === "INTERMEDIATE" || compound === "WET";
+  const treadDryHeat = compound === "WET" ? (1 - water) * 13 : compound === "INTERMEDIATE" ? (1 - water) * 8 : 0;
+  const waterCooling = wetCompound
+    ? water * (compound === "WET" ? 3 + speed * 0.006 : 5 + speed * 0.009)
+    : water * (14 + speed * 0.02);
+  const precipitationCooling = clamp(context.rainIntensity, 0, 1) * (wetCompound ? 1.2 : 2.8);
+  const baseTarget = PACE_TEMPERATURE[car.paceMode]
+    + COMPOUND_TEMPERATURE[compound]
+    + TYRE_MODE_TEMPERATURE[car.tyreMode]
+    + climateOffset
+    + segmentOffset
+    + speedHeat
+    + treadDryHeat
+    - waterCooling
+    - precipitationCooling;
+
+  const brakingHeat = clamp(brakingRate * 0.035, 0, 9.5);
+  const tractionHeat = clamp(tractionRate * 0.028, 0, 7.5);
+  const cornerHeat = corner.intensity * (3.2 + speed * 0.025) * (1 - water * 0.48);
+  const outsideHeat = cornerHeat;
+  const insideHeat = -cornerHeat * 0.34;
+  const leftCornerOffset = corner.hotterSide === "LEFT" ? outsideHeat : corner.hotterSide === "RIGHT" ? insideHeat : 0;
+  const rightCornerOffset = corner.hotterSide === "RIGHT" ? outsideHeat : corner.hotterSide === "LEFT" ? insideHeat : 0;
+  const deploymentRearHeat = car.energyState === "DEPLOYING" || car.energyState === "OVERTAKE" || car.energyState === "DEFENDING" ? 1.8 : 0;
+
+  let targets: TyreTemperatureState = {
+    frontLeft: baseTarget + brakingHeat + tractionHeat * 0.2 + leftCornerOffset,
+    frontRight: baseTarget + brakingHeat + tractionHeat * 0.2 + rightCornerOffset,
+    rearLeft: baseTarget + brakingHeat * 0.32 + tractionHeat + deploymentRearHeat + leftCornerOffset * 0.88,
+    rearRight: baseTarget + brakingHeat * 0.32 + tractionHeat + deploymentRearHeat + rightCornerOffset * 0.88,
+  };
+
+  const stoppedInBox = context.pitStatus === "PIT_STOP";
+  if (stoppedInBox) {
+    const stationaryTarget = Math.max(context.airTemperature + 13, context.trackTemperature + 8);
+    targets = uniformTyreTemperatures(stationaryTarget);
+  }
+
+  const pitLaneFactor = context.pitStatus === "TRACK" ? 1 : stoppedInBox ? 0.16 : 0.52;
+  const wetResponse = 1 + water * 0.55;
+  const modeResponse = car.tyreMode === "GRIP" ? 1.08 : car.tyreMode === "SAVE" ? 0.93 : 1;
+  const responsePerSecond = 0.12 * COMPOUND_THERMAL_RESPONSE[compound] * pitLaneFactor * wetResponse * modeResponse;
+  const blend = 1 - Math.exp(-responsePerSecond * FIXED_STEP_SECONDS);
+  const advance = (current: number, target: number) => clamp(current + (clamp(target, TYRE_TEMPERATURE_MIN, TYRE_TEMPERATURE_MAX) - current) * blend, TYRE_TEMPERATURE_MIN, TYRE_TEMPERATURE_MAX);
+
+  return {
+    frontLeft: advance(temperatures.frontLeft, targets.frontLeft),
+    frontRight: advance(temperatures.frontRight, targets.frontRight),
+    rearLeft: advance(temperatures.rearLeft, targets.rearLeft),
+    rearRight: advance(temperatures.rearRight, targets.rearRight),
+  };
 }
 
 function withPositionData(car: RaceCarState): RaceCarState {
@@ -684,6 +801,7 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
     let tyreCompound = car.tyreCompound;
     let tyreAgeLaps = car.tyreAgeLaps;
     let tyreLife = car.tyreLife;
+    let tyreTemperatures = car.tyreTemperatures ?? uniformTyreTemperatures(car.tyreTemperature);
     let tyreTemperature = car.tyreTemperature;
     let tyreSets = car.tyreSets;
     let activeTyreSetId = car.activeTyreSetId;
@@ -746,6 +864,7 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
         scheduledPitTyreSetId = null;
         tyreAgeLaps = 0;
         tyreLife = 100;
+        tyreTemperatures = uniformTyreTemperatures(82);
         tyreTemperature = 82;
       }
     }
@@ -807,7 +926,22 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
     const totalDistance = car.totalDistance + distanceDelta;
     const lapDistanceAfter = normalizeLapDistance(totalDistance);
     if (pitStatus === "PIT_EXIT" && lapDistanceAfter >= PIT_EXIT_END && lapDistanceAfter < PIT_ENTRY_START) pitStatus = "TRACK";
-    tyreTemperature += (tyreTemperatureTarget({ ...car, tyreCompound }, localWater) - tyreTemperature) * 0.014;
+    tyreTemperatures = advanceTyreTemperatures(
+      tacticalCar,
+      tyreTemperatures,
+      tyreCompound,
+      {
+        previousSpeedKph: car.currentSpeed,
+        currentSpeedKph: currentSpeed,
+        lapDistance: lapDistanceAfter,
+        localWater,
+        rainIntensity: weather.rainIntensity,
+        airTemperature: weather.airTemperature,
+        trackTemperature: weather.trackTemperature,
+        pitStatus,
+      },
+    );
+    tyreTemperature = averageTyreTemperature(tyreTemperatures);
     const segmentKind = SILVERSTONE_CIRCUIT.segments[car.currentSegment].kind;
     const brakeTarget = segmentKind === "SLOW" ? 920 : segmentKind === "MEDIUM" ? 760 : segmentKind === "FAST" ? 620 : 470;
     brakeTemperature += (brakeTarget - brakeTemperature) * 0.025;
@@ -831,6 +965,7 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
       tyreLife,
       tyreAgeLaps,
       tyreCompound,
+      tyreTemperatures,
       tyreTemperature,
       tyreSets,
       activeTyreSetId,
@@ -1042,12 +1177,17 @@ export function checksumFor(
 ): string {
   let hash = 2_166_136_261 ^ tick;
   for (const car of cars) {
+    const tyreTemperatures = car.tyreTemperatures ?? uniformTyreTemperatures(car.tyreTemperature);
     const value = Math.round(car.totalDistance * 1_000) ^ Math.round(car.currentSpeed * 100)
       ^ Math.round(car.tyreLife * 100) ^ Math.round(car.fuelRemainingKg * 100) ^ Math.round(car.batteryPercent * 100)
       ^ Math.round(car.vscDeltaSeconds * 1_000) ^ Math.round(car.vscViolationSeconds * 100)
       ^ ((car.safetyCarQueuePosition ?? 0) << 8);
     hash ^= value;
     hash = Math.imul(hash, 16_777_619);
+    for (const temperature of [tyreTemperatures.frontLeft, tyreTemperatures.frontRight, tyreTemperatures.rearLeft, tyreTemperatures.rearRight]) {
+      hash ^= Math.round(temperature * 100);
+      hash = Math.imul(hash, 16_777_619);
+    }
   }
   if (weather) {
     const weatherValues = weather.surfaceZones?.map((zone) => Math.round((zone.wetness + zone.standingWater + zone.dryingLine) * 10_000))

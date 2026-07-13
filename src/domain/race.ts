@@ -156,6 +156,14 @@ export interface TyreSetState {
   lapsUsed: number;
 }
 
+/** Live tyre surface temperature for each wheel, in degrees Celsius. */
+export interface TyreTemperatureState {
+  frontLeft: number;
+  frontRight: number;
+  rearLeft: number;
+  rearRight: number;
+}
+
 export interface RaceCarState {
   carId: string;
   teamId: string;
@@ -178,6 +186,7 @@ export interface RaceCarState {
   tyreCompound: TyreCompound;
   tyreAgeLaps: number;
   tyreLife: number;
+  tyreTemperatures: TyreTemperatureState;
   tyreTemperature: number;
   tyreSets: readonly TyreSetState[];
   activeTyreSetId: string;

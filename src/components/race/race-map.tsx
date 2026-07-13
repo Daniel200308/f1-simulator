@@ -4,10 +4,9 @@ import { useEffect, useRef } from "react";
 import type { Application, Container, Graphics, Text } from "pixi.js";
 
 import { DRIVERS, TEAM_BY_ID } from "@/fixtures/grid";
-import { formatLapTime } from "@/components/race/format";
 import { createTrackViewport, distanceToCenterline, projectTrackPoint } from "@/components/race/track-viewport";
 import { PIT_ENTRY_START, PIT_EXIT_END } from "@/simulation/engine";
-import { pointAtDistance, sectorAtDistance, SILVERSTONE_CIRCUIT, SILVERSTONE_CORNERS, upcomingCornerAtDistance } from "@/simulation/track";
+import { pointAtDistance, sectorAtDistance, SILVERSTONE_CIRCUIT, SILVERSTONE_CORNERS } from "@/simulation/track";
 import { useRaceStore } from "@/store/race-store";
 
 interface MarkerParts {
@@ -32,7 +31,6 @@ export function RaceMap({ startPhase, lightsOn }: { startPhase: "MENU" | "LIGHTS
   const selectedCarId = useRaceStore((state) => state.selectedCarId);
   const autoPauseReason = useRaceStore((state) => state.autoPauseReason);
   const selectedCar = snapshot?.cars.find((car) => car.carId === selectedCarId);
-  const upcomingCorner = selectedCar ? upcomingCornerAtDistance(selectedCar.lapDistance) : null;
   const sectorSurface = ([1, 2, 3] as const).map((sector) => {
     const state = snapshot?.weather.sectors?.find((candidate) => candidate.sector === sector);
     const wetness = state?.wetness ?? snapshot?.weather.trackWetness ?? 0;
@@ -384,12 +382,6 @@ export function RaceMap({ startPhase, lightsOn }: { startPhase: "MENU" | "LIGHTS
         <span>LIVE CIRCUIT</span>
         <span className="muted">18 TURNS</span>
         <span className="muted">AERO ZONES</span>
-      </div>
-      <div className="track-map__telemetry">
-        <span>NEXT CORNER</span>
-        <strong>{upcomingCorner ? `T${upcomingCorner.number} · ${upcomingCorner.name.toUpperCase()}` : "—"}</strong>
-        <small>{selectedCar ? `S${selectedCar.currentSector} · ${formatLapTime(selectedCar.currentLapTime)} · ${snapshot?.raceControl === "VSC" ? `Δ ${selectedCar.vscDeltaSeconds >= 0 ? "+" : ""}${selectedCar.vscDeltaSeconds.toFixed(2)}` : selectedCar.racingLineMode}` : "NO CAR DATA"}</small>
-        <small>{selectedCar ? `BAT ${Math.round(selectedCar.batteryPercent)}% · ${selectedCar.overtakeActive ? "OVERTAKE ACTIVE" : selectedCar.overtakeEligible ? "OVERTAKE READY" : selectedCar.energyState} · ${selectedCar.activeAeroMode}` : "ENERGY OFFLINE"}</small>
       </div>
       {snapshot && snapshot.raceControl !== "GREEN" && (
         <div aria-atomic="true" aria-live="assertive" className={`race-control-banner race-control-banner--${snapshot.raceControl.toLowerCase()}`} role="status">
