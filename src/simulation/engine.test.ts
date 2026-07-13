@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { RaceSnapshot } from "@/domain/race";
-import { cancelCarPit, createInitialSnapshot, estimatePitOutPosition, PIT_BOX_DISTANCE, PIT_ENTRY_START, setCarEnergyMode, setCarPace, setCarPit, setCarStartingTyre, setCarTyreMode, stepSnapshot } from "@/simulation/engine";
+import { cancelCarPit, checksumFor, createInitialSnapshot, estimatePitOutPosition, PIT_BOX_DISTANCE, PIT_ENTRY_START, setCarEnergyMode, setCarPace, setCarPit, setCarStartingTyre, setCarTyreMode, stepSnapshot } from "@/simulation/engine";
 import { SILVERSTONE_REFERENCE_LAP_SECONDS, telemetryReferenceLapTime, telemetrySpeedAtDistance } from "@/simulation/silverstone-telemetry";
 import { strategyRecommendation } from "@/simulation/strategy";
 import { SILVERSTONE_CIRCUIT } from "@/simulation/track";
@@ -250,9 +250,30 @@ describe("race simulation", () => {
 
   it("builds rain and track wetness during the forecast weather window", () => {
     const state = runTicks(20260712, 5_000);
+    expect(state.weather.radarCells).toHaveLength(24);
+    expect(state.weather.surfaceZones).toHaveLength(48);
+    expect(state.weather.sectors).toHaveLength(3);
     expect(state.weather.rainIntensity).toBeGreaterThan(0.1);
     expect(state.weather.trackWetness).toBeGreaterThan(0.1);
     expect(["LIGHT_RAIN", "HEAVY_RAIN"]).toContain(state.weather.condition);
+  });
+
+  it("slows a slick-shod car only when it reaches a wet surface zone", () => {
+    const initial = createInitialSnapshot(6_161);
+    const carId = "mercedes-1";
+    const positionedCars = initial.cars.map((car) => car.carId === carId ? { ...car, reactionTime: 0, currentSpeed: 240, totalDistance: 60, lapDistance: 60 } : car);
+    const dryWeather = {
+      ...initial.weather,
+      surfaceZones: initial.weather.surfaceZones!.map((zone) => ({ ...zone, rainIntensity: 0, wetness: 0, standingWater: 0, dryingLine: 1 })),
+    };
+    const wetWeather = {
+      ...dryWeather,
+      surfaceZones: dryWeather.surfaceZones.map((zone, index) => index === 0 ? { ...zone, rainIntensity: 0.7, wetness: 0.9, standingWater: 0.25, dryingLine: 0.05 } : zone),
+    };
+    const dry = stepSnapshot({ ...initial, status: "RUNNING", cars: positionedCars, weather: dryWeather });
+    const wet = stepSnapshot({ ...initial, status: "RUNNING", cars: positionedCars, weather: wetWeather });
+    expect(wet.cars.find((car) => car.carId === carId)!.currentSpeed).toBeLessThan(dry.cars.find((car) => car.carId === carId)!.currentSpeed);
+    expect(checksumFor(1, positionedCars, wetWeather)).not.toBe(checksumFor(1, positionedCars, dryWeather));
   });
 
   it("executes a scheduled pit stop and fits the requested compound", () => {

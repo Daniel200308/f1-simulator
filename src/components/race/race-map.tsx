@@ -18,12 +18,27 @@ interface MarkerParts {
   displayDistance: number;
 }
 
+function surfaceConditionAt(wetness: number, standingWater = 0): "DRY" | "DAMP" | "WET" | "HEAVY_WET" {
+  const effectiveWater = Math.min(1, wetness + standingWater * 0.35);
+  if (effectiveWater > 0.64) return "HEAVY_WET";
+  if (effectiveWater > 0.28) return "WET";
+  if (effectiveWater > 0.05) return "DAMP";
+  return "DRY";
+}
+
 export function RaceMap({ startPhase, lightsOn }: { startPhase: "MENU" | "LIGHTS" | "GO" | "RACING"; lightsOn: number }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const snapshot = useRaceStore((state) => state.snapshot);
   const selectedCarId = useRaceStore((state) => state.selectedCarId);
   const selectedCar = snapshot?.cars.find((car) => car.carId === selectedCarId);
   const upcomingCorner = selectedCar ? upcomingCornerAtDistance(selectedCar.lapDistance) : null;
+  const sectorSurface = ([1, 2, 3] as const).map((sector) => {
+    const state = snapshot?.weather.sectors?.find((candidate) => candidate.sector === sector);
+    const wetness = state?.wetness ?? snapshot?.weather.trackWetness ?? 0;
+    return { sector, wetness, condition: surfaceConditionAt(wetness, state?.standingWater) };
+  });
+  const surfaceConditions = new Set(sectorSurface.map((sector) => sector.condition));
+  const surfaceSummary = surfaceConditions.size > 1 ? "MIXED" : sectorSurface[0].condition.replace("_", " ");
 
   useEffect(() => {
     const host = hostRef.current;
@@ -62,14 +77,16 @@ export function RaceMap({ startPhase, lightsOn }: { startPhase: "MENU" | "LIGHTS
       const alertLayer = new PIXI.Container();
       app.stage.addChild(trackLayer, battleLayer, markerLayer, alertLayer);
 
+      const rainRadarLayer = new PIXI.Graphics();
       const trackBase = new PIXI.Graphics();
+      const surfaceLayer = new PIXI.Graphics();
       const trackEdge = new PIXI.Graphics();
       const aeroLayer = new PIXI.Graphics();
       const startLine = new PIXI.Graphics();
       const pitLane = new PIXI.Graphics();
       const controlOverlay = new PIXI.Graphics();
       const cornerLayer = new PIXI.Container();
-      trackLayer.addChild(trackBase, aeroLayer, pitLane, trackEdge, controlOverlay, startLine, cornerLayer);
+      trackLayer.addChild(rainRadarLayer, trackBase, surfaceLayer, aeroLayer, pitLane, trackEdge, controlOverlay, startLine, cornerLayer);
       let viewport = createTrackViewport(SILVERSTONE_CIRCUIT.points, app.screen.width, app.screen.height);
       let projectedCenterline = SILVERSTONE_CIRCUIT.points.map((point) => projectTrackPoint(point, viewport));
 
@@ -88,6 +105,7 @@ export function RaceMap({ startPhase, lightsOn }: { startPhase: "MENU" | "LIGHTS
       safetyCarBadge.visible = false;
       alertLayer.addChild(incidentBadge, safetyCarBadge);
       let lastControlKey = "";
+      let lastSpatialWeatherKey = "";
 
       function drawRaceControl(control: string, yellowSector: number | null) {
         const key = `${control}-${yellowSector ?? 0}`;
@@ -101,6 +119,35 @@ export function RaceMap({ startPhase, lightsOn }: { startPhase: "MENU" | "LIGHTS
           const p1 = projectTrackPoint(segment.p1, viewport);
           const p2 = projectTrackPoint(segment.p2, viewport);
           controlOverlay.moveTo(p1.x, p1.y).lineTo(p2.x, p2.y).stroke({ width: 5, color, alpha: 0.72, cap: "round" });
+        });
+      }
+
+      function drawSpatialWeather(weather: NonNullable<ReturnType<typeof useRaceStore.getState>["snapshot"]>["weather"]) {
+        rainRadarLayer.clear();
+        surfaceLayer.clear();
+
+        weather.radarCells?.forEach((cell) => {
+          if (cell.rainIntensity < 0.035) return;
+          const point = projectTrackPoint({ x: cell.x, y: cell.y }, viewport);
+          const radius = Math.max(22, viewport.scale * (0.07 + cell.rainIntensity * 0.055));
+          rainRadarLayer.circle(point.x, point.y, radius).fill({
+            color: cell.rainIntensity > 0.65 ? 0x245bff : 0x398cff,
+            alpha: 0.025 + cell.rainIntensity * 0.08,
+          });
+        });
+
+        weather.surfaceZones?.forEach((zone) => {
+          const effectiveWater = Math.min(1, zone.wetness * (1 - zone.dryingLine * 0.45) + zone.standingWater * 0.22);
+          if (effectiveWater < 0.035) return;
+          const color = effectiveWater > 0.64 ? 0x245bff : effectiveWater > 0.27 ? 0x398cff : 0x20d7e7;
+          const samples = Math.max(2, Math.ceil((zone.endDistance - zone.startDistance) / 24));
+          for (let index = 0; index <= samples; index += 1) {
+            const distance = zone.startDistance + ((zone.endDistance - zone.startDistance) * index) / samples;
+            const point = projectTrackPoint(pointAtDistance(distance), viewport);
+            if (index === 0) surfaceLayer.moveTo(point.x, point.y);
+            else surfaceLayer.lineTo(point.x, point.y);
+          }
+          surfaceLayer.stroke({ width: 6, color, alpha: 0.22 + effectiveWater * 0.58, cap: "round", join: "round" });
         });
       }
 
@@ -229,6 +276,7 @@ export function RaceMap({ startPhase, lightsOn }: { startPhase: "MENU" | "LIGHTS
         projectedCenterline = SILVERSTONE_CIRCUIT.points.map((point) => projectTrackPoint(point, viewport));
         drawTrack();
         lastControlKey = "";
+        lastSpatialWeatherKey = "";
       }
       resizeObserver = new ResizeObserver(resize);
       resizeObserver.observe(host);
@@ -244,6 +292,11 @@ export function RaceMap({ startPhase, lightsOn }: { startPhase: "MENU" | "LIGHTS
         if (snapshot) {
           battleLayer.clear();
           drawRaceControl(snapshot.raceControl, snapshot.yellowSector);
+          const spatialWeatherKey = `${snapshot.weather.condition}:${snapshot.weather.radarCells?.map((cell) => Math.round(cell.rainIntensity * 20)).join("") ?? ""}:${snapshot.weather.surfaceZones?.map((zone) => Math.round((zone.wetness + zone.standingWater) * 20)).join("") ?? ""}`;
+          if (spatialWeatherKey !== lastSpatialWeatherKey) {
+            lastSpatialWeatherKey = spatialWeatherKey;
+            drawSpatialWeather(snapshot.weather);
+          }
           if (snapshot.activeIncident) {
             const incidentPoint = projectTrackPoint(pointAtDistance(snapshot.activeIncident.distanceMeters), viewport);
             incidentBadge.position.set(incidentPoint.x, incidentPoint.y);
@@ -345,9 +398,9 @@ export function RaceMap({ startPhase, lightsOn }: { startPhase: "MENU" | "LIGHTS
       {snapshot && snapshot.raceControl !== "GREEN" && <div className={`race-control-banner race-control-banner--${snapshot.raceControl.toLowerCase()}`}><strong>{snapshot.raceControl === "YELLOW" ? `YELLOW · SECTOR ${snapshot.yellowSector}` : snapshot.raceControl === "SAFETY_CAR" ? `SAFETY CAR · ${snapshot.safetyCarPhase}` : "VIRTUAL SAFETY CAR"}</strong><span>{snapshot.activeIncident ? `T${snapshot.activeIncident.cornerNumber} ${snapshot.activeIncident.cornerName} · ${snapshot.activeIncident.status}` : "RACE CONTROL"}</span><small>PIT LANE {snapshot.pitLaneOpen ? "OPEN" : "CLOSED"}</small></div>}
       {(startPhase === "LIGHTS" || startPhase === "GO") && <div className={`track-start-sequence ${startPhase === "GO" ? "is-go" : ""}`} data-track-start-phase={startPhase}><div>{Array.from({ length: 5 }, (_, index) => <i className={index < lightsOn ? "is-on" : ""} key={index} />)}</div><span>{startPhase === "GO" ? "LIGHTS OUT" : "START"}</span></div>}
       <div className="track-weather">
-        <span>SURFACE</span><strong>{Math.round((snapshot?.weather.trackWetness ?? 0) * 100)}% WET</strong>
-        <div><i style={{ width: `${(snapshot?.weather.trackWetness ?? 0) * 100}%` }} /></div>
-        <small>{snapshot?.weather.rainIntensity ? `RAIN ${Math.round(snapshot.weather.rainIntensity * 100)}%` : snapshot?.weather.forecastRainInMinutes != null ? `RAIN ETA ${snapshot.weather.forecastRainInMinutes}M` : "NO RAIN EXPECTED"}</small>
+        <div className="track-weather__title"><span>LOCAL SURFACE</span><strong>{surfaceSummary}</strong></div>
+        <div className="track-weather__sectors">{sectorSurface.map((sector) => <span className={`is-${sector.condition.toLowerCase().replace("_", "-")}`} key={sector.sector} title={`Sector ${sector.sector}: ${Math.round(sector.wetness * 100)}% wet`}><i /><b>S{sector.sector}</b><em>{sector.condition.replace("_", " ")}</em></span>)}</div>
+        <small>{snapshot?.weather.rainIntensity ? `RADAR · RAIN ${Math.round(snapshot.weather.rainIntensity * 100)}%` : snapshot?.weather.forecastRainInMinutes != null ? `RADAR · ARRIVAL ${snapshot.weather.forecastRainInMinutes} MIN` : "RADAR · CLEAR"}</small>
       </div>
       <div className="track-map__legend">
         <span><i className="legend-dot legend-dot--player" />PLAYER</span>

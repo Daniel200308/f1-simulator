@@ -15,6 +15,48 @@ export type WeatherCondition = "DRY" | "CLOUDY" | "LIGHT_RAIN" | "HEAVY_RAIN";
 export type RaceControlStatus = "GREEN" | "YELLOW" | "VSC" | "SAFETY_CAR";
 export type SafetyCarPhase = "NONE" | "DEPLOYED" | "BUNCHING" | "RESTART";
 export type IncidentStatus = "RUNNING" | "SPUN" | "DAMAGED" | "RETIRED";
+export type WeatherSector = 1 | 2 | 3;
+
+export interface WeatherRadarCell {
+  id: string;
+  row: number;
+  column: number;
+  x: number;
+  y: number;
+  rainIntensity: number;
+  rainProbability: number;
+  etaSeconds: number | null;
+}
+
+export interface TrackSurfaceZone {
+  id: string;
+  index: number;
+  startDistance: number;
+  endDistance: number;
+  sector: WeatherSector;
+  rainIntensity: number;
+  wetness: number;
+  standingWater: number;
+  dryingLine: number;
+  drainage: number;
+  traffic: number;
+}
+
+export interface WeatherSectorState {
+  sector: WeatherSector;
+  rainIntensity: number;
+  wetness: number;
+  standingWater: number;
+  dryingLine: number;
+  condition: WeatherCondition;
+}
+
+export interface WeatherForecastPoint {
+  minutesAhead: number;
+  condition: WeatherCondition;
+  rainProbability: number;
+  rainIntensity: number;
+}
 
 export interface RaceEvent {
   id: string;
@@ -48,6 +90,10 @@ export interface WeatherState {
   airTemperature: number;
   trackTemperature: number;
   forecastRainInMinutes: number | null;
+  radarCells?: readonly WeatherRadarCell[];
+  surfaceZones?: readonly TrackSurfaceZone[];
+  sectors?: readonly WeatherSectorState[];
+  forecast?: readonly WeatherForecastPoint[];
 }
 
 export interface TeamDefinition {

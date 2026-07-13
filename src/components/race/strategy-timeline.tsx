@@ -11,6 +11,10 @@ export function StrategyTimeline() {
   const car = snapshot?.cars.find((candidate) => candidate.carId === selectedCarId);
   if (!snapshot || !car) return <div className="strategy-timeline strategy-timeline--empty">WAITING FOR STRATEGY DATA</div>;
   const recommendation = strategyRecommendation(snapshot, car);
+  const crossover = recommendation.crossover;
+  const crossoverLabel = crossover.shouldPit
+    ? `→ ${crossover.recommendedCompound} · ${crossover.gainRangePerLapSeconds.low >= 0 ? "+" : ""}${crossover.gainRangePerLapSeconds.low.toFixed(1)}–${crossover.gainRangePerLapSeconds.high >= 0 ? "+" : ""}${crossover.gainRangePerLapSeconds.high.toFixed(1)}s/LAP · NET ${crossover.netRaceGainSeconds >= 0 ? "+" : ""}${crossover.netRaceGainSeconds.toFixed(1)}s`
+    : `STAY OUT · ${crossover.bestCompound === car.tyreCompound ? "CURRENT TYRE QUICKEST" : crossover.expectedWetLaps > 0.2 ? `${crossover.bestCompound} WINDOW TOO SHORT` : `${crossover.bestCompound} CHANGE NOT YET WORTH IT`} · NET ${crossover.netRaceGainSeconds >= 0 ? "+" : ""}${crossover.netRaceGainSeconds.toFixed(1)}s`;
 
   return (
     <div className="strategy-timeline">
@@ -27,7 +31,7 @@ export function StrategyTimeline() {
           return <i className={className} key={lap} title={`Lap ${lap}`} />;
         })}
       </div>
-      <div className="strategy-timeline__footer"><span>{recommendation.reason}</span><span>PACE BASE · {SILVERSTONE_TELEMETRY_SOURCE}</span></div>
+      <div className="strategy-timeline__footer"><span className="strategy-crossover" title={recommendation.reason}><b>CROSSOVER</b> {crossoverLabel}</span><span>PACE BASE · {SILVERSTONE_TELEMETRY_SOURCE}</span></div>
     </div>
   );
 }
