@@ -2,6 +2,7 @@ export type RaceStatus = "READY" | "RUNNING" | "PAUSED" | "FINISHED";
 export type PaceMode = "ATTACK" | "PUSH" | "STANDARD" | "CONSERVE" | "COOL";
 export type TyreMode = "GRIP" | "BALANCED" | "SAVE" | "TEMPERATURE";
 export type EnergyMode = "ATTACK" | "BALANCED" | "DEFEND" | "RECHARGE";
+export type CoolingMode = "NORMAL" | "LIFT_AND_COAST" | "MAX_COOLING";
 export type EnergyState = "NEUTRAL" | "HARVESTING" | "DEPLOYING" | "OVERTAKE" | "DEFENDING";
 export type ActiveAeroMode = "CORNER" | "STRAIGHT" | "PARTIAL";
 export type BattleStatus = "CLEAR" | "ATTACKING" | "DEFENDING" | "SIDE_BY_SIDE";
@@ -63,8 +64,10 @@ export interface WeatherForecastPoint {
 export interface RaceEvent {
   id: string;
   elapsedTime: number;
-  type: "INCIDENT" | "RACE_CONTROL" | "PIT" | "BATTLE";
+  type: "INCIDENT" | "RACE_CONTROL" | "PIT" | "BATTLE" | "THERMAL";
   message: string;
+  /** Explicit attribution for car-specific events; null/omitted means field-wide. */
+  carId?: string | null;
 }
 
 export interface ActiveIncident {
@@ -164,6 +167,12 @@ export interface TyreTemperatureState {
   rearRight: number;
 }
 
+export interface PendingOvertake {
+  opponentCarId: string;
+  detectedAt: number;
+  positionsGained: number;
+}
+
 export interface RaceCarState {
   carId: string;
   teamId: string;
@@ -191,6 +200,8 @@ export interface RaceCarState {
   tyreSets: readonly TyreSetState[];
   activeTyreSetId: string;
   scheduledPitTyreSetId: string | null;
+  /** Live carbon-brake temperature at each corner, in degrees Celsius. */
+  brakeTemperatures: TyreTemperatureState;
   brakeTemperature: number;
   /** Combined engine/turbo cooling-loop temperature, in degrees Celsius. */
   powerUnitTemperature: number;
@@ -198,6 +209,19 @@ export interface RaceCarState {
   gearboxTemperature: number;
   /** Hybrid energy-store pack temperature, in degrees Celsius. */
   energyStoreTemperature: number;
+  /** Driver-selectable cooling instruction. */
+  coolingMode: CoolingMode;
+  /** Front brake bias percentage. */
+  brakeBiasPercent: number;
+  /** Accumulated component stress, from 0 (fresh) to 100 (critical). */
+  powerUnitStress: number;
+  gearboxStress: number;
+  energyStoreStress: number;
+  brakeStress: number;
+  /** Current speed loss imposed by thermal protection. */
+  thermalDeratePercent: number;
+  /** Estimated short-term retirement risk caused by heat stress. */
+  thermalRiskPercent: number;
   fuelRemainingKg: number;
   paceMode: PaceMode;
   tyreMode: TyreMode;
@@ -212,6 +236,10 @@ export interface RaceCarState {
   battleCarId: string | null;
   dirtyAirLoss: number;
   overtakes: number;
+  lastOvertakeAt: number | null;
+  /** Last counted pass time by opponent, used to reject timing-line rank jitter. */
+  overtakeOpponentTimes: Readonly<Record<string, number>>;
+  pendingOvertake: PendingOvertake | null;
   pitStatus: PitStatus;
   pitTimer: number;
   pitStopTargetSeconds: number;

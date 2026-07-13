@@ -3,10 +3,12 @@
 import type { CSSProperties } from "react";
 
 import type { RaceCarState } from "@/domain/race";
+import type { CommandDockControls } from "@/components/race/command-dock";
 import { formatLapTime } from "@/components/race/format";
 import { VehicleThermalMap } from "@/components/race/tyre-temperature-car";
 import { DRIVER_BY_ID, PLAYER_CAR_IDS, TEAM_BY_ID } from "@/fixtures/grid";
 import { estimatePitOutPosition } from "@/simulation/engine";
+import { assessVehicleThermals, type ThermalAlert } from "@/simulation/thermal-management";
 import { SILVERSTONE_CIRCUIT } from "@/simulation/track";
 import { useRaceStore } from "@/store/race-store";
 
@@ -44,10 +46,13 @@ function CarCard({ car, title, selected, predictedPitPosition }: { car: RaceCarS
       <div className="vehicle-telemetry">
         <VehicleThermalMap
           brakeTemperature={car.brakeTemperature}
+          brakeTemperatures={car.brakeTemperatures}
           compound={car.tyreCompound}
           energyStoreTemperature={car.energyStoreTemperature}
           gearboxTemperature={car.gearboxTemperature}
           powerUnitTemperature={car.powerUnitTemperature}
+          thermalDeratePercent={car.thermalDeratePercent}
+          thermalRiskPercent={car.thermalRiskPercent}
           temperatures={car.tyreTemperatures}
         />
       </div>
@@ -65,11 +70,31 @@ function CarCard({ car, title, selected, predictedPitPosition }: { car: RaceCarS
   );
 }
 
-export function CarStatusPanel() {
+type CarStatusControls = Pick<CommandDockControls, "setTyreMode" | "setEnergyMode" | "setCoolingMode" | "box">;
+
+export function CarStatusPanel({ controls }: { controls: CarStatusControls }) {
   const snapshot = useRaceStore((state) => state.snapshot);
   const selectedCarId = useRaceStore((state) => state.selectedCarId);
   const playerCars = PLAYER_CAR_IDS.map((id) => snapshot?.cars.find((car) => car.carId === id)).filter((car): car is RaceCarState => Boolean(car));
-  const radioMessages = snapshot?.radioMessages.filter((message) => message.carId === null || message.carId === selectedCarId).slice(0, 2) ?? [];
+  const selectedCar = playerCars.find((car) => car.carId === selectedCarId);
+  const thermalAlert = selectedCar
+    ? [...assessVehicleThermals(selectedCar).alerts].sort((a, b) => (a.severity === "CRITICAL" ? -1 : 1) - (b.severity === "CRITICAL" ? -1 : 1))[0]
+    : undefined;
+  const radioMessages = snapshot?.radioMessages.filter((message) => message.carId === null || message.carId === selectedCarId).slice(0, thermalAlert ? 1 : 2) ?? [];
+
+  function applyThermalAction(alert: ThermalAlert) {
+    if (!selectedCar || !snapshot) return;
+    if (alert.action === "TYRE_COOL") controls.setTyreMode(selectedCar.carId, "TEMPERATURE");
+    else if (alert.action === "BRAKE_COOL") controls.setCoolingMode(selectedCar.carId, "LIFT_AND_COAST");
+    else if (alert.action === "LIFT_AND_COAST") controls.setCoolingMode(selectedCar.carId, alert.severity === "CRITICAL" ? "MAX_COOLING" : "LIFT_AND_COAST");
+    else if (alert.action === "RECHARGE") controls.setEnergyMode(selectedCar.carId, "RECHARGE");
+    else {
+      const preferred = snapshot.weather.trackWetness > 0.68 ? "WET" : snapshot.weather.trackWetness > 0.22 ? "INTERMEDIATE" : selectedCar.tyreCompound === "MEDIUM" ? "HARD" : "MEDIUM";
+      const available = selectedCar.tyreSets.find((set) => set.compound === preferred && set.status === "AVAILABLE")
+        ?? selectedCar.tyreSets.find((set) => set.status === "AVAILABLE");
+      if (available) controls.box(selectedCar.carId, available.compound);
+    }
+  }
 
   return (
     <aside className="status-column">
@@ -78,6 +103,12 @@ export function CarStatusPanel() {
       ))}
       <div className="panel engineer-panel">
         <span className="eyebrow">TEAM RADIO / RACE CONTROL</span>
+        {thermalAlert && (
+          <div className={`thermal-alert thermal-alert--${thermalAlert.severity.toLowerCase()}`} role="status">
+            <span><b>{thermalAlert.title}</b><small>{thermalAlert.message}</small></span>
+            <button onClick={() => applyThermalAction(thermalAlert)} type="button">{thermalAlert.actionLabel}</button>
+          </div>
+        )}
         <div className="event-list" aria-label="Team radio log">
           {radioMessages.length ? radioMessages.map((message) => (
             <div className={`event-row event-row--${message.priority.toLowerCase()}`} key={message.id}>

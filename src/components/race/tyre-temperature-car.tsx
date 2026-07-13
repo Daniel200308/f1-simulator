@@ -3,26 +3,19 @@ import { BatteryCharging, CircleGauge, Cog, Disc3, Thermometer } from "lucide-re
 import type { CSSProperties, ReactNode } from "react";
 
 import type { TyreCompound, TyreTemperatureState } from "@/domain/race";
+import { THERMAL_THRESHOLDS, TYRE_TEMPERATURE_WINDOWS, tyreThermalSeverity } from "@/simulation/thermal-management";
 
 interface ThermalBand {
   label: "COLD" | "WARMING" | "OPTIMAL" | "HOT" | "CRITICAL";
   color: string;
 }
 
-const IDEAL_TEMPERATURES: Record<TyreCompound, readonly [number, number]> = {
-  SOFT: [92, 108],
-  MEDIUM: [90, 105],
-  HARD: [87, 102],
-  INTERMEDIATE: [70, 90],
-  WET: [60, 80],
-};
-
 function tyreThermalBand(temperature: number, compound: TyreCompound): ThermalBand {
-  const [minimum, maximum] = IDEAL_TEMPERATURES[compound];
+  const [minimum, maximum] = TYRE_TEMPERATURE_WINDOWS[compound];
   if (temperature < minimum - 8) return { label: "COLD", color: "#398cff" };
   if (temperature < minimum) return { label: "WARMING", color: "#20d7e7" };
   if (temperature <= maximum) return { label: "OPTIMAL", color: "#4bde95" };
-  if (temperature <= maximum + 10) return { label: "HOT", color: "#f4d35e" };
+  if (tyreThermalSeverity(temperature, compound) !== "CRITICAL") return { label: "HOT", color: "#f4d35e" };
   return { label: "CRITICAL", color: "#ff5269" };
 }
 
@@ -90,21 +83,27 @@ function SystemTemperature({
 interface VehicleThermalMapProps {
   temperatures: TyreTemperatureState;
   compound: TyreCompound;
+  brakeTemperatures: TyreTemperatureState;
   brakeTemperature: number;
   powerUnitTemperature: number;
   gearboxTemperature: number;
   energyStoreTemperature: number;
+  thermalDeratePercent: number;
+  thermalRiskPercent: number;
 }
 
 export function VehicleThermalMap({
   temperatures,
   compound,
+  brakeTemperatures,
   brakeTemperature,
   powerUnitTemperature,
   gearboxTemperature,
   energyStoreTemperature,
+  thermalDeratePercent,
+  thermalRiskPercent,
 }: VehicleThermalMapProps) {
-  const [minimum, maximum] = IDEAL_TEMPERATURES[compound];
+  const [minimum, maximum] = TYRE_TEMPERATURE_WINDOWS[compound];
   const wheelTemperatures = Object.values(temperatures);
   const hottestTyre = Math.max(...wheelTemperatures);
   const hottestBand = tyreThermalBand(hottestTyre, compound);
@@ -124,7 +123,7 @@ export function VehicleThermalMap({
       <header className="vehicle-thermal__header">
         <span><Thermometer size={12} aria-hidden="true" /> LIVE THERMAL MAP</span>
         <b style={{ color: hottestBand.color }}>{hottestBand.label}</b>
-        <small>{minimum}–{maximum}° TYRE WINDOW</small>
+        <small>{thermalDeratePercent > 0.05 ? `DERATE ${thermalDeratePercent.toFixed(1)}%` : `${minimum}–${maximum}° WINDOW`} · RISK {thermalRiskPercent.toFixed(0)}%</small>
       </header>
 
       <div className="vehicle-thermal__stage">
@@ -132,6 +131,14 @@ export function VehicleThermalMap({
         <ThermalWheel className="thermal-wheel--fr" compound={compound} label="FR" temperature={temperatures.frontRight} />
         <ThermalWheel className="thermal-wheel--rl" compound={compound} label="RL" temperature={temperatures.rearLeft} />
         <ThermalWheel className="thermal-wheel--rr" compound={compound} label="RR" temperature={temperatures.rearRight} />
+        {(["frontLeft", "frontRight", "rearLeft", "rearRight"] as const).map((corner) => {
+          const brakeBand = systemThermalBand(brakeTemperatures[corner], [THERMAL_THRESHOLDS.brakes.cold, THERMAL_THRESHOLDS.brakes.warning, THERMAL_THRESHOLDS.brakes.critical]);
+          return (
+            <span className={`brake-heat brake-heat--${corner}`} data-state={brakeBand.label.toLowerCase()} key={corner} style={{ "--thermal-color": brakeBand.color } as CSSProperties} title={`${corner} brake ${brakeTemperatures[corner].toFixed(1)}°C`}>
+              <Disc3 size={8} aria-hidden="true" /><b>{Math.round(brakeTemperatures[corner])}</b>
+            </span>
+          );
+        })}
         <Image
           alt=""
           aria-hidden="true"

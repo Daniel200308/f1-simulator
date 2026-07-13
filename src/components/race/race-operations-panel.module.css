@@ -1,0 +1,101 @@
+.backdrop { position: fixed; z-index: 80; inset: 0; display: grid; place-items: center; padding: clamp(14px, 3vw, 46px); background: rgba(1, 6, 9, .82); backdrop-filter: blur(12px); }
+.dialog { --team-color: #20d7e7; width: min(1120px, 96vw); max-height: min(820px, 92dvh); overflow: auto; border: 1px solid rgba(138, 171, 184, .27); background: radial-gradient(circle at 12% 0%, color-mix(in srgb, var(--team-color) 10%, transparent), transparent 32%), linear-gradient(145deg, #0b1920, #050c10 72%); box-shadow: 0 28px 100px rgba(0,0,0,.68), inset 0 1px 0 rgba(255,255,255,.04); color: #e7f0f2; }
+.header { position: sticky; z-index: 3; top: 0; display: grid; grid-template-columns: 48px minmax(210px,1fr) auto 38px; align-items: center; gap: 12px; min-height: 78px; padding: 10px 15px; border-bottom: 1px solid rgba(138,171,184,.18); background: rgba(6,15,20,.96); backdrop-filter: blur(14px); }
+.mark, .intentOrb, .pitOrb { display: grid; place-items: center; border: 1px solid color-mix(in srgb, var(--team-color) 55%, #243b44); border-radius: 50%; color: var(--team-color); background: radial-gradient(circle, color-mix(in srgb, var(--team-color) 17%, transparent), transparent 70%); box-shadow: 0 0 18px color-mix(in srgb, var(--team-color) 18%, transparent); }
+.mark { width: 43px; height: 43px; }
+.header > div:nth-child(2) { min-width: 0; }
+.header > div:nth-child(2) > span, .header > div:nth-child(2) small { display: block; color: #6e8790; font: 8px var(--font-mono); letter-spacing: .08em; }
+.header h2 { margin: 4px 0; font-size: 19px; }
+.tabs { display: flex; gap: 5px; padding: 4px; border: 1px solid rgba(138,171,184,.17); border-radius: 22px; background: rgba(3,10,14,.72); }
+.tabs button { height: 32px; display: flex; align-items: center; gap: 6px; padding: 0 13px; border: 0; border-radius: 17px; color: #718a93; background: transparent; cursor: pointer; font: 800 8px var(--font-mono); }
+.tabs button[aria-selected="true"] { color: var(--team-color); background: color-mix(in srgb, var(--team-color) 13%, #0a171d); box-shadow: 0 0 12px color-mix(in srgb, var(--team-color) 12%, transparent); }
+.close { width: 34px; height: 34px; display: grid; place-items: center; border: 1px solid rgba(138,171,184,.2); border-radius: 50%; color: #8ea3aa; background: #09141a; cursor: pointer; }
+.racecraftView, .pitView { display: grid; gap: 14px; padding: clamp(14px, 2.2vw, 24px); }
+.intentHero, .pitHero { --intent-color: #20d7e7; display: grid; grid-template-columns: 62px minmax(0,1fr) minmax(150px,.32fr) auto; align-items: center; gap: 14px; padding: 15px; border: 1px solid color-mix(in srgb, var(--intent-color) 30%, rgba(138,171,184,.16)); background: linear-gradient(105deg, color-mix(in srgb, var(--intent-color) 13%, transparent), rgba(5,13,17,.72) 55%); }
+.intentHero[data-intent="ATTACK"] { --intent-color: #ff5269; }
+.intentHero[data-intent="DEFEND"] { --intent-color: #398cff; }
+.intentHero[data-intent="HARVEST"] { --intent-color: #4bde95; }
+.intentOrb, .pitOrb { width: 56px; height: 56px; border-color: var(--intent-color); color: var(--intent-color); }
+.intentHero > div:nth-child(2) > span, .pitHero > div > span { color: #718a93; font: 8px var(--font-mono); letter-spacing: .08em; }
+.intentHero > div:nth-child(2) > strong, .pitHero > div > strong { display: block; margin: 4px 0; color: var(--intent-color); font: 950 20px var(--font-mono); }
+.intentHero > div:nth-child(2) > small, .pitHero > div > small { display: block; overflow: hidden; color: #91a6ad; font: 8px var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
+.confidence span { color: #718a93; font: 7px var(--font-mono); }
+.confidence strong { display: block; margin: 4px 0; font: 900 16px var(--font-mono); }
+.confidence i { display: block; width: 100%; height: 3px; background: #1c3038; }
+.confidence i b { display: block; height: 100%; background: var(--intent-color); box-shadow: 0 0 8px var(--intent-color); }
+.intentHero > button { min-height: 42px; padding: 0 16px; border: 1px solid var(--intent-color); border-radius: 22px; color: var(--intent-color); background: color-mix(in srgb, var(--intent-color) 10%, #071217); cursor: pointer; font: 900 8px var(--font-mono); }
+.battleMap { display: grid; grid-template-columns: minmax(120px,.7fr) minmax(45px,1fr) 112px minmax(45px,1fr) minmax(120px,.7fr); align-items: center; gap: 8px; min-height: 120px; padding: 12px 20px; border-block: 1px solid rgba(138,171,184,.12); background: radial-gradient(ellipse at center, color-mix(in srgb, var(--team-color) 8%, transparent), transparent 58%); }
+.battleMap article, .playerNode { text-align: center; }
+.battleMap span { display: block; color: #657f88; font: 7px var(--font-mono); letter-spacing: .08em; }
+.battleMap strong { display: block; margin: 6px 0 4px; color: #e7f0f2; font: 950 18px var(--font-mono); }
+.battleMap small { color: #7d949c; font: 9px var(--font-mono); }
+.playerNode { width: 102px; height: 102px; display: grid; place-content: center; border: 2px solid var(--team-color); border-radius: 50%; background: radial-gradient(circle, color-mix(in srgb, var(--team-color) 18%, #102129), #061015 70%); box-shadow: 0 0 28px color-mix(in srgb, var(--team-color) 22%, transparent); }
+.flowLine { height: 2px; overflow: hidden; background: #1c3038; }
+.flowLine b { display: block; height: 100%; background: linear-gradient(90deg, #398cff, #20d7e7, #ff5269); box-shadow: 0 0 8px #20d7e7; }
+.metricRail { display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); border: 1px solid rgba(138,171,184,.14); }
+.metricRail > div { min-width: 0; display: grid; grid-template-columns: 23px 1fr; align-items: center; gap: 2px 5px; padding: 10px; border-right: 1px solid rgba(138,171,184,.12); color: var(--team-color); }
+.metricRail > div:last-child { border-right: 0; }
+.metricRail svg { grid-row: 1 / 3; }
+.metricRail span { color: #687f88; font: 7px var(--font-mono); }
+.metricRail strong { color: #e5eef0; font: 900 14px var(--font-mono); }
+.metricRail small { color: #748a92; font-size: 7px; }
+.quickCommands { display: grid; grid-template-columns: minmax(130px,.7fr) repeat(3,minmax(140px,1fr)); gap: 8px; align-items: stretch; }
+.quickCommands > div { display: grid; align-content: center; }
+.quickCommands > div span { color: #81969e; font: 900 9px var(--font-mono); }
+.quickCommands > div small { margin-top: 4px; color: #5f7881; font: 7px var(--font-mono); }
+.quickCommands button { --command-color: #20d7e7; display: flex; align-items: center; gap: 9px; min-height: 52px; padding: 8px 12px; border: 1px solid color-mix(in srgb, var(--command-color) 32%, #294049); border-radius: 27px; color: var(--command-color); background: color-mix(in srgb, var(--command-color) 7%, #071217); cursor: pointer; text-align: left; }
+.quickCommands button[data-command="attack"] { --command-color: #ff5269; }
+.quickCommands button[data-command="defend"] { --command-color: #398cff; }
+.quickCommands button[data-command="recharge"] { --command-color: #4bde95; }
+.quickCommands button span { font: 900 9px var(--font-mono); }
+.quickCommands button b { display: block; margin-top: 3px; color: #6e858d; font-size: 7px; font-weight: 600; }
+.pitHero { --pit-color: #4bde95; grid-template-columns: 62px minmax(0,1fr) minmax(120px,.28fr) minmax(120px,.28fr); border: 1px solid color-mix(in srgb, var(--pit-color) 30%, rgba(138,171,184,.16)); background: linear-gradient(105deg, color-mix(in srgb, var(--pit-color) 12%, transparent), rgba(5,13,17,.72)); }
+.pitHero[data-readiness="WATCH"] { --pit-color: #f4d35e; }
+.pitHero[data-readiness="BLOCKED"] { --pit-color: #ff5269; }
+.pitHero .pitOrb { border-color: var(--pit-color); color: var(--pit-color); }
+.pitHero > div > strong { color: var(--pit-color); font-size: 17px; }
+.pitHero > div:nth-child(n+3) { padding-left: 12px; border-left: 1px solid rgba(138,171,184,.13); }
+.tyreWall { padding: 14px; border: 1px solid rgba(138,171,184,.13); background: rgba(5,13,17,.5); }
+.tyreWall header { display: flex; justify-content: space-between; margin-bottom: 12px; color: #82969e; font: 900 9px var(--font-mono); }
+.tyreWall header small { color: #5f7881; font-size: 7px; }
+.tyreWall > div { display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); gap: 8px; }
+.tyreWall button { min-width: 0; display: flex; align-items: center; justify-content: center; gap: 9px; min-height: 66px; padding: 7px; border: 1px solid rgba(138,171,184,.16); border-radius: 34px; color: #82969e; background: #071116; cursor: pointer; }
+.tyreWall button[aria-pressed="true"] { border-color: var(--team-color); box-shadow: 0 0 16px color-mix(in srgb, var(--team-color) 18%, transparent); }
+.tyreWall button:disabled { cursor: not-allowed; opacity: .28; }
+.tyreWall button > span { font: 900 8px var(--font-mono); text-align: left; }
+.tyreWall button b { display: block; margin-top: 3px; color: #627a83; font-size: 6px; }
+.stopSequence { display: grid; grid-template-columns: 1fr 34px 1fr 34px 1fr 34px 1fr; align-items: center; padding: 14px 24px; }
+.stopSequence > div { display: flex; align-items: center; justify-content: center; gap: 8px; }
+.stopSequence > div > b { width: 31px; height: 31px; display: grid; place-items: center; border: 1px solid #4bde95; border-radius: 50%; color: #4bde95; background: rgba(75,222,149,.08); font: 900 10px var(--font-mono); }
+.stopSequence > div[data-state="watch"] > b { border-color: #f4d35e; color: #f4d35e; }
+.stopSequence > div[data-state="blocked"] > b { border-color: #ff5269; color: #ff5269; }
+.stopSequence span { color: #9bafb6; font: 900 8px var(--font-mono); }
+.stopSequence small { display: block; margin-top: 3px; color: #617983; font-size: 7px; }
+.stopSequence > i { height: 1px; background: linear-gradient(90deg, #4bde95, #27404a); }
+.pitChecks { display: grid; grid-template-columns: repeat(4,1fr); gap: 7px; }
+.pitChecks > span { display: flex; align-items: center; gap: 7px; min-height: 34px; padding: 0 10px; border: 1px solid rgba(138,171,184,.12); color: #728991; font: 7px var(--font-mono); }
+.pitChecks i { width: 7px; height: 7px; border-radius: 50%; background: #ff5269; box-shadow: 0 0 7px rgba(255,82,105,.5); }
+.pitChecks span[data-ok="true"] i { background: #4bde95; box-shadow: 0 0 7px rgba(75,222,149,.5); }
+.pitChecks b { margin-left: auto; color: #a7b8be; font-size: 7px; }
+.pitActions { display: flex; justify-content: flex-end; gap: 8px; }
+.pitActions button { min-height: 42px; padding: 0 17px; border-radius: 22px; cursor: pointer; font: 900 8px var(--font-mono); }
+.stayOut { border: 1px solid rgba(138,171,184,.26); color: #8da1a8; background: #071116; }
+.boxCall { display: flex; align-items: center; gap: 7px; border: 1px solid #4bde95; color: #4bde95; background: rgba(75,222,149,.1); }
+.pitActions button:disabled { cursor: not-allowed; opacity: .3; }
+@media (max-width: 760px) {
+  .backdrop { padding: 0; }
+  .dialog { width: 100vw; max-height: 100dvh; min-height: 100dvh; }
+  .header { grid-template-columns: 42px 1fr 36px; }
+  .tabs { grid-column: 1 / -1; grid-row: 2; justify-content: center; }
+  .intentHero, .pitHero { grid-template-columns: 52px 1fr; }
+  .intentHero > button, .confidence, .pitHero > div:nth-child(n+3) { grid-column: 1 / -1; }
+  .battleMap { grid-template-columns: 1fr 70px 1fr; }
+  .battleMap .flowLine { display: none; }
+  .playerNode { grid-column: 2; grid-row: 1; }
+  .metricRail { grid-template-columns: repeat(2,1fr); }
+  .quickCommands { grid-template-columns: 1fr; }
+  .tyreWall > div { grid-template-columns: repeat(2,1fr); }
+  .stopSequence { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .stopSequence > i { display: none; }
+  .pitChecks { grid-template-columns: 1fr 1fr; }
+}

@@ -430,12 +430,13 @@ describe("race simulation", () => {
       ...initial,
       status: "RUNNING",
       cars: initial.cars.map((car) => {
-        if (car.carId === "mercedes-1") return { ...car, totalDistance: attackingDistance, lapDistance: attackingDistance, currentSegment: segmentIndex, racePosition: 2, currentSpeed: 330, reactionTime: 0, gapToCarAhead: 0.04, energyMode: "ATTACK", energyState: "OVERTAKE", batteryPercent: 80, overtakeEligible: true, overtakeActive: true, battleStatus: "SIDE_BY_SIDE", battleCarId: "mercedes-2" };
-        if (car.carId === "mercedes-2") return { ...car, totalDistance: leaderDistance, lapDistance: leaderDistance, currentSegment: segmentIndex, racePosition: 1, currentSpeed: 120, reactionTime: 0, battleStatus: "DEFENDING", battleCarId: "mercedes-1" };
+        if (car.carId === "mercedes-1") return { ...car, currentLap: 2, totalDistance: attackingDistance, lapDistance: attackingDistance, currentSegment: segmentIndex, racePosition: 2, currentSpeed: 330, reactionTime: 0, gapToCarAhead: 0.04, energyMode: "ATTACK", energyState: "OVERTAKE", batteryPercent: 80, overtakeEligible: true, overtakeActive: true, battleStatus: "SIDE_BY_SIDE", battleCarId: "mercedes-2" };
+        if (car.carId === "mercedes-2") return { ...car, currentLap: 2, totalDistance: leaderDistance, lapDistance: leaderDistance, currentSegment: segmentIndex, racePosition: 1, currentSpeed: 120, reactionTime: 0, battleStatus: "DEFENDING", battleCarId: "mercedes-1" };
         return { ...car, totalDistance: -600 - car.gridPosition * 15, currentSpeed: 0 };
       }),
     };
-    const next = stepSnapshot(duel);
+    let next = duel;
+    for (let index = 0; index < 35; index += 1) next = stepSnapshot(next);
     const winner = next.cars.find((car) => car.carId === "mercedes-1")!;
     expect(winner.racePosition).toBe(1);
     expect(winner.overtakes).toBe(1);
@@ -767,9 +768,57 @@ describe("race simulation", () => {
     expect(second.pitStopTargetSeconds).toBeGreaterThan(first.pitStopTargetSeconds);
   });
 
+  it("ignores commands for a retired or finished car", () => {
+    const initial = createInitialSnapshot(1_213);
+    const carId = initial.cars[0].carId;
+    const retired: RaceSnapshot = {
+      ...initial,
+      cars: initial.cars.map((car) => car.carId === carId
+        ? { ...car, incidentStatus: "RETIRED" as const, finished: true }
+        : car),
+    };
+
+    expect(setCarPace(retired, carId, "ATTACK")).toBe(retired);
+    expect(setCarPit(retired, carId, "HARD")).toBe(retired);
+  });
+
+  it("ignores player commands sent to a rival AI car", () => {
+    const initial = createInitialSnapshot(1_214);
+
+    expect(setCarPace(initial, "ferrari-1", "ATTACK")).toBe(initial);
+    expect(setCarPit(initial, "ferrari-1", "HARD")).toBe(initial);
+  });
+
+  it("keeps a newly retired car finished and stationary", () => {
+    const initial = createInitialSnapshot(28_949);
+    const carId = initial.cars[10].carId;
+    const beforeIncident: RaceSnapshot = {
+      ...initial,
+      status: "RUNNING",
+      tick: 9,
+      elapsedTime: 0.9,
+      cars: initial.cars.map((car) => car.carId === carId
+        ? { ...car, currentSpeed: 300, reactionTime: 0 }
+        : car),
+    };
+
+    const retired = stepSnapshot(beforeIncident);
+    const after = stepSnapshot(retired);
+    const retiredCar = retired.cars.find((car) => car.carId === carId)!;
+    const afterCar = after.cars.find((car) => car.carId === carId)!;
+
+    expect(retiredCar.incidentStatus).toBe("RETIRED");
+    expect(retiredCar.finished).toBe(true);
+    expect(retiredCar.currentSpeed).toBe(0);
+    expect(afterCar).toMatchObject({ incidentStatus: "RETIRED", finished: true, currentSpeed: 0 });
+  });
+
   it("completes a full 52-lap race without invalid car state", () => {
     const state = runTicks(20260712, 65_000);
+    const totalOvertakes = state.cars.reduce((sum, car) => sum + car.overtakes, 0);
     expect(state.status).toBe("FINISHED");
     expect(state.cars.every((car) => Number.isFinite(car.totalDistance) && car.finished)).toBe(true);
+    expect(totalOvertakes).toBeGreaterThan(10);
+    expect(totalOvertakes).toBeLessThan(150);
   }, 15_000);
 });

@@ -41,7 +41,7 @@ function compoundScore(compound: TyreCompound, remainingLaps: number, wetness: n
 
 export function buildAiStrategyDecision(context: AiStrategyContext, car: RaceCarState): AiStrategyDecision {
   const aggression = teamAggression(car.teamId);
-  const remainingLaps = Math.max(0, SILVERSTONE_CIRCUIT.totalLaps - car.currentLap);
+  const remainingLaps = car.finished ? 0 : Math.max(0, SILVERSTONE_CIRCUIT.totalLaps - car.currentLap + 1);
   const compounds = availableCompounds(car);
   const teammate = context.cars.find((candidate) => candidate.carId !== car.carId && candidate.teamId === car.teamId);
   const doubleStackRisk = Boolean(teammate?.scheduledPitCompound || teammate?.pitStatus === "PIT_LANE" || teammate?.pitStatus === "PIT_STOP");
@@ -62,13 +62,26 @@ export function buildAiStrategyDecision(context: AiStrategyContext, car: RaceCar
         ? "INTERMEDIATE"
         : car.tyreCompound === "WET" || car.tyreCompound === "INTERMEDIATE" ? "MEDIUM" : null;
   const weatherMismatch = wetTarget !== null && wetTarget !== car.tyreCompound;
+  const weatherTransition = weatherMismatch && (
+    wetTarget === "INTERMEDIATE"
+      || wetTarget === "WET"
+      || car.tyreCompound === "INTERMEDIATE"
+      || car.tyreCompound === "WET"
+  );
   const threshold = 43 + aggression * 4 + (undercut ? 8 : 0) + (cheapStop ? 20 : 0) - (doubleStackRisk ? 9 : 0);
   const tyreCritical = car.tyreLife <= 35;
+  const prematureDryStop = context.trackWetness < 0.16
+    && car.currentLap <= 3
+    && car.tyreAgeLaps < 3
+    && car.tyreLife > 80
+    && !cheapStop
+    && !weatherTransition;
   const shouldPit = context.pitLaneOpen
     && car.pitStatus === "TRACK"
     && compounds.length > 0
     && car.currentLap < SILVERSTONE_CIRCUIT.totalLaps
-    && (weatherMismatch || tyreCritical || car.tyreLife <= threshold);
+    && !prematureDryStop
+    && (weatherTransition || tyreCritical || car.tyreLife <= threshold);
 
   const ranked = compounds
     .map((compound) => {
@@ -79,7 +92,7 @@ export function buildAiStrategyDecision(context: AiStrategyContext, car: RaceCar
     })
     .sort((a, b) => b.score - a.score || a.compound.localeCompare(b.compound));
   const best = ranked[0] ?? null;
-  const intent: StrategyIntent = weatherMismatch
+  const intent: StrategyIntent = weatherTransition
     ? "WEATHER"
     : cheapStop && shouldPit
       ? "CHEAP_STOP"
@@ -89,7 +102,7 @@ export function buildAiStrategyDecision(context: AiStrategyContext, car: RaceCar
           ? "UNDERCUT"
           : car.tyreLife > threshold + 12 ? "EXTEND" : "HOLD";
   const margin = best && ranked[1] ? best.score - ranked[1].score : best ? 12 : 0;
-  const modelConfidence = crossover && weatherMismatch ? crossover.confidence : 0;
-  const confidence = Math.max(0.35, Math.min(0.96, 0.52 + margin * 0.018 + (weatherMismatch ? 0.16 : 0) + modelConfidence * 0.08 - (doubleStackRisk ? 0.12 : 0)));
+  const modelConfidence = crossover && weatherTransition ? crossover.confidence : 0;
+  const confidence = Math.max(0.35, Math.min(0.96, 0.52 + margin * 0.018 + (weatherTransition ? 0.16 : 0) + modelConfidence * 0.08 - (doubleStackRisk ? 0.12 : 0)));
   return { pitNow: shouldPit && Boolean(best), compound: shouldPit ? best?.compound ?? null : null, intent, confidence, score: best?.score ?? 0 };
 }
