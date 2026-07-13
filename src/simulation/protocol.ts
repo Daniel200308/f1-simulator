@@ -4,6 +4,7 @@ export type WorkerCommand =
   | { type: "INIT"; seed: number }
   | { type: "PLAY" }
   | { type: "PAUSE" }
+  | { type: "SET_AUTO_PAUSE"; enabled: boolean }
   | { type: "SET_SPEED"; speed: SimulationSpeed }
   | { type: "SET_PACE"; carId: string; mode: PaceMode }
   | { type: "SET_TYRE_MODE"; carId: string; mode: TyreMode }
@@ -14,5 +15,5 @@ export type WorkerCommand =
   | { type: "RESET"; seed: number };
 
 export type WorkerEvent =
-  | { type: "SNAPSHOT"; snapshot: RaceSnapshot; speed: SimulationSpeed; paused: boolean }
+  | { type: "SNAPSHOT"; snapshot: RaceSnapshot; speed: SimulationSpeed; paused: boolean; autoPauseEnabled: boolean; autoPauseReason: string | null }
   | { type: "ERROR"; message: string };

@@ -3,6 +3,7 @@
 import type { RaceSnapshot, SimulationSpeed } from "@/domain/race";
 import { cancelCarPit, createInitialSnapshot, FIXED_STEP_SECONDS, setCarEnergyMode, setCarPace, setCarPit, setCarStartingTyre, setCarTyreMode, stepSnapshot } from "@/simulation/engine";
 import type { WorkerCommand, WorkerEvent } from "@/simulation/protocol";
+import { criticalRaceControlTransition } from "@/simulation/race-control-transitions";
 
 const context: DedicatedWorkerGlobalScope = self as unknown as DedicatedWorkerGlobalScope;
 const STEP_MS = FIXED_STEP_SECONDS * 1_000;
@@ -11,12 +12,14 @@ const MAX_STEPS_PER_PULSE = 500;
 let snapshot: RaceSnapshot = createInitialSnapshot();
 let speed: SimulationSpeed = 1;
 let paused = true;
+let autoPauseEnabled = true;
+let autoPauseReason: string | null = null;
 let accumulator = 0;
 let previousWallTime = performance.now();
 let previousPublishTime = 0;
 
 function publish(): void {
-  const event: WorkerEvent = { type: "SNAPSHOT", snapshot, speed, paused };
+  const event: WorkerEvent = { type: "SNAPSHOT", snapshot, speed, paused, autoPauseEnabled, autoPauseReason };
   context.postMessage(event);
 }
 
@@ -28,9 +31,18 @@ function pulse(now: number): void {
     accumulator += wallDelta * speed;
     let steps = 0;
     while (accumulator >= STEP_MS && steps < MAX_STEPS_PER_PULSE) {
+      const previous = snapshot;
       snapshot = stepSnapshot(snapshot);
       accumulator -= STEP_MS;
       steps += 1;
+      const transitionReason = autoPauseEnabled ? criticalRaceControlTransition(previous, snapshot) : null;
+      if (transitionReason) {
+        autoPauseReason = transitionReason;
+        paused = true;
+        accumulator = 0;
+        snapshot = { ...snapshot, status: snapshot.status === "FINISHED" ? "FINISHED" : "PAUSED" };
+        break;
+      }
     }
   }
 
@@ -47,19 +59,27 @@ context.onmessage = (message: MessageEvent<WorkerCommand>) => {
       case "RESET":
         snapshot = createInitialSnapshot(message.data.seed);
         paused = true;
+        autoPauseReason = null;
         accumulator = 0;
         previousWallTime = performance.now();
         publish();
         break;
       case "PLAY":
         paused = false;
+        autoPauseReason = null;
         snapshot = { ...snapshot, status: snapshot.status === "FINISHED" ? "FINISHED" : "RUNNING" };
         previousWallTime = performance.now();
         publish();
         break;
       case "PAUSE":
         paused = true;
+        autoPauseReason = null;
         snapshot = { ...snapshot, status: snapshot.status === "FINISHED" ? "FINISHED" : "PAUSED" };
+        publish();
+        break;
+      case "SET_AUTO_PAUSE":
+        autoPauseEnabled = message.data.enabled;
+        if (!autoPauseEnabled) autoPauseReason = null;
         publish();
         break;
       case "SET_SPEED":

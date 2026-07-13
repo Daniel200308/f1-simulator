@@ -49,12 +49,234 @@ describe("race simulation", () => {
 
   it("moves a safety-car period through bunching and restart phases", () => {
     const initial = createInitialSnapshot(88);
-    const bunching = stepSnapshot({ ...initial, status: "RUNNING", raceControl: "SAFETY_CAR", raceControlTimer: 50.05, safetyCarPhase: "DEPLOYED", pitLaneOpen: false });
+    const bunching = stepSnapshot({
+      ...initial,
+      status: "RUNNING",
+      raceControl: "SAFETY_CAR",
+      raceControlTimer: 70,
+      safetyCarPhase: "DEPLOYED",
+      safetyCarPhaseElapsedSeconds: 11.95,
+      safetyCarDistance: 72,
+      pitLaneOpen: false,
+      pitLaneStatus: "CLOSED",
+    });
     expect(bunching.safetyCarPhase).toBe("BUNCHING");
     expect(bunching.pitLaneOpen).toBe(true);
-    const restart = stepSnapshot({ ...bunching, raceControlTimer: 14.05, safetyCarPhase: "BUNCHING" });
+    const nextSafetyCarDistance = bunching.safetyCarDistance! + (125 / 3.6) * 0.1;
+    const restart = stepSnapshot({
+      ...bunching,
+      safetyCarPhase: "BUNCHING",
+      safetyCarPhaseElapsedSeconds: 17.95,
+      cars: bunching.cars.map((car, index) => ({
+        ...car,
+        totalDistance: nextSafetyCarDistance - 28 - index * 14,
+        currentSpeed: 125,
+        reactionTime: 0,
+        pitStatus: "TRACK" as const,
+      })),
+    });
     expect(restart.safetyCarPhase).toBe("RESTART");
     expect(restart.events.some((event) => event.message.includes("IN THIS LAP"))).toBe(true);
+  });
+
+  it("applies a local yellow limit only inside the affected sector", () => {
+    const initial = createInitialSnapshot(4_212);
+    const positionedCars = initial.cars.map((car, index) => {
+      const totalDistance = index === 0 ? 700 : index === 1 ? 3_400 : -600 - index * 20;
+      return {
+        ...car,
+        totalDistance,
+        lapDistance: totalDistance < 0 ? 0 : totalDistance,
+        currentSector: index === 0 ? 1 as const : index === 1 ? 2 as const : car.currentSector,
+        currentSpeed: index < 2 ? 220 : 0,
+        reactionTime: 0,
+      };
+    });
+    const base = { ...initial, status: "RUNNING" as const, cars: positionedCars };
+    const green = stepSnapshot(base);
+    const yellow = stepSnapshot({ ...base, raceControl: "YELLOW", raceControlTimer: 10, yellowSector: 1 });
+
+    expect(yellow.cars[0].currentSpeed).toBeLessThan(green.cars[0].currentSpeed);
+    expect(Math.abs(yellow.cars[1].currentSpeed - green.cars[1].currentSpeed)).toBeLessThan(2);
+  });
+
+  it("tracks sustained VSC violations while leaving pit-lane cars outside the delta", () => {
+    const initial = createInitialSnapshot(5_151);
+    const targetId = initial.cars[0].carId;
+    const pitId = initial.cars[1].carId;
+    const state = stepSnapshot({
+      ...initial,
+      status: "RUNNING",
+      raceControl: "VSC",
+      raceControlTimer: 30,
+      yellowSector: 1,
+      cars: initial.cars.map((car) => car.carId === targetId
+        ? { ...car, reactionTime: 0, currentSpeed: 320, vscDeltaSeconds: -0.25, vscViolationSeconds: 0.95, vscComplianceStatus: "WARNING" as const }
+        : car.carId === pitId
+          ? { ...car, reactionTime: 0, pitStatus: "PIT_LANE" as const, currentSpeed: 80, vscDeltaSeconds: 0.4 }
+          : car),
+    });
+    const target = state.cars.find((car) => car.carId === targetId)!;
+    const pitCar = state.cars.find((car) => car.carId === pitId)!;
+
+    expect(target.vscComplianceStatus).toBe("VIOLATION");
+    expect(target.vscDeltaSeconds).toBeLessThan(0);
+    expect(target.vscViolationCount).toBe(1);
+    expect(state.events.some((event) => event.message.includes("VSC DELTA VIOLATION"))).toBe(true);
+    expect(pitCar.vscDeltaSeconds).toBe(0);
+    expect(pitCar.currentSpeed).toBeLessThanOrEqual(80);
+  });
+
+  it("moves a physical safety car, assigns a unique on-track queue and closes the pit on deployment", () => {
+    const initial = createInitialSnapshot(7_711);
+    const state = stepSnapshot({
+      ...initial,
+      status: "RUNNING",
+      raceControl: "SAFETY_CAR",
+      raceControlTimer: 70,
+      yellowSector: 3,
+      safetyCarPhase: "DEPLOYED",
+      safetyCarDistance: 72,
+    });
+    const activeCars = state.cars.filter((car) => !car.finished && car.pitStatus === "TRACK");
+    const queue = activeCars.map((car) => car.safetyCarQueuePosition);
+    const leader = activeCars.find((car) => car.racePosition === 1)!;
+
+    expect(state.safetyCarDistance).toBeGreaterThan(72);
+    expect(state.safetyCarSpeed).toBe(155);
+    expect(state.pitLaneStatus).toBe("CLOSED");
+    expect(state.pitLaneOpen).toBe(false);
+    expect(queue.every((position) => position !== null)).toBe(true);
+    expect(new Set(queue).size).toBe(queue.length);
+    expect(leader.totalDistance).toBeLessThan(state.safetyCarDistance!);
+  });
+
+  it("releases the field to green only after the restart line", () => {
+    const initial = createInitialSnapshot(9_991);
+    const safetyCarDistance = 6_000;
+    const nextSafetyCarDistance = safetyCarDistance + (185 / 3.6) * 0.1;
+    const leaderDistance = nextSafetyCarDistance - 28;
+    const restart = stepSnapshot({
+      ...initial,
+      status: "RUNNING",
+      raceControl: "SAFETY_CAR",
+      raceControlTimer: 1,
+      yellowSector: 3,
+      safetyCarPhase: "RESTART",
+      safetyCarPhaseElapsedSeconds: 8,
+      safetyCarDistance,
+      safetyCarRestartLineDistance: leaderDistance - 1,
+      cars: initial.cars.map((car, index) => ({
+        ...car,
+        totalDistance: leaderDistance - index * 12,
+        currentSpeed: 150,
+        reactionTime: 0,
+        pitStatus: "TRACK" as const,
+      })),
+    });
+
+    expect(restart.raceControl).toBe("GREEN");
+    expect(restart.safetyCarPhase).toBe("NONE");
+    expect(restart.safetyCarDistance).toBeNull();
+    expect(restart.events.some((event) => event.message.includes("GREEN FLAG"))).toBe(true);
+  });
+
+  it("completes an injected safety-car procedure without deadlocking the field", () => {
+    const initial = createInitialSnapshot(6_606);
+    let state: RaceSnapshot = {
+      ...initial,
+      status: "RUNNING",
+      raceControl: "SAFETY_CAR",
+      raceControlTimer: 70,
+      yellowSector: 1,
+      safetyCarPhase: "DEPLOYED",
+      cars: initial.cars.map((car) => ({ ...car, reactionTime: 0 })),
+    };
+    const phases = new Set<string>();
+    for (let tick = 0; tick < 4_000 && state.raceControl === "SAFETY_CAR"; tick += 1) {
+      phases.add(state.safetyCarPhase);
+      state = stepSnapshot(state);
+    }
+
+    expect(phases).toContain("BUNCHING");
+    expect(phases).toContain("RESTART");
+    expect(state.raceControl).toBe("GREEN");
+    expect(state.cars.every((car) => Number.isFinite(car.totalDistance))).toBe(true);
+  });
+
+  it("redeploys and resets the safety car when a new retirement occurs during restart", () => {
+    const initial = createInitialSnapshot(37_040);
+    const safetyCarDistance = 6_000;
+    const nextSafetyCarDistance = safetyCarDistance + (185 / 3.6) * 0.1;
+    const leaderDistance = nextSafetyCarDistance - 28;
+    const state = stepSnapshot({
+      ...initial,
+      tick: 9,
+      elapsedTime: 0.9,
+      status: "RUNNING",
+      raceControl: "SAFETY_CAR",
+      raceControlTimer: 1,
+      yellowSector: 2,
+      safetyCarPhase: "RESTART",
+      safetyCarPhaseElapsedSeconds: 8,
+      safetyCarDistance,
+      safetyCarInPitLane: true,
+      safetyCarRestartLineDistance: leaderDistance - 1,
+      cars: initial.cars.map((car, index) => {
+        const totalDistance = index === 0 ? leaderDistance : index === 1 ? leaderDistance - 6 : leaderDistance - (index - 1) * 12;
+        return {
+          ...car,
+          totalDistance,
+          lapDistance: ((totalDistance % SILVERSTONE_CIRCUIT.lengthMeters) + SILVERSTONE_CIRCUIT.lengthMeters) % SILVERSTONE_CIRCUIT.lengthMeters,
+          currentSpeed: 150,
+          reactionTime: 0,
+          pitStatus: "TRACK" as const,
+        };
+      }),
+    });
+
+    expect(state.activeIncident?.carId).toBe(initial.cars[1].carId);
+    expect(state.activeIncident?.status).toBe("RETIRED");
+    expect(state.raceControl).toBe("SAFETY_CAR");
+    expect(state.safetyCarPhase).toBe("DEPLOYED");
+    expect(state.safetyCarPhaseElapsedSeconds).toBeCloseTo(0.1, 5);
+    expect(state.safetyCarRestartLineDistance).toBeNull();
+    expect(state.pitLaneStatus).toBe("CLOSED");
+    expect(state.events.some((event) => event.message.includes("SAFETY CAR REDEPLOYED"))).toBe(true);
+  });
+
+  it("does not retain a finish recorded before a safety-car queue correction", () => {
+    const initial = createInitialSnapshot(12_340);
+    const raceDistance = SILVERSTONE_CIRCUIT.lengthMeters * SILVERSTONE_CIRCUIT.totalLaps;
+    const queuedCarId = initial.cars[1].carId;
+    const state = stepSnapshot({
+      ...initial,
+      status: "RUNNING",
+      raceControl: "SAFETY_CAR",
+      raceControlTimer: 70,
+      yellowSector: 3,
+      safetyCarPhase: "DEPLOYED",
+      safetyCarPhaseElapsedSeconds: 1,
+      safetyCarDistance: raceDistance + 32,
+      cars: initial.cars.map((car, index) => {
+        const totalDistance = index === 0 ? raceDistance - 40 : index === 1 ? raceDistance - 0.05 : raceDistance - 100 - index * 20;
+        return {
+          ...car,
+          totalDistance,
+          lapDistance: ((totalDistance % SILVERSTONE_CIRCUIT.lengthMeters) + SILVERSTONE_CIRCUIT.lengthMeters) % SILVERSTONE_CIRCUIT.lengthMeters,
+          currentLap: SILVERSTONE_CIRCUIT.totalLaps,
+          currentSpeed: index === 1 ? 330 : 150,
+          reactionTime: 0,
+          pitStatus: "TRACK" as const,
+        };
+      }),
+    });
+    const queuedCar = state.cars.find((car) => car.carId === queuedCarId)!;
+
+    expect(queuedCar.totalDistance).toBeLessThan(raceDistance);
+    expect(queuedCar.finished).toBe(false);
+    expect(queuedCar.finishTime).toBeNull();
+    expect(queuedCar.lastLapTime).toBeNull();
   });
 
   it("uses the normalized real Silverstone telemetry speed profile", () => {
