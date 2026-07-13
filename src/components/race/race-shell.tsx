@@ -2,21 +2,19 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import type { EnergyMode, PaceMode, SimulationSpeed, TyreCompound, TyreMode } from "@/domain/race";
+import type { SimulationSpeed, TyreCompound } from "@/domain/race";
 import { CarStatusPanel } from "@/components/race/car-status";
+import { CommandDock } from "@/components/race/command-dock";
 import { RaceMap } from "@/components/race/race-map";
 import { TimingTower } from "@/components/race/timing-tower";
 import { StrategyTimeline } from "@/components/race/strategy-timeline";
-import { DRIVER_BY_ID, PLAYER_CAR_IDS, TEAM_BY_ID } from "@/fixtures/grid";
+import { PLAYER_CAR_IDS } from "@/fixtures/grid";
 import { useRaceWorker } from "@/hooks/use-race-worker";
 import { DEFAULT_SEED, FIXED_STEP_SECONDS } from "@/simulation/engine";
 import { SILVERSTONE_CIRCUIT } from "@/simulation/track";
 import { useRaceStore } from "@/store/race-store";
 
 const SPEEDS: readonly SimulationSpeed[] = [1, 2, 4, 8, 16];
-const PACE_MODES: readonly PaceMode[] = ["ATTACK", "PUSH", "STANDARD", "CONSERVE", "COOL"];
-const TYRE_MODES: readonly TyreMode[] = ["GRIP", "BALANCED", "SAVE", "TEMPERATURE"];
-const ENERGY_MODES: readonly EnergyMode[] = ["ATTACK", "BALANCED", "DEFEND", "RECHARGE"];
 const PIT_COMPOUNDS: readonly TyreCompound[] = ["SOFT", "MEDIUM", "HARD", "INTERMEDIATE", "WET"];
 type StartPhase = "MENU" | "LIGHTS" | "GO" | "RACING";
 const TYRE_SHORT: Record<TyreCompound, string> = { SOFT: "S", MEDIUM: "M", HARD: "H", INTERMEDIATE: "I", WET: "W" };
@@ -42,8 +40,6 @@ export function RaceShell() {
   const selectedCarId = useRaceStore((state) => state.selectedCarId);
   const leader = useMemo(() => snapshot?.cars.find((car) => car.racePosition === 1), [snapshot]);
   const selectedCar = snapshot?.cars.find((car) => car.carId === selectedCarId);
-  const selectedTeam = selectedCar ? TEAM_BY_ID.get(selectedCar.teamId) : undefined;
-  const selectedDriver = selectedCar ? DRIVER_BY_ID.get(selectedCar.driverId) : undefined;
   const raceControlLabel = snapshot?.raceControl === "YELLOW"
     ? `YELLOW S${snapshot.yellowSector ?? "—"}`
     : snapshot?.raceControl === "SAFETY_CAR"
@@ -128,10 +124,7 @@ export function RaceShell() {
           <div className="circuit-title"><div><span className="eyebrow">ROUND 09 · GREAT BRITAIN · 5.891 KM · 18 TURNS</span><h1>{SILVERSTONE_CIRCUIT.name}</h1></div><div className={`live-pill live-pill--${(snapshot?.raceControl ?? "GREEN").toLowerCase()}`}><i /> {startPhase === "RACING" ? (paused ? "PAUSED" : snapshot?.raceControl === "GREEN" ? `${speed}× LIVE` : raceControlLabel) : "ON GRID"}</div></div>
           <RaceMap startPhase={startPhase} lightsOn={lightsOn} />
           <div className="strategy-strip">
-            <div className="command-target"><span className="eyebrow">DRIVER COMMAND</span><strong>{selectedDriver?.shortName ?? "—"} · {selectedTeam?.shortName ?? "—"}</strong><small>{selectedTeam?.isPlayer ? "LIVE CONTROL" : "RIVAL · READ ONLY"}</small></div>
-            <div className="command-group"><span>PACE</span><div>{PACE_MODES.map((mode) => <button className={selectedCar?.paceMode === mode ? "is-active" : ""} disabled={!selectedTeam?.isPlayer} key={mode} onClick={() => selectedCar && controls.setPace(selectedCar.carId, mode)} type="button">{mode}</button>)}</div></div>
-            <div className="command-group command-group--energy"><span>ENERGY · {selectedCar?.energyState ?? "NEUTRAL"} · {Math.round(selectedCar?.batteryPercent ?? 0)}%</span><div>{ENERGY_MODES.map((mode) => <button className={selectedCar?.energyMode === mode ? "is-active" : ""} disabled={!selectedTeam?.isPlayer} key={mode} onClick={() => selectedCar && controls.setEnergyMode(selectedCar.carId, mode)} type="button">{mode}</button>)}</div></div>
-            <div className="command-group command-group--strategy"><span>TYRE / PIT STRATEGY · {snapshot?.pitLaneOpen === false ? "PIT CLOSED" : "PIT OPEN"}</span><div>{TYRE_MODES.map((mode) => <button className={selectedCar?.tyreMode === mode ? "is-active" : ""} disabled={!selectedTeam?.isPlayer} key={mode} onClick={() => selectedCar && controls.setTyreMode(selectedCar.carId, mode)} type="button">{mode}</button>)}{PIT_COMPOUNDS.map((compound) => <button className={selectedCar?.scheduledPitCompound === compound ? "is-active" : ""} disabled={!selectedTeam?.isPlayer || selectedCar?.pitStatus !== "TRACK" || snapshot?.pitLaneOpen === false} key={compound} onClick={() => selectedCar && controls.box(selectedCar.carId, compound)} type="button">BOX {TYRE_SHORT[compound]}</button>)}<button disabled={!selectedTeam?.isPlayer || !selectedCar?.scheduledPitCompound} onClick={() => selectedCar && controls.stayOut(selectedCar.carId)} type="button">STAY OUT</button></div></div>
+            <CommandDock car={selectedCar} controls={controls} pitLaneOpen={snapshot?.pitLaneOpen !== false} />
             <StrategyTimeline />
           </div>
         </section>
