@@ -278,10 +278,10 @@ export function RaceMap({ startPhase, lightsOn }: { startPhase: "MENU" | "LIGHTS
             marker.ring.clear();
             const incident = car.incidentStatus !== "RUNNING";
             const battling = car.battleStatus !== "CLEAR";
-            if (selected || player || incident || battling) {
+            if (selected || player || incident || (battling && car.overtakeActive)) {
               marker.ring.circle(0, 0, selected ? 11 : incident || battling ? 10 : 9).stroke({
                 width: selected ? 2.4 : incident || battling ? 2 : 1.2,
-                color: incident ? (car.incidentStatus === "RETIRED" ? 0xff5269 : 0xf4d35e) : battling ? (car.overtakeActive ? 0xff8f4c : 0xb276ff) : selected ? 0xffffff : 0x20d7e7,
+                color: incident ? (car.incidentStatus === "RETIRED" ? 0xff5269 : 0xf4d35e) : battling ? 0xff8f4c : selected ? 0xffffff : 0x20d7e7,
                 alpha: selected || incident || battling ? 1 : 0.7,
               });
             }

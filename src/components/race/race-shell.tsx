@@ -100,14 +100,13 @@ export function RaceShell() {
         </div>
       )}
       <header className="topbar">
-        <div className="brand-block"><i className="brand-mark">P</i><div><strong>PROJECT PITWALL</strong><small>RACE OPERATIONS / ALPHA 0.1</small></div></div>
-        <div className="session-strip">
-          <div><span>SESSION</span><strong>RACE</strong></div>
-          <div><span>LAP</span><strong>{leader?.currentLap ?? 1}<em>/ {SILVERSTONE_CIRCUIT.totalLaps}</em></strong></div>
-          <div><span>ELAPSED</span><strong>{formatTime(snapshot?.elapsedTime ?? 0)}</strong></div>
-          <div className={`condition condition--${(snapshot?.raceControl ?? "GREEN").toLowerCase()}`}><span>TRACK STATUS</span><strong><i /> {startPhase === "RACING" ? raceControlLabel : "GRID"}</strong></div>
-          <div><span>TRACK</span><strong>{Math.round(snapshot?.weather.trackTemperature ?? 31)}°C</strong></div>
-          <div><span>WEATHER</span><strong>{(snapshot?.weather.condition ?? "DRY").replace("_", " ")}</strong></div>
+        <div className="brand-block"><i className="brand-mark">P</i><div><strong>PROJECT PITWALL</strong><small>LIVE RACE OPERATIONS</small></div></div>
+        <div className="broadcast-strip">
+          <div className="broadcast-session"><span>ROUND 09</span><strong>RACE</strong><em>GBR</em></div>
+          <div className="broadcast-lap"><span>LAP</span><strong>{leader?.currentLap ?? 1}</strong><em>/ {SILVERSTONE_CIRCUIT.totalLaps}</em><i><b style={{ width: `${((leader?.currentLap ?? 1) / SILVERSTONE_CIRCUIT.totalLaps) * 100}%` }} /></i></div>
+          <div className="broadcast-clock"><span>RACE TIME</span><strong>{formatTime(snapshot?.elapsedTime ?? 0)}</strong></div>
+          <div className={`broadcast-status condition--${(snapshot?.raceControl ?? "GREEN").toLowerCase()}`}><span>RACE CONTROL</span><strong><i className="status-flag" /> {startPhase === "RACING" ? raceControlLabel : "GRID"}</strong><small>{snapshot?.pitLaneOpen === false ? "PIT CLOSED" : "PIT OPEN"}</small></div>
+          <div className="broadcast-conditions"><span><small>TRACK</small><strong>{Math.round(snapshot?.weather.trackTemperature ?? 31)}°</strong></span><span><small>WEATHER</small><strong>{(snapshot?.weather.condition ?? "DRY").replace("_", " ")}</strong></span></div>
         </div>
         <div className="transport">
           <button className="pause-button" disabled={startPhase !== "RACING"} onClick={paused ? controls.play : controls.pause} type="button">{paused ? "▶" : "Ⅱ"}</button>
