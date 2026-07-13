@@ -124,7 +124,7 @@ export function RaceMap({ startPhase, lightsOn }: { startPhase: "MENU" | "LIGHTS
         const dot = new PIXI.Graphics()
           .circle(0, 0, team.isPlayer ? 7 : 5.5)
           .fill({ color: team.primaryColor })
-          .stroke({ width: 1, color: team.accentColor, alpha: 0.9 });
+          .stroke({ width: 1.2, color: 0xdbe7ea, alpha: 0.72 });
         dot.circle(0, 0, team.isPlayer ? 3 : 2.2).fill({ color: 0x061017, alpha: 0.76 });
         const label = new PIXI.Text({
           text: driver.shortName,
@@ -273,16 +273,15 @@ export function RaceMap({ startPhase, lightsOn }: { startPhase: "MENU" | "LIGHTS
             marker.container.position.set(p.x, p.y);
             marker.container.zIndex = 30 - car.racePosition;
             const selected = state.selectedCarId === car.carId;
-            const player = TEAM_BY_ID.get(car.teamId)?.isPlayer ?? false;
             marker.label.visible = true;
+            marker.label.tint = selected ? 0x20d7e7 : 0xffffff;
             marker.ring.clear();
-            const incident = car.incidentStatus !== "RUNNING";
-            const battling = car.battleStatus !== "CLEAR";
-            if (selected || player || incident || (battling && car.overtakeActive)) {
-              marker.ring.circle(0, 0, selected ? 11 : incident || battling ? 10 : 9).stroke({
-                width: selected ? 2.4 : incident || battling ? 2 : 1.2,
-                color: incident ? (car.incidentStatus === "RETIRED" ? 0xff5269 : 0xf4d35e) : battling ? 0xff8f4c : selected ? 0xffffff : 0x20d7e7,
-                alpha: selected || incident || battling ? 1 : 0.7,
+            const energyColor = car.energyMode === "ATTACK" ? 0xff334f : car.energyMode === "DEFEND" ? 0x398cff : car.energyMode === "RECHARGE" ? 0x36dc79 : null;
+            if (energyColor !== null) {
+              marker.ring.circle(0, 0, 9).stroke({
+                width: 1.8,
+                color: energyColor,
+                alpha: 0.95,
               });
             }
             if (selected) {
@@ -295,6 +294,8 @@ export function RaceMap({ startPhase, lightsOn }: { startPhase: "MENU" | "LIGHTS
                 activeHost.dataset.centerlineErrorPx = distanceToCenterline(p, projectedCenterline).toFixed(6);
                 activeHost.dataset.racingLine = car.racingLineMode;
                 activeHost.dataset.trackLineOffset = "0.000";
+                activeHost.dataset.energyMode = car.energyMode;
+                activeHost.dataset.indicatorColor = energyColor === null ? "none" : `#${energyColor.toString(16).padStart(6, "0")}`;
                 activeHost.dataset.viewportWidth = viewport.width.toFixed(2);
                 activeHost.dataset.viewportHeight = viewport.height.toFixed(2);
                 activeHost.dataset.viewportScale = viewport.scale.toFixed(4);
@@ -309,7 +310,7 @@ export function RaceMap({ startPhase, lightsOn }: { startPhase: "MENU" | "LIGHTS
             battleLayer
               .moveTo(attacker.container.position.x, attacker.container.position.y)
               .lineTo(defender.container.position.x, defender.container.position.y)
-              .stroke({ width: car.overtakeActive ? 2.2 : 1.2, color: car.overtakeActive ? 0xff8f4c : 0xb276ff, alpha: car.overtakeActive ? 0.9 : 0.5, cap: "round" });
+              .stroke({ width: car.overtakeActive ? 2.2 : 1.1, color: car.overtakeActive ? 0xff334f : 0x657b84, alpha: car.overtakeActive ? 0.9 : 0.36, cap: "round" });
           }
           markerLayer.sortableChildren = true;
         }
