@@ -2,7 +2,8 @@
 
 import type { EnergyMode, PaceMode, RaceCarState, TyreCompound, TyreMode } from "@/domain/race";
 import { TyreBadge } from "@/components/race/tyre-badge";
-import { DRIVER_BY_ID, TEAM_BY_ID } from "@/fixtures/grid";
+import { DRIVER_BY_ID, PLAYER_CAR_IDS, TEAM_BY_ID } from "@/fixtures/grid";
+import { useRaceStore } from "@/store/race-store";
 
 const PACE_OPTIONS: readonly { mode: PaceMode; label: string; hint: string; level: number }[] = [
   { mode: "ATTACK", label: "Attack", hint: "Maximum pace", level: 5 },
@@ -38,6 +39,9 @@ function LevelGlyph({ level, kind }: { level: number; kind: "pace" | "energy" | 
 }
 
 export function CommandDock({ car, controls, pitLaneOpen }: { car?: RaceCarState; controls: CommandDockControls; pitLaneOpen: boolean }) {
+  const snapshot = useRaceStore((state) => state.snapshot);
+  const selectedCarId = useRaceStore((state) => state.selectedCarId);
+  const setSelectedCarId = useRaceStore((state) => state.setSelectedCarId);
   const driver = car ? DRIVER_BY_ID.get(car.driverId) : undefined;
   const team = car ? TEAM_BY_ID.get(car.teamId) : undefined;
   const enabled = Boolean(car && team?.isPlayer);
@@ -48,8 +52,27 @@ export function CommandDock({ car, controls, pitLaneOpen }: { car?: RaceCarState
     <div className="command-console">
       <div className="command-console__target">
         <span className="eyebrow">DRIVER CONTROL</span>
-        <strong>{driver?.shortName ?? "—"} <i /> {team?.shortName ?? "—"}</strong>
-        <small>{enabled ? "LIVE COMMAND LINK" : "RIVAL TELEMETRY"}</small>
+        <div aria-label="Select driver to control" className="command-driver-selector" role="group">
+          {PLAYER_CAR_IDS.map((carId) => {
+            const playerDriver = DRIVER_BY_ID.get(carId);
+            const playerCar = snapshot?.cars.find((candidate) => candidate.carId === carId);
+            if (!playerDriver) return null;
+            return (
+              <button
+                aria-label={`Control ${playerDriver.name}, car ${playerDriver.number}`}
+                aria-pressed={selectedCarId === carId}
+                className="command-driver-select"
+                key={carId}
+                onClick={() => setSelectedCarId(carId)}
+                type="button"
+              >
+                <i />
+                <span><b>{playerDriver.shortName}</b><small>#{playerDriver.number} · {playerCar ? `P${playerCar.racePosition}` : "GRID"}</small></span>
+              </button>
+            );
+          })}
+        </div>
+        <small className={enabled ? "command-link-status is-live" : "command-link-status"}>{enabled ? `${driver?.shortName} · ${team?.shortName} LINKED` : "SELECT PLAYER CAR"}</small>
       </div>
 
       <section className="visual-control visual-control--pace">

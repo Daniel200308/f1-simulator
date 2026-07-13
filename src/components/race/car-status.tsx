@@ -2,6 +2,7 @@
 
 import type { RaceCarState } from "@/domain/race";
 import { formatLapTime } from "@/components/race/format";
+import { TyreTemperatureCar } from "@/components/race/tyre-temperature-car";
 import { DRIVER_BY_ID, PLAYER_CAR_IDS, TEAM_BY_ID } from "@/fixtures/grid";
 import { estimatePitOutPosition } from "@/simulation/engine";
 import { SILVERSTONE_CIRCUIT } from "@/simulation/track";
@@ -14,7 +15,9 @@ function CarCard({ car, title, selected, predictedPitPosition }: { car: RaceCarS
   const displayedGap = useRaceStore((state) => state.timingGaps[car.carId]?.ahead ?? car.gapToCarAhead);
   if (!driver || !team) return null;
   const conditionPercent = car.incidentStatus === "RETIRED" ? 0 : Math.max(0, 100 - car.damageLevel * 100);
+  const lapProgressPercent = (car.lapDistance / SILVERSTONE_CIRCUIT.lengthMeters) * 100;
   const conditionLabel = car.incidentStatus === "RUNNING" ? "NOMINAL" : car.incidentStatus;
+  const tacticalLabel = car.battleStatus === "ATTACKING" ? "ATK" : car.battleStatus === "DEFENDING" ? "DEF" : car.battleStatus === "SIDE_BY_SIDE" ? "DUEL" : car.racingLineMode === "RACING" ? "RUN" : car.racingLineMode;
   const pitLabel = car.pitStatus !== "TRACK"
     ? car.pitStatus === "PIT_STOP" ? `${car.pitTimer.toFixed(1)} / ${car.pitStopTargetSeconds.toFixed(1)}s` : car.pitStatus
     : car.scheduledPitCompound
@@ -33,15 +36,17 @@ function CarCard({ car, title, selected, predictedPitPosition }: { car: RaceCarS
       </div>
       <div className="metric-grid">
         <div><span>SPEED</span><strong>{Math.round(car.currentSpeed)}</strong><small>km/h</small><div className="mini-meter"><i style={{ width: `${Math.min(100, car.currentSpeed / 3.5)}%` }} /></div></div>
-        <div><span>INTERVAL</span><strong>{car.racePosition === 1 ? "—" : `+${displayedGap.toFixed(3)}`}</strong><small>ahead</small><div className={`status-chip status-chip--${car.battleStatus.toLowerCase()}`}>{car.battleStatus === "CLEAR" ? car.racingLineMode : car.battleStatus}</div></div>
+        <div><span>INTERVAL</span><strong>{car.racePosition === 1 ? "—" : `+${displayedGap.toFixed(3)}`}</strong><small>ahead</small><div className={`status-chip status-chip--${car.battleStatus.toLowerCase()}`}>{tacticalLabel}</div></div>
         <div className="tyre-visual"><div className={`tyre-life-ring tyre-${car.tyreCompound.toLowerCase()}`} style={{ background: `conic-gradient(currentColor ${car.tyreLife * 3.6}deg, #14242b 0deg)` }}><i>{car.tyreCompound[0]}</i></div><div><span>TYRE HEALTH</span><strong className={car.tyreLife < 35 ? "warning" : ""}>{car.tyreLife.toFixed(0)}%</strong><small>{car.tyreAgeLaps.toFixed(1)} laps</small></div></div>
         <div><span>FUEL LOAD</span><strong>{car.fuelRemainingKg.toFixed(1)}</strong><small>kg</small><div className="mini-meter mini-meter--fuel"><i style={{ width: `${Math.min(100, car.fuelRemainingKg / 1.05)}%` }} /></div></div>
       </div>
-      <div className="systems-strip">
-        <div><span>TYRE TEMP</span><strong>{Math.round(car.tyreTemperature)}°</strong><i><b style={{ width: `${Math.min(100, Math.max(0, (car.tyreTemperature - 60) * 1.8))}%` }} /></i></div>
-        <div><span>BRAKES</span><strong>{Math.round(car.brakeTemperature)}°</strong><i><b style={{ width: `${Math.min(100, car.brakeTemperature / 10)}%` }} /></i></div>
-        <div className="energy-system"><span>ENERGY · {car.energyState}</span><strong>{Math.round(car.batteryPercent)}%</strong><i><b style={{ width: `${car.batteryPercent}%` }} /></i></div>
-        <div className="aero-system"><span>ACTIVE AERO</span><strong>{car.activeAeroMode}</strong><i><b style={{ width: `${car.activeAeroMode === "STRAIGHT" ? 100 : car.activeAeroMode === "PARTIAL" ? 55 : 20}%` }} /></i></div>
+      <div className="vehicle-telemetry">
+        <TyreTemperatureCar compound={car.tyreCompound} temperatures={car.tyreTemperatures} />
+        <div className="systems-strip systems-strip--compact">
+          <div><span>BRAKES</span><strong>{Math.round(car.brakeTemperature)}°</strong><i><b style={{ width: `${Math.min(100, car.brakeTemperature / 10)}%` }} /></i></div>
+          <div className="energy-system"><span>ENERGY · {car.energyState}</span><strong>{Math.round(car.batteryPercent)}%</strong><i><b style={{ width: `${car.batteryPercent}%` }} /></i></div>
+          <div className="aero-system"><span>ACTIVE AERO</span><strong>{car.activeAeroMode}</strong><i><b style={{ width: `${car.activeAeroMode === "STRAIGHT" ? 100 : car.activeAeroMode === "PARTIAL" ? 55 : 20}%` }} /></i></div>
+        </div>
       </div>
       <div className="resource-line">
         <span>S{car.currentSector} <strong>{formatLapTime(car.currentLapTime)}</strong></span>
@@ -50,11 +55,10 @@ function CarCard({ car, title, selected, predictedPitPosition }: { car: RaceCarS
         <span>OVT <strong className={car.overtakeActive ? "accent" : ""}>{car.overtakeActive ? "ACTIVE" : car.overtakeEligible ? "READY" : "—"}</strong></span>
         <span>PIT <strong className={car.pitStatus !== "TRACK" || car.scheduledPitCompound ? "accent" : ""} title={car.pitStopIssue === "NONE" ? "Pit stop nominal" : car.pitStopIssue.replace("_", " ")}>{pitLabel}</strong></span>
       </div>
-      <div className={`condition-strip condition-strip--${car.incidentStatus.toLowerCase()}`}>
-        <span>CAR CONDITION</span><strong>{conditionLabel}</strong><div><i style={{ width: `${conditionPercent}%` }} /></div>
+      <div className="car-card__health-grid">
+        <div className={`car-health car-health--${car.incidentStatus.toLowerCase()}`}><span>CAR <strong>{conditionLabel}</strong></span><i><b style={{ width: `${conditionPercent}%` }} /></i></div>
+        <div className="car-health car-health--lap"><span>LAP <strong>{Math.round(lapProgressPercent)}%</strong></span><i><b style={{ width: `${lapProgressPercent}%` }} /></i></div>
       </div>
-      <div className="progress-label"><span>LAP PROGRESS</span><span>{Math.round((car.lapDistance / SILVERSTONE_CIRCUIT.lengthMeters) * 100)}%</span></div>
-      <div className="progress-track"><i style={{ width: `${(car.lapDistance / SILVERSTONE_CIRCUIT.lengthMeters) * 100}%` }} /></div>
     </button>
   );
 }
