@@ -1,9 +1,8 @@
 "use client";
 
 import { DRIVER_BY_ID, TEAM_BY_ID } from "@/fixtures/grid";
+import { TyreBadge } from "@/components/race/tyre-badge";
 import { useRaceStore } from "@/store/race-store";
-
-const TYRE_CODE = { SOFT: "S", MEDIUM: "M", HARD: "H", INTERMEDIATE: "I", WET: "W" } as const;
 
 function gapLabel(position: number, gap: number): string {
   if (position === 1) return "LEADER";
@@ -21,17 +20,17 @@ export function TimingTower() {
   return (
     <aside className="panel timing-panel" data-gap-revision={timingGapRevision}>
       <header className="panel__header">
-        <div><span className="eyebrow">FIELD</span><h2>Timing Tower</h2></div>
+        <div><span className="eyebrow">FIELD</span><h2>Leader Board</h2></div>
         <span className="panel__counter">22 CARS</span>
       </header>
-      <div className="timing-head"><span>P</span><span>DRIVER</span><span>INTERVAL</span><span>{snapshot?.raceControl === "VSC" ? "VSC Δ" : "STATE"}</span></div>
+      <div className="timing-head"><span>P</span><span>DRIVER</span><span>INTERVAL</span><span>STATE</span><span>TYRE</span></div>
       <div className="timing-list">
         {cars.map((car) => {
           const driver = DRIVER_BY_ID.get(car.driverId);
           const team = TEAM_BY_ID.get(car.teamId);
           if (!driver || !team) return null;
           const battleLabel = car.battleStatus === "ATTACKING" ? "ATK" : car.battleStatus === "DEFENDING" ? "DEF" : car.battleStatus === "SIDE_BY_SIDE" ? "DUEL" : null;
-          const statusLabel = car.incidentStatus === "RETIRED" ? "OUT" : car.incidentStatus === "SPUN" ? "SPIN" : car.incidentStatus === "DAMAGED" ? "DMG" : snapshot?.raceControl === "VSC" ? `${car.vscDeltaSeconds >= 0 ? "+" : ""}${car.vscDeltaSeconds.toFixed(2)}` : car.pitStatus !== "TRACK" ? "PIT" : battleLabel ?? `${TYRE_CODE[car.tyreCompound]} ${Math.floor(car.tyreAgeLaps)}`;
+          const statusLabel = car.incidentStatus === "RETIRED" ? "OUT" : car.incidentStatus === "SPUN" ? "SPIN" : car.incidentStatus === "DAMAGED" ? "DMG" : snapshot?.raceControl === "VSC" ? `${car.vscDeltaSeconds >= 0 ? "+" : ""}${car.vscDeltaSeconds.toFixed(2)}` : car.pitStatus !== "TRACK" ? "PIT" : battleLabel ?? "RUN";
           return (
             <button
               className={`timing-row ${selectedCarId === car.carId ? "is-selected" : ""} ${team.isPlayer ? "is-player" : ""}`}
@@ -47,6 +46,7 @@ export function TimingTower() {
               </span>
               <span className="timing-gap">{gapLabel(car.racePosition, timingGaps[car.carId]?.ahead ?? car.gapToCarAhead)}</span>
               <span className={`timing-speed tyre-${car.tyreCompound.toLowerCase()} battle-${car.battleStatus.toLowerCase()} incident-${car.incidentStatus.toLowerCase()}`}>{statusLabel}</span>
+              <span className="timing-tyre"><TyreBadge compound={car.tyreCompound} size="small" title={`${car.tyreCompound} · ${car.tyreAgeLaps.toFixed(1)} laps`} /></span>
             </button>
           );
         })}
