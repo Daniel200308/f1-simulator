@@ -1,5 +1,6 @@
 import type { ActiveAeroMode, ActiveIncident, BattleStatus, EnergyMode, EnergyState, PaceMode, PitStopIssue, RaceCarState, RaceControlStatus, RaceEvent, RaceSnapshot, RaceStatus, RacingLineMode, RadioMessage, SafetyCarPhase, TyreCompound, TyreMode, TyreSetState, WeatherState } from "@/domain/race";
 import { DRIVER_BY_ID, DRIVERS, TEAM_BY_ID } from "@/fixtures/grid";
+import { buildAiStrategyDecision } from "@/simulation/ai-strategy";
 import { signedNoise } from "@/simulation/random";
 import { telemetrySpeedAtDistance } from "@/simulation/silverstone-telemetry";
 import { normalizeLapDistance, sectorAtDistance, segmentIndexAtDistance, SILVERSTONE_CIRCUIT, SILVERSTONE_CORNERS } from "@/simulation/track";
@@ -133,6 +134,8 @@ function createCar(driverId: string, index: number): RaceCarState {
     pitStops: 0,
     scheduledPitCompound: null,
     usedTyreCompounds: [tyreCompound],
+    strategyIntent: "HOLD",
+    strategyConfidence: 0.5,
     incidentStatus: "RUNNING",
     incidentTimer: 0,
     damageLevel: 0,
@@ -546,14 +549,9 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
   const strategicCars = incidentUpdate.cars.map((car) => {
     const team = TEAM_BY_ID.get(car.teamId);
     if (team?.isPlayer || car.scheduledPitCompound || car.pitStatus !== "TRACK" || car.currentLap >= SILVERSTONE_CIRCUIT.totalLaps) return car;
-    const wetWeatherCompound: TyreCompound | null = weather.trackWetness > 0.62 ? "WET" : weather.trackWetness > 0.16 ? "INTERMEDIATE" : car.tyreCompound === "WET" || car.tyreCompound === "INTERMEDIATE" ? "MEDIUM" : null;
-    const cheapStop = incidentUpdate.raceControl === "SAFETY_CAR" || incidentUpdate.raceControl === "VSC";
-    const undercutOpportunity = car.gapToCarAhead > 0.35 && car.gapToCarAhead < 2.2;
-    const pitThreshold = cheapStop ? 66 : undercutOpportunity ? 56 : 43;
-    if (!wetWeatherCompound && car.tyreLife > pitThreshold) return car;
-    const nextCompound: TyreCompound = wetWeatherCompound ?? (car.currentLap < 34 ? "HARD" : "SOFT");
-    if (nextCompound === car.tyreCompound && car.tyreLife > pitThreshold) return car;
-    return reserveTyreSet(car, nextCompound);
+    const decision = buildAiStrategyDecision({ trackWetness: weather.trackWetness, raceControl: incidentUpdate.raceControl, pitLaneOpen: incidentUpdate.pitLaneOpen, cars: incidentUpdate.cars }, car);
+    const strategicCar = { ...car, strategyIntent: decision.intent, strategyConfidence: decision.confidence };
+    return decision.pitNow && decision.compound ? reserveTyreSet(strategicCar, decision.compound) : strategicCar;
   });
 
   const tacticalCars = strategicCars.map((car) => {

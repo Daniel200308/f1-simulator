@@ -9,6 +9,7 @@ export type RacingLineMode = "GRID" | "RACING" | "ATTACK" | "DEFEND";
 export type TyreCompound = "SOFT" | "MEDIUM" | "HARD" | "INTERMEDIATE" | "WET";
 export type TyreSetStatus = "AVAILABLE" | "FITTED" | "RESERVED" | "USED";
 export type PitStopIssue = "NONE" | "SLOW_RELEASE" | "WHEEL_GUN" | "DOUBLE_STACK";
+export type StrategyIntent = "HOLD" | "EXTEND" | "UNDERCUT" | "WEATHER" | "CHEAP_STOP" | "TYRE_LIMIT";
 export type PitStatus = "TRACK" | "PIT_ENTRY" | "PIT_LANE" | "PIT_STOP" | "PIT_EXIT";
 export type WeatherCondition = "DRY" | "CLOUDY" | "LIGHT_RAIN" | "HEAVY_RAIN";
 export type RaceControlStatus = "GREEN" | "YELLOW" | "VSC" | "SAFETY_CAR";
@@ -156,6 +157,8 @@ export interface RaceCarState {
   pitStops: number;
   scheduledPitCompound: TyreCompound | null;
   usedTyreCompounds: readonly TyreCompound[];
+  strategyIntent: StrategyIntent;
+  strategyConfidence: number;
   incidentStatus: IncidentStatus;
   incidentTimer: number;
   damageLevel: number;
