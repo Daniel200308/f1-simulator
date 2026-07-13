@@ -12,6 +12,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "lucide-react": "^1.24.0",
     "next": "16.2.10",
     "pixi.js": "8.19.0",
     "react": "19.2.7",

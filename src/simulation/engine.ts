@@ -35,6 +35,12 @@ const TYRE_MODE_TEMPERATURE: Record<TyreMode, number> = { GRIP: 4, BALANCED: 0, 
 const COMPOUND_THERMAL_RESPONSE: Record<TyreCompound, number> = { SOFT: 1.16, MEDIUM: 1, HARD: 0.86, INTERMEDIATE: 1.08, WET: 1.14 };
 const TYRE_TEMPERATURE_MIN = 45;
 const TYRE_TEMPERATURE_MAX = 145;
+const POWER_UNIT_TEMPERATURE_MIN = 68;
+const POWER_UNIT_TEMPERATURE_MAX = 140;
+const GEARBOX_TEMPERATURE_MIN = 50;
+const GEARBOX_TEMPERATURE_MAX = 150;
+const ENERGY_STORE_TEMPERATURE_MIN = 18;
+const ENERGY_STORE_TEMPERATURE_MAX = 85;
 const DRY_COMPOUNDS: readonly TyreCompound[] = ["SOFT", "MEDIUM", "HARD"];
 const ENERGY_DEPLOYMENT: Record<EnergyMode, number> = { ATTACK: 1.05, BALANCED: 0.12, DEFEND: 0.82, RECHARGE: 0 };
 const ENERGY_HARVEST: Record<EnergyMode, number> = { ATTACK: 0.05, BALANCED: 0.28, DEFEND: 0.08, RECHARGE: 0.92 };
@@ -139,6 +145,9 @@ function createCar(driverId: string, index: number): RaceCarState {
     activeTyreSetId,
     scheduledPitTyreSetId: null,
     brakeTemperature: 480,
+    powerUnitTemperature: 98,
+    gearboxTemperature: 86,
+    energyStoreTemperature: 43,
     fuelRemainingKg: 105,
     paceMode: "STANDARD",
     tyreMode: "BALANCED",
@@ -355,6 +364,90 @@ function advanceTyreTemperatures(
     frontRight: advance(temperatures.frontRight, targets.frontRight),
     rearLeft: advance(temperatures.rearLeft, targets.rearLeft),
     rearRight: advance(temperatures.rearRight, targets.rearRight),
+  };
+}
+
+interface PowerUnitThermalContext {
+  previousSpeedKph: number;
+  currentSpeedKph: number;
+  lapDistance: number;
+  localWater: number;
+  rainIntensity: number;
+  airTemperature: number;
+  trackTemperature: number;
+  pitStatus: RaceCarState["pitStatus"];
+}
+
+interface PowerUnitThermalState {
+  powerUnitTemperature: number;
+  gearboxTemperature: number;
+  energyStoreTemperature: number;
+}
+
+const PACE_THERMAL_LOAD: Record<PaceMode, number> = {
+  ATTACK: 1,
+  PUSH: 0.82,
+  STANDARD: 0.58,
+  CONSERVE: 0.34,
+  COOL: 0.14,
+};
+
+/**
+ * Advances the three power-unit thermal systems from deterministic vehicle
+ * state only. Targets describe heat generation, while the exponential blend
+ * gives each system a different amount of thermal inertia.
+ */
+function advancePowerUnitTemperatures(
+  car: RaceCarState,
+  current: PowerUnitThermalState,
+  context: PowerUnitThermalContext,
+): PowerUnitThermalState {
+  const speedLoad = clamp(context.currentSpeedKph / 325, 0, 1);
+  const accelerationKphPerSecond = (context.currentSpeedKph - context.previousSpeedKph) / FIXED_STEP_SECONDS;
+  const accelerationLoad = clamp(Math.max(0, accelerationKphPerSecond) / 70, 0, 1);
+  const shiftLoad = clamp(Math.abs(accelerationKphPerSecond) / 85, 0, 1);
+  const segment = SILVERSTONE_CIRCUIT.segments[segmentIndexAtDistance(context.lapDistance)];
+  const segmentLoad = segment.kind === "STRAIGHT" ? 1 : segment.kind === "FAST" ? 0.82 : segment.kind === "MEDIUM" ? 0.58 : 0.4;
+  const paceLoad = PACE_THERMAL_LOAD[car.paceMode];
+  const energyLoad = car.energyState === "OVERTAKE"
+    ? 1
+    : car.energyState === "DEFENDING"
+      ? 0.9
+      : car.energyState === "DEPLOYING"
+        ? 0.78
+        : car.energyState === "HARVESTING" ? 0.58 : 0.18;
+  const pitLoad = context.pitStatus === "TRACK" ? 1 : context.pitStatus === "PIT_STOP" ? 0.08 : 0.42;
+  const climateHeat = (context.airTemperature - 20) * 0.24 + (context.trackTemperature - 30) * 0.055;
+  const wetCooling = clamp(context.localWater, 0, 1) * (5 + speedLoad * 10)
+    + clamp(context.rainIntensity, 0, 1) * 3.5;
+  const damageHeat = clamp(car.damageLevel, 0, 1);
+
+  const powerUnitTarget = 77
+    + pitLoad * (18 * paceLoad + 13 * speedLoad + 7 * accelerationLoad + 5 * segmentLoad + 5 * energyLoad)
+    + climateHeat
+    + damageHeat * 20
+    - wetCooling;
+  const gearboxTarget = 61
+    + pitLoad * (13 * paceLoad + 15 * speedLoad + 9 * shiftLoad + 8 * (1 - segmentLoad) + 3 * energyLoad)
+    + climateHeat * 0.7
+    + damageHeat * 16
+    - wetCooling * 0.72;
+  const energyStoreTarget = Math.max(context.airTemperature + 9, 29
+    + pitLoad * (5 * paceLoad + 4 * speedLoad + 25 * energyLoad)
+    + (context.airTemperature - 20) * 0.32
+    + damageHeat * 10
+    - wetCooling * 0.32);
+
+  const advance = (value: number, target: number, responsePerSecond: number, minimum: number, maximum: number) => {
+    const safeValue = Number.isFinite(value) ? clamp(value, minimum, maximum) : clamp(target, minimum, maximum);
+    const blend = 1 - Math.exp(-responsePerSecond * FIXED_STEP_SECONDS);
+    return clamp(safeValue + (clamp(target, minimum, maximum) - safeValue) * blend, minimum, maximum);
+  };
+
+  return {
+    powerUnitTemperature: advance(current.powerUnitTemperature, powerUnitTarget, 0.052, POWER_UNIT_TEMPERATURE_MIN, POWER_UNIT_TEMPERATURE_MAX),
+    gearboxTemperature: advance(current.gearboxTemperature, gearboxTarget, 0.061, GEARBOX_TEMPERATURE_MIN, GEARBOX_TEMPERATURE_MAX),
+    energyStoreTemperature: advance(current.energyStoreTemperature, energyStoreTarget, 0.09, ENERGY_STORE_TEMPERATURE_MIN, ENERGY_STORE_TEMPERATURE_MAX),
   };
 }
 
@@ -807,6 +900,9 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
     let activeTyreSetId = car.activeTyreSetId;
     let scheduledPitTyreSetId = car.scheduledPitTyreSetId;
     let brakeTemperature = car.brakeTemperature;
+    let powerUnitTemperature = car.powerUnitTemperature ?? 98;
+    let gearboxTemperature = car.gearboxTemperature ?? 86;
+    let energyStoreTemperature = car.energyStoreTemperature ?? 43;
     let scheduledPitCompound = car.scheduledPitCompound;
     let pitStopTargetSeconds = car.pitStopTargetSeconds;
     let lastPitStopTime = car.lastPitStopTime;
@@ -942,6 +1038,20 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
       },
     );
     tyreTemperature = averageTyreTemperature(tyreTemperatures);
+    ({ powerUnitTemperature, gearboxTemperature, energyStoreTemperature } = advancePowerUnitTemperatures(
+      tacticalCar,
+      { powerUnitTemperature, gearboxTemperature, energyStoreTemperature },
+      {
+        previousSpeedKph: car.currentSpeed,
+        currentSpeedKph: currentSpeed,
+        lapDistance: lapDistanceAfter,
+        localWater,
+        rainIntensity: weather.rainIntensity,
+        airTemperature: weather.airTemperature,
+        trackTemperature: weather.trackTemperature,
+        pitStatus,
+      },
+    ));
     const segmentKind = SILVERSTONE_CIRCUIT.segments[car.currentSegment].kind;
     const brakeTarget = segmentKind === "SLOW" ? 920 : segmentKind === "MEDIUM" ? 760 : segmentKind === "FAST" ? 620 : 470;
     brakeTemperature += (brakeTarget - brakeTemperature) * 0.025;
@@ -971,6 +1081,9 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
       activeTyreSetId,
       scheduledPitTyreSetId,
       brakeTemperature,
+      powerUnitTemperature,
+      gearboxTemperature,
+      energyStoreTemperature,
       pitStatus,
       pitTimer,
       pitStopTargetSeconds,
@@ -1185,6 +1298,14 @@ export function checksumFor(
     hash ^= value;
     hash = Math.imul(hash, 16_777_619);
     for (const temperature of [tyreTemperatures.frontLeft, tyreTemperatures.frontRight, tyreTemperatures.rearLeft, tyreTemperatures.rearRight]) {
+      hash ^= Math.round(temperature * 100);
+      hash = Math.imul(hash, 16_777_619);
+    }
+    for (const temperature of [
+      car.powerUnitTemperature ?? 98,
+      car.gearboxTemperature ?? 86,
+      car.energyStoreTemperature ?? 43,
+    ]) {
       hash ^= Math.round(temperature * 100);
       hash = Math.imul(hash, 16_777_619);
     }
