@@ -28,19 +28,21 @@ function CarCard({ car, title, selected, predictedPitPosition }: { car: RaceCarS
       </div>
       <div className="metric-grid">
         <div><span>SPEED</span><strong>{Math.round(car.currentSpeed)}</strong><small>km/h</small><div className="mini-meter"><i style={{ width: `${Math.min(100, car.currentSpeed / 3.5)}%` }} /></div></div>
-        <div><span>INTERVAL</span><strong>{car.racePosition === 1 ? "—" : `+${displayedGap.toFixed(3)}`}</strong><small>ahead</small><div className="status-chip">{car.racingLineMode}</div></div>
+        <div><span>INTERVAL</span><strong>{car.racePosition === 1 ? "—" : `+${displayedGap.toFixed(3)}`}</strong><small>ahead</small><div className={`status-chip status-chip--${car.battleStatus.toLowerCase()}`}>{car.battleStatus === "CLEAR" ? car.racingLineMode : car.battleStatus}</div></div>
         <div className="tyre-visual"><div className={`tyre-life-ring tyre-${car.tyreCompound.toLowerCase()}`} style={{ background: `conic-gradient(currentColor ${car.tyreLife * 3.6}deg, #14242b 0deg)` }}><i>{car.tyreCompound[0]}</i></div><div><span>TYRE HEALTH</span><strong className={car.tyreLife < 35 ? "warning" : ""}>{car.tyreLife.toFixed(0)}%</strong><small>{car.tyreAgeLaps.toFixed(1)} laps</small></div></div>
         <div><span>FUEL LOAD</span><strong>{car.fuelRemainingKg.toFixed(1)}</strong><small>kg</small><div className="mini-meter mini-meter--fuel"><i style={{ width: `${Math.min(100, car.fuelRemainingKg / 1.05)}%` }} /></div></div>
       </div>
       <div className="systems-strip">
         <div><span>TYRE TEMP</span><strong>{Math.round(car.tyreTemperature)}°</strong><i><b style={{ width: `${Math.min(100, Math.max(0, (car.tyreTemperature - 60) * 1.8))}%` }} /></i></div>
         <div><span>BRAKES</span><strong>{Math.round(car.brakeTemperature)}°</strong><i><b style={{ width: `${Math.min(100, car.brakeTemperature / 10)}%` }} /></i></div>
-        <div><span>{car.vscDeltaSeconds >= 0 ? "VSC DELTA" : "VSC AHEAD"}</span><strong>{car.vscDeltaSeconds >= 0 ? "+" : ""}{car.vscDeltaSeconds.toFixed(2)}s</strong><i><b style={{ width: `${50 + car.vscDeltaSeconds * 50}%` }} /></i></div>
+        <div className="energy-system"><span>ENERGY · {car.energyState}</span><strong>{Math.round(car.batteryPercent)}%</strong><i><b style={{ width: `${car.batteryPercent}%` }} /></i></div>
+        <div className="aero-system"><span>ACTIVE AERO</span><strong>{car.activeAeroMode}</strong><i><b style={{ width: `${car.activeAeroMode === "STRAIGHT" ? 100 : car.activeAeroMode === "PARTIAL" ? 55 : 20}%` }} /></i></div>
       </div>
       <div className="resource-line">
         <span>S{car.currentSector} <strong>{formatLapTime(car.currentLapTime)}</strong></span>
         <span>BEST <strong>{formatLapTime(car.bestLapTime)}</strong></span>
         <span>PACE <strong>{car.paceMode}</strong></span>
+        <span>OVT <strong className={car.overtakeActive ? "accent" : ""}>{car.overtakeActive ? "ACTIVE" : car.overtakeEligible ? "READY" : "—"}</strong></span>
         <span>PIT <strong className={car.pitStatus !== "TRACK" || car.scheduledPitCompound ? "accent" : ""}>{car.pitStatus !== "TRACK" ? car.pitStatus : car.scheduledPitCompound ? `BOX ${car.scheduledPitCompound}` : `PRED P${predictedPitPosition}`}</strong></span>
       </div>
       <div className={`condition-strip condition-strip--${car.incidentStatus.toLowerCase()}`}>

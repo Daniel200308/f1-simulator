@@ -115,10 +115,12 @@ button { font: inherit; }
 .timing-speed.tyre-hard { color: #e8eff2; }
 .timing-speed.tyre-intermediate { color: #4bde95; }
 .timing-speed.tyre-wet { color: #5b9dff; }
+.timing-speed.battle-attacking, .timing-speed.battle-side_by_side { color: #ff8f4c; font-weight: 800; text-shadow: 0 0 8px rgba(255, 143, 76, .4); }
+.timing-speed.battle-defending { color: #b276ff; font-weight: 800; }
 .timing-speed.incident-spun, .timing-speed.incident-damaged { color: var(--yellow); font-weight: 800; }
 .timing-speed.incident-retired { color: var(--red); font-weight: 800; }
 
-.map-column { min-width: 0; min-height: 0; display: grid; grid-template-rows: 66px minmax(350px, 1fr) 180px; overflow: hidden; }
+.map-column { min-width: 0; min-height: 0; display: grid; grid-template-rows: 66px minmax(350px, 1fr) 194px; overflow: hidden; }
 .circuit-title { display: flex; align-items: center; justify-content: space-between; padding: 0 17px; border-bottom: 1px solid var(--line); }
 .circuit-title h1 { font-size: 17px; }
 .live-pill { padding: 7px 9px; border: 1px solid rgba(75, 222, 149, .28); color: var(--green); background: rgba(75, 222, 149, .08); font: 9px var(--font-mono); letter-spacing: .08em; }
@@ -129,7 +131,7 @@ button { font: inherit; }
 .track-map canvas { display: block; position: absolute; inset: 0; width: 100%; height: 100%; }
 .track-map__hud { position: absolute; z-index: 2; pointer-events: none; font: 10px var(--font-mono); letter-spacing: .11em; }
 .track-map__hud--top { top: 13px; left: 14px; display: flex; gap: 14px; }
-.track-map__telemetry { position: absolute; z-index: 3; top: 12px; right: 14px; min-width: 154px; padding: 9px 11px; border: 1px solid var(--line); background: rgba(5, 12, 17, .86); backdrop-filter: blur(8px); pointer-events: none; }
+.track-map__telemetry { position: absolute; z-index: 3; top: 12px; right: 14px; min-width: 210px; padding: 9px 11px; border: 1px solid var(--line); background: rgba(5, 12, 17, .86); backdrop-filter: blur(8px); pointer-events: none; }
 .track-map__telemetry span { display: block; color: var(--muted); font: 9px var(--font-mono); letter-spacing: .11em; }
 .track-map__telemetry strong { display: block; margin-top: 4px; color: var(--text); font: 12px var(--font-mono); }
 .track-map__telemetry small { display: block; margin-top: 5px; color: var(--accent); font: 9px var(--font-mono); letter-spacing: .04em; }
@@ -158,7 +160,7 @@ button { font: inherit; }
 .legend-dot--player { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
 .legend-line { width: 12px; height: 2px; display: inline-block; background: var(--accent); opacity: .65; }
 .legend-line--pit { background: #f2f5f6; }
-.strategy-strip { display: grid; grid-template-columns: 138px minmax(260px, 1.15fr) minmax(220px, 1fr); align-items: center; gap: 8px 13px; padding: 9px 14px; border-top: 1px solid var(--line); background: #081218; }
+.strategy-strip { display: grid; grid-template-columns: 138px minmax(210px, .85fr) minmax(235px, .95fr) minmax(310px, 1.35fr); align-items: center; gap: 8px 13px; padding: 9px 14px; border-top: 1px solid var(--line); background: #081218; }
 .command-target strong { display: block; margin-top: 6px; font: 700 12px var(--font-mono); }
 .command-target small { display: block; margin-top: 5px; color: var(--green); font: 9px var(--font-mono); letter-spacing: .06em; }
 .command-group { min-width: 0; padding-left: 13px; border-left: 1px solid var(--line); }
@@ -166,6 +168,7 @@ button { font: inherit; }
 .command-group > div { display: flex; flex-wrap: wrap; gap: 4px; }
 .command-group button { min-width: 46px; height: 27px; padding: 0 7px; border: 1px solid var(--line); color: #8199a2; background: #0a151b; cursor: pointer; font: 8px var(--font-mono); letter-spacing: .03em; transition: .15s ease; }
 .command-group button:hover:not(:disabled), .command-group button.is-active { color: var(--accent); border-color: rgba(32, 215, 231, .45); background: var(--accent-dim); }
+.command-group--energy button:hover:not(:disabled), .command-group--energy button.is-active { color: #ffb07b; border-color: rgba(255, 143, 76, .5); background: rgba(255, 143, 76, .11); }
 .command-group button:disabled { cursor: not-allowed; opacity: .32; }
 .strategy-stat { padding-left: 14px; border-left: 1px solid var(--line); }
 .strategy-stat strong { display: block; margin-top: 5px; font: 12px var(--font-mono); }
@@ -204,17 +207,21 @@ button { font: inherit; }
 .metric-grid strong.accent { color: var(--accent); }
 .metric-grid strong.warning { color: var(--yellow); }
 .metric-grid small { margin-left: 4px; color: #607b85; font: 8px var(--font-mono); }
-.systems-strip { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; margin-top: 9px; }
+.systems-strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; margin-top: 9px; }
 .systems-strip > div { min-width: 0; }
 .systems-strip span, .systems-strip strong { display: block; font: 7px var(--font-mono); }
 .systems-strip span { color: var(--muted); }
 .systems-strip strong { margin-top: 3px; color: #bacbd1; font-size: 9px; }
 .systems-strip i { display: block; height: 3px; margin-top: 5px; overflow: hidden; background: #14242b; }
 .systems-strip i b { display: block; height: 100%; background: linear-gradient(90deg, #4bde95, #f4d35e, #ff5269); }
+.systems-strip .energy-system i b { background: linear-gradient(90deg, #ff5269, #f4d35e, #4bde95); box-shadow: 0 0 7px rgba(244, 211, 94, .45); }
+.systems-strip .aero-system i b { background: var(--accent); box-shadow: 0 0 7px rgba(32, 215, 231, .5); }
 .mini-meter { height: 3px; margin-top: 7px; overflow: hidden; background: #14242b; }
 .mini-meter i { display: block; height: 100%; background: var(--accent); box-shadow: 0 0 8px rgba(32, 215, 231, .55); }
 .mini-meter--fuel i { background: var(--green); }
 .status-chip { display: inline-block; margin-top: 6px; padding: 3px 5px; border: 1px solid var(--line); color: #8ca1a9; font: 8px var(--font-mono); letter-spacing: .05em; }
+.status-chip--attacking, .status-chip--side_by_side { color: #ff9c5c; border-color: rgba(255, 143, 76, .38); background: rgba(255, 143, 76, .08); }
+.status-chip--defending { color: #c89aff; border-color: rgba(178, 118, 255, .38); background: rgba(178, 118, 255, .08); }
 .metric-grid > .tyre-visual { display: flex; align-items: center; gap: 8px; }
 .tyre-life-ring { position: relative; flex: 0 0 auto; width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; color: #f4d35e; }
 .tyre-life-ring::after { content: ""; position: absolute; inset: 5px; border-radius: 50%; background: #091218; }
@@ -269,6 +276,7 @@ button { font: inherit; }
   .session-strip > div:nth-last-child(-n+2) { display: none; }
   .race-grid { grid-template-columns: 220px minmax(420px, 1fr) 250px; }
   .strategy-strip { grid-template-columns: 120px 1fr 1fr; }
+  .command-group--strategy { grid-column: 1 / -1; padding: 8px 0 0; border-top: 1px solid var(--line); border-left: 0; }
   .command-group button { min-width: 42px; padding: 0 5px; }
 }
 

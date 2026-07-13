@@ -24,13 +24,14 @@ export function TimingTower() {
         <div><span className="eyebrow">FIELD</span><h2>Timing Tower</h2></div>
         <span className="panel__counter">22 CARS</span>
       </header>
-      <div className="timing-head"><span>P</span><span>DRIVER</span><span>INTERVAL</span><span>{snapshot?.raceControl === "VSC" ? "VSC Δ" : "TYRE"}</span></div>
+      <div className="timing-head"><span>P</span><span>DRIVER</span><span>INTERVAL</span><span>{snapshot?.raceControl === "VSC" ? "VSC Δ" : "STATE"}</span></div>
       <div className="timing-list">
         {cars.map((car) => {
           const driver = DRIVER_BY_ID.get(car.driverId);
           const team = TEAM_BY_ID.get(car.teamId);
           if (!driver || !team) return null;
-          const statusLabel = car.incidentStatus === "RETIRED" ? "OUT" : car.incidentStatus === "SPUN" ? "SPIN" : car.incidentStatus === "DAMAGED" ? "DMG" : snapshot?.raceControl === "VSC" ? `${car.vscDeltaSeconds >= 0 ? "+" : ""}${car.vscDeltaSeconds.toFixed(2)}` : car.pitStatus === "TRACK" ? `${TYRE_CODE[car.tyreCompound]} ${Math.floor(car.tyreAgeLaps)}` : "PIT";
+          const battleLabel = car.battleStatus === "ATTACKING" ? "ATK" : car.battleStatus === "DEFENDING" ? "DEF" : car.battleStatus === "SIDE_BY_SIDE" ? "DUEL" : null;
+          const statusLabel = car.incidentStatus === "RETIRED" ? "OUT" : car.incidentStatus === "SPUN" ? "SPIN" : car.incidentStatus === "DAMAGED" ? "DMG" : snapshot?.raceControl === "VSC" ? `${car.vscDeltaSeconds >= 0 ? "+" : ""}${car.vscDeltaSeconds.toFixed(2)}` : car.pitStatus !== "TRACK" ? "PIT" : battleLabel ?? `${TYRE_CODE[car.tyreCompound]} ${Math.floor(car.tyreAgeLaps)}`;
           return (
             <button
               className={`timing-row ${selectedCarId === car.carId ? "is-selected" : ""} ${team.isPlayer ? "is-player" : ""}`}
@@ -45,7 +46,7 @@ export function TimingTower() {
                 <small>{team.shortName}</small>
               </span>
               <span className="timing-gap">{gapLabel(car.racePosition, timingGaps[car.carId]?.ahead ?? car.gapToCarAhead)}</span>
-              <span className={`timing-speed tyre-${car.tyreCompound.toLowerCase()} incident-${car.incidentStatus.toLowerCase()}`}>{statusLabel}</span>
+              <span className={`timing-speed tyre-${car.tyreCompound.toLowerCase()} battle-${car.battleStatus.toLowerCase()} incident-${car.incidentStatus.toLowerCase()}`}>{statusLabel}</span>
             </button>
           );
         })}

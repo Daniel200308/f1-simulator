@@ -57,9 +57,10 @@ export function RaceMap({ startPhase, lightsOn }: { startPhase: "MENU" | "LIGHTS
       app.canvas.setAttribute("role", "img");
 
       const trackLayer = new PIXI.Container();
+      const battleLayer = new PIXI.Graphics();
       const markerLayer = new PIXI.Container();
       const alertLayer = new PIXI.Container();
-      app.stage.addChild(trackLayer, markerLayer, alertLayer);
+      app.stage.addChild(trackLayer, battleLayer, markerLayer, alertLayer);
 
       const trackBase = new PIXI.Graphics();
       const trackEdge = new PIXI.Graphics();
@@ -241,6 +242,7 @@ export function RaceMap({ startPhase, lightsOn }: { startPhase: "MENU" | "LIGHTS
         const state = useRaceStore.getState();
         const snapshot = state.snapshot;
         if (snapshot) {
+          battleLayer.clear();
           drawRaceControl(snapshot.raceControl, snapshot.yellowSector);
           if (snapshot.activeIncident) {
             const incidentPoint = projectTrackPoint(pointAtDistance(snapshot.activeIncident.distanceMeters), viewport);
@@ -275,11 +277,12 @@ export function RaceMap({ startPhase, lightsOn }: { startPhase: "MENU" | "LIGHTS
             marker.label.visible = true;
             marker.ring.clear();
             const incident = car.incidentStatus !== "RUNNING";
-            if (selected || player || incident) {
-              marker.ring.circle(0, 0, selected ? 11 : incident ? 10 : 9).stroke({
-                width: selected ? 2.4 : incident ? 2 : 1.2,
-                color: incident ? (car.incidentStatus === "RETIRED" ? 0xff5269 : 0xf4d35e) : selected ? 0xffffff : 0x20d7e7,
-                alpha: selected || incident ? 1 : 0.7,
+            const battling = car.battleStatus !== "CLEAR";
+            if (selected || player || incident || battling) {
+              marker.ring.circle(0, 0, selected ? 11 : incident || battling ? 10 : 9).stroke({
+                width: selected ? 2.4 : incident || battling ? 2 : 1.2,
+                color: incident ? (car.incidentStatus === "RETIRED" ? 0xff5269 : 0xf4d35e) : battling ? (car.overtakeActive ? 0xff8f4c : 0xb276ff) : selected ? 0xffffff : 0x20d7e7,
+                alpha: selected || incident || battling ? 1 : 0.7,
               });
             }
             if (selected) {
@@ -297,6 +300,16 @@ export function RaceMap({ startPhase, lightsOn }: { startPhase: "MENU" | "LIGHTS
                 activeHost.dataset.viewportScale = viewport.scale.toFixed(4);
               }
             }
+          }
+          for (const car of snapshot.cars) {
+            if (!car.battleCarId || (car.battleStatus !== "ATTACKING" && car.battleStatus !== "SIDE_BY_SIDE")) continue;
+            const attacker = markers.get(car.carId);
+            const defender = markers.get(car.battleCarId);
+            if (!attacker || !defender) continue;
+            battleLayer
+              .moveTo(attacker.container.position.x, attacker.container.position.y)
+              .lineTo(defender.container.position.x, defender.container.position.y)
+              .stroke({ width: car.overtakeActive ? 2.2 : 1.2, color: car.overtakeActive ? 0xff8f4c : 0xb276ff, alpha: car.overtakeActive ? 0.9 : 0.5, cap: "round" });
           }
           markerLayer.sortableChildren = true;
         }
@@ -326,6 +339,7 @@ export function RaceMap({ startPhase, lightsOn }: { startPhase: "MENU" | "LIGHTS
         <span>NEXT CORNER</span>
         <strong>{upcomingCorner ? `T${upcomingCorner.number} · ${upcomingCorner.name.toUpperCase()}` : "—"}</strong>
         <small>{selectedCar ? `S${selectedCar.currentSector} · ${formatLapTime(selectedCar.currentLapTime)} · ${snapshot?.raceControl === "VSC" ? `Δ ${selectedCar.vscDeltaSeconds >= 0 ? "+" : ""}${selectedCar.vscDeltaSeconds.toFixed(2)}` : selectedCar.racingLineMode}` : "NO CAR DATA"}</small>
+        <small>{selectedCar ? `BAT ${Math.round(selectedCar.batteryPercent)}% · ${selectedCar.overtakeActive ? "OVERTAKE ACTIVE" : selectedCar.overtakeEligible ? "OVERTAKE READY" : selectedCar.energyState} · ${selectedCar.activeAeroMode}` : "ENERGY OFFLINE"}</small>
       </div>
       {snapshot && snapshot.raceControl !== "GREEN" && <div className={`race-control-banner race-control-banner--${snapshot.raceControl.toLowerCase()}`}><strong>{snapshot.raceControl === "YELLOW" ? `YELLOW · SECTOR ${snapshot.yellowSector}` : snapshot.raceControl === "SAFETY_CAR" ? `SAFETY CAR · ${snapshot.safetyCarPhase}` : "VIRTUAL SAFETY CAR"}</strong><span>{snapshot.activeIncident ? `T${snapshot.activeIncident.cornerNumber} ${snapshot.activeIncident.cornerName} · ${snapshot.activeIncident.status}` : "RACE CONTROL"}</span><small>PIT LANE {snapshot.pitLaneOpen ? "OPEN" : "CLOSED"}</small></div>}
       {(startPhase === "LIGHTS" || startPhase === "GO") && <div className={`track-start-sequence ${startPhase === "GO" ? "is-go" : ""}`} data-track-start-phase={startPhase}><div>{Array.from({ length: 5 }, (_, index) => <i className={index < lightsOn ? "is-on" : ""} key={index} />)}</div><span>{startPhase === "GO" ? "LIGHTS OUT" : "START"}</span></div>}
