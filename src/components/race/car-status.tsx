@@ -15,6 +15,11 @@ function CarCard({ car, title, selected, predictedPitPosition }: { car: RaceCarS
   if (!driver || !team) return null;
   const conditionPercent = car.incidentStatus === "RETIRED" ? 0 : Math.max(0, 100 - car.damageLevel * 100);
   const conditionLabel = car.incidentStatus === "RUNNING" ? "NOMINAL" : car.incidentStatus;
+  const pitLabel = car.pitStatus !== "TRACK"
+    ? car.pitStatus === "PIT_STOP" ? `${car.pitTimer.toFixed(1)} / ${car.pitStopTargetSeconds.toFixed(1)}s` : car.pitStatus
+    : car.scheduledPitCompound
+      ? `BOX ${car.scheduledPitCompound}`
+      : car.lastPitStopTime !== null ? `LAST ${car.lastPitStopTime.toFixed(1)}s` : `PRED P${predictedPitPosition}`;
 
   return (
     <button className={`car-card ${selected ? "is-selected" : ""}`} onClick={() => select(car.carId)} type="button">
@@ -43,7 +48,7 @@ function CarCard({ car, title, selected, predictedPitPosition }: { car: RaceCarS
         <span>BEST <strong>{formatLapTime(car.bestLapTime)}</strong></span>
         <span>PACE <strong>{car.paceMode}</strong></span>
         <span>OVT <strong className={car.overtakeActive ? "accent" : ""}>{car.overtakeActive ? "ACTIVE" : car.overtakeEligible ? "READY" : "—"}</strong></span>
-        <span>PIT <strong className={car.pitStatus !== "TRACK" || car.scheduledPitCompound ? "accent" : ""}>{car.pitStatus !== "TRACK" ? car.pitStatus : car.scheduledPitCompound ? `BOX ${car.scheduledPitCompound}` : `PRED P${predictedPitPosition}`}</strong></span>
+        <span>PIT <strong className={car.pitStatus !== "TRACK" || car.scheduledPitCompound ? "accent" : ""} title={car.pitStopIssue === "NONE" ? "Pit stop nominal" : car.pitStopIssue.replace("_", " ")}>{pitLabel}</strong></span>
       </div>
       <div className={`condition-strip condition-strip--${car.incidentStatus.toLowerCase()}`}>
         <span>CAR CONDITION</span><strong>{conditionLabel}</strong><div><i style={{ width: `${conditionPercent}%` }} /></div>

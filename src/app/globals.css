@@ -201,11 +201,18 @@ button { font: inherit; }
 .control-glyph--energy i { width: 6px; height: 7px !important; }
 .control-glyph--tyre { align-items: center; gap: 1px; width: 17px; height: 17px; padding: 3px; border: 2px solid currentColor; border-radius: 50%; }
 .control-glyph--tyre i { width: 2px; height: 5px !important; transform: rotate(18deg); }
-.pit-tyre-control > div { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; }
+.pit-tyre-control__buttons { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; }
 .pit-tyre-control button { min-width: 0; height: 44px; display: flex; align-items: center; justify-content: center; gap: 4px; padding: 3px; border: 1px solid var(--line); color: #80969e; background: #09151b; cursor: pointer; }
-.pit-tyre-control button span:last-child { font: 7px var(--font-mono); }
+.pit-tyre-control button > span:last-of-type { font: 7px var(--font-mono); }
+.pit-tyre-control button em { min-width: 12px; color: #b8c8ce; font: 700 7px var(--font-mono); font-style: normal; }
 .pit-tyre-control button:hover:not(:disabled), .pit-tyre-control button.is-active { border-color: rgba(255,255,255,.42); background: rgba(255,255,255,.05); }
 .pit-tyre-control .stay-out-control b { width: 21px; height: 21px; display: grid; place-items: center; border: 1px solid var(--red); border-radius: 50%; color: var(--red); }
+.tyre-set-strip { display: grid; grid-template-columns: repeat(5, 1fr); gap: 3px; margin-top: 5px; }
+.tyre-set-strip > span { min-width: 0; display: flex; align-items: center; justify-content: center; gap: 2px; }
+.tyre-set-dot { width: 4px; height: 4px; border: 1px solid #526a73; border-radius: 50%; background: #253941; }
+.tyre-set-dot--fitted { border-color: var(--accent); background: var(--accent); box-shadow: 0 0 4px var(--accent); }
+.tyre-set-dot--reserved { border-color: var(--yellow); background: var(--yellow); box-shadow: 0 0 4px var(--yellow); }
+.tyre-set-dot--used { border-color: #293a41; background: transparent; opacity: .35; }
 .command-target strong { display: block; margin-top: 6px; font: 700 12px var(--font-mono); }
 .command-target small { display: block; margin-top: 5px; color: var(--green); font: 9px var(--font-mono); letter-spacing: .06em; }
 .command-group { min-width: 0; padding-left: 13px; border-left: 1px solid var(--line); }

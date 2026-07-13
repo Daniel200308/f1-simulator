@@ -7,6 +7,8 @@ export type ActiveAeroMode = "CORNER" | "STRAIGHT" | "PARTIAL";
 export type BattleStatus = "CLEAR" | "ATTACKING" | "DEFENDING" | "SIDE_BY_SIDE";
 export type RacingLineMode = "GRID" | "RACING" | "ATTACK" | "DEFEND";
 export type TyreCompound = "SOFT" | "MEDIUM" | "HARD" | "INTERMEDIATE" | "WET";
+export type TyreSetStatus = "AVAILABLE" | "FITTED" | "RESERVED" | "USED";
+export type PitStopIssue = "NONE" | "SLOW_RELEASE" | "WHEEL_GUN" | "DOUBLE_STACK";
 export type PitStatus = "TRACK" | "PIT_ENTRY" | "PIT_LANE" | "PIT_STOP" | "PIT_EXIT";
 export type WeatherCondition = "DRY" | "CLOUDY" | "LIGHT_RAIN" | "HEAVY_RAIN";
 export type RaceControlStatus = "GREEN" | "YELLOW" | "VSC" | "SAFETY_CAR";
@@ -97,6 +99,14 @@ export interface CircuitDefinition {
   cumulativeDistances: readonly number[];
 }
 
+export interface TyreSetState {
+  id: string;
+  compound: TyreCompound;
+  status: TyreSetStatus;
+  condition: number;
+  lapsUsed: number;
+}
+
 export interface RaceCarState {
   carId: string;
   teamId: string;
@@ -120,6 +130,9 @@ export interface RaceCarState {
   tyreAgeLaps: number;
   tyreLife: number;
   tyreTemperature: number;
+  tyreSets: readonly TyreSetState[];
+  activeTyreSetId: string;
+  scheduledPitTyreSetId: string | null;
   brakeTemperature: number;
   fuelRemainingKg: number;
   paceMode: PaceMode;
@@ -137,8 +150,12 @@ export interface RaceCarState {
   overtakes: number;
   pitStatus: PitStatus;
   pitTimer: number;
+  pitStopTargetSeconds: number;
+  lastPitStopTime: number | null;
+  pitStopIssue: PitStopIssue;
   pitStops: number;
   scheduledPitCompound: TyreCompound | null;
+  usedTyreCompounds: readonly TyreCompound[];
   incidentStatus: IncidentStatus;
   incidentTimer: number;
   damageLevel: number;
