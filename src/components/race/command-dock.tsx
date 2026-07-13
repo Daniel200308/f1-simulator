@@ -54,17 +54,17 @@ export function CommandDock({ car, controls, pitLaneOpen }: { car?: RaceCarState
 
       <section className="visual-control visual-control--pace">
         <header><span>PACE</span><b>{car?.paceMode ?? "—"}</b></header>
-        <div>{PACE_OPTIONS.map((option) => <button aria-label={`Set pace ${option.mode}`} className={car?.paceMode === option.mode ? "is-active" : ""} disabled={!enabled} key={option.mode} onClick={() => car && controls.setPace(car.carId, option.mode)} type="button"><LevelGlyph kind="pace" level={option.level} /><strong>{option.label}</strong><small>{option.hint}</small></button>)}</div>
+        <div>{PACE_OPTIONS.map((option) => <button aria-label={`Set pace ${option.mode}`} aria-pressed={car?.paceMode === option.mode} className="command-node" disabled={!enabled} key={option.mode} onClick={() => car && controls.setPace(car.carId, option.mode)} title={option.hint} type="button"><LevelGlyph kind="pace" level={option.level} /><strong>{option.label}</strong></button>)}</div>
       </section>
 
       <section className="visual-control visual-control--energy">
         <header><span>ENERGY</span><b>{Math.round(car?.batteryPercent ?? 0)}% · {car?.energyState ?? "—"}</b></header>
-        <div>{ENERGY_OPTIONS.map((option) => <button aria-label={`Set energy ${option.mode}`} className={car?.energyMode === option.mode ? "is-active" : ""} disabled={!enabled} key={option.mode} onClick={() => car && controls.setEnergyMode(car.carId, option.mode)} type="button"><LevelGlyph kind="energy" level={option.level} /><strong>{option.label}</strong><small>{option.hint}</small></button>)}</div>
+        <div>{ENERGY_OPTIONS.map((option) => <button aria-label={`Set energy ${option.mode}`} aria-pressed={car?.energyMode === option.mode} className={`command-node energy-node energy-node--${option.mode.toLowerCase()}`} disabled={!enabled} key={option.mode} onClick={() => car && controls.setEnergyMode(car.carId, option.mode)} title={option.hint} type="button"><LevelGlyph kind="energy" level={option.level} /><strong>{option.label}</strong></button>)}</div>
       </section>
 
       <section className="visual-control visual-control--tyre">
         <header><span>TYRE MANAGEMENT</span><b>{car?.tyreMode ?? "—"}</b></header>
-        <div>{TYRE_OPTIONS.map((option) => <button aria-label={`Set tyre management ${option.mode}`} className={car?.tyreMode === option.mode ? "is-active" : ""} disabled={!enabled} key={option.mode} onClick={() => car && controls.setTyreMode(car.carId, option.mode)} type="button"><LevelGlyph kind="tyre" level={option.grip} /><strong>{option.label}</strong><small>{option.hint}</small></button>)}</div>
+        <div>{TYRE_OPTIONS.map((option) => <button aria-label={`Set tyre management ${option.mode}`} aria-pressed={car?.tyreMode === option.mode} className="command-node" disabled={!enabled} key={option.mode} onClick={() => car && controls.setTyreMode(car.carId, option.mode)} title={option.hint} type="button"><LevelGlyph kind="tyre" level={option.grip} /><strong>{option.label}</strong></button>)}</div>
       </section>
 
       <section className="pit-tyre-control">
@@ -72,9 +72,8 @@ export function CommandDock({ car, controls, pitLaneOpen }: { car?: RaceCarState
         <div className="pit-tyre-control__buttons">{PIT_COMPOUNDS.map((compound) => {
           const available = availableSetsFor(compound);
           const isScheduled = car?.scheduledPitCompound === compound;
-          return <button aria-label={`Box for ${compound}, ${available} sets available`} className={isScheduled ? "is-active" : ""} disabled={!enabled || car?.pitStatus !== "TRACK" || !pitLaneOpen || (available === 0 && !isScheduled)} key={compound} onClick={() => car && controls.box(car.carId, compound)} type="button"><TyreBadge compound={compound} size="medium" /><span>BOX</span><em>{available}</em></button>;
-        })}<button className="stay-out-control" disabled={!enabled || !car?.scheduledPitCompound} onClick={() => car && controls.stayOut(car.carId)} type="button"><b>×</b><span>STAY OUT</span></button></div>
-        <div className="tyre-set-strip" aria-label="Tyre set inventory">{PIT_COMPOUNDS.map((compound) => <span key={compound} title={`${compound} tyre sets`}><TyreBadge compound={compound} size="small" />{tyreSetsFor(compound).map((set) => <i className={`tyre-set-dot tyre-set-dot--${set.status.toLowerCase()}`} key={set.id} title={`${set.status} · ${set.condition.toFixed(0)}%`} />)}</span>)}</div>
+          return <button aria-label={`Box for ${compound}, ${available} sets available`} aria-pressed={isScheduled} className="tyre-select-button" disabled={!enabled || car?.pitStatus !== "TRACK" || !pitLaneOpen || (available === 0 && !isScheduled)} key={compound} onClick={() => car && controls.box(car.carId, compound)} title={`${compound} · ${available} fresh set${available === 1 ? "" : "s"}`} type="button"><TyreBadge compound={compound} size="large" /></button>;
+        })}<button aria-label="Stay out" className="stay-out-control" disabled={!enabled || !car?.scheduledPitCompound} onClick={() => car && controls.stayOut(car.carId)} title="Cancel pit call" type="button"><b>×</b></button></div>
       </section>
     </div>
   );

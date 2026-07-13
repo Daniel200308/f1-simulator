@@ -195,45 +195,46 @@ button { font: inherit; }
 .legend-line { width: 12px; height: 2px; display: inline-block; background: var(--accent); opacity: .65; }
 .legend-line--pit { background: #f2f5f6; }
 .strategy-strip { min-width: 0; min-height: 0; display: grid; grid-template-columns: 126px minmax(180px, .85fr) minmax(210px, .95fr) minmax(260px, 1.35fr); align-items: center; gap: 7px 11px; padding: 8px 11px; border-top: 1px solid var(--line); background: #081218; overflow: hidden; }
-.command-console { grid-column: 1 / -1; min-width: 0; display: grid; grid-template-columns: 120px 1.15fr 1fr 1fr .85fr; gap: 9px; align-items: stretch; }
-.command-console__target { display: grid; align-content: center; padding-right: 10px; border-right: 1px solid var(--line); }
-.command-console__target strong { margin-top: 6px; font: 800 12px var(--font-mono); }
+.command-console { grid-column: 1 / -1; min-width: 0; display: grid; grid-template-columns: 96px minmax(230px, 1.35fr) minmax(172px, 1fr) minmax(172px, 1fr) minmax(170px, .95fr); gap: 6px; align-items: stretch; }
+.command-console__target { display: grid; align-content: center; padding-right: 8px; border-right: 1px solid var(--line); }
+.command-console__target strong { margin-top: 7px; font: 900 14px var(--font-mono); }
 .command-console__target strong i { display: inline-block; width: 3px; height: 3px; margin: 0 5px; border-radius: 50%; background: var(--accent); vertical-align: middle; }
-.command-console__target small { margin-top: 5px; color: var(--green); font: 8px var(--font-mono); letter-spacing: .06em; }
-.visual-control, .pit-tyre-control { min-width: 0; padding-right: 9px; border-right: 1px solid var(--line); }
+.command-console__target small { margin-top: 7px; color: var(--green); font: 9px var(--font-mono); letter-spacing: .06em; }
+.visual-control, .pit-tyre-control { min-width: 0; padding: 0 6px 2px; border-right: 1px solid var(--line); }
 .pit-tyre-control { padding-right: 0; border-right: 0; }
-.visual-control header, .pit-tyre-control header { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 6px; color: var(--muted); font: 8px var(--font-mono); letter-spacing: .07em; }
-.visual-control header b, .pit-tyre-control header b { color: #a9bcc3; font-weight: 700; white-space: nowrap; }
-.visual-control > div { display: grid; grid-template-columns: repeat(auto-fit, minmax(46px, 1fr)); gap: 3px; }
-.visual-control button { min-width: 0; height: 58px; display: grid; grid-template-rows: 17px auto auto; justify-items: center; align-items: center; padding: 4px 3px; border: 1px solid var(--line); color: #718991; background: #09151b; cursor: pointer; transition: .14s ease; }
-.visual-control button strong { max-width: 100%; overflow: hidden; color: #b8c8ce; font: 700 7px var(--font-mono); text-overflow: ellipsis; text-transform: uppercase; }
-.visual-control button small { max-width: 100%; overflow: hidden; color: #55707a; font: 6px var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
-.visual-control button:hover:not(:disabled), .visual-control button.is-active { border-color: rgba(32, 215, 231, .5); color: var(--accent); background: rgba(32, 215, 231, .1); box-shadow: inset 0 -2px 0 currentColor; }
-.visual-control--energy button:hover:not(:disabled), .visual-control--energy button.is-active { border-color: rgba(255, 143, 76, .5); color: #ff9b5c; background: rgba(255, 143, 76, .09); }
+.visual-control header, .pit-tyre-control header { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 8px; color: var(--muted); font: 10px var(--font-mono); letter-spacing: .08em; }
+.visual-control header b, .pit-tyre-control header b { overflow: hidden; color: #c0ced3; font-size: 10px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+.visual-control > div { display: flex; align-items: center; justify-content: space-around; gap: 4px; }
+.visual-control button { --node-color: var(--accent); position: relative; min-width: 0; width: min(100%, 58px); max-width: 58px; aspect-ratio: 1; display: grid; grid-template-rows: 22px auto; flex: 1 1 42px; justify-items: center; align-content: center; gap: 3px; padding: 7px 2px; border: 1px solid color-mix(in srgb, var(--node-color) 22%, #33464e); border-radius: 50%; color: #69818a; background: radial-gradient(circle at 50% 42%, rgba(30,55,64,.68), rgba(6,14,19,.96) 66%); cursor: pointer; transition: transform .14s ease, color .14s ease, border-color .14s ease, box-shadow .14s ease; }
+.visual-control button::after { content: ""; position: absolute; inset: 4px; border: 1px solid rgba(132,161,172,.12); border-radius: 50%; pointer-events: none; }
+.visual-control button strong { position: relative; z-index: 1; max-width: 95%; overflow: hidden; color: #c3d1d6; font: 800 10px var(--font-mono); letter-spacing: -.03em; text-overflow: ellipsis; text-transform: uppercase; }
+.visual-control button:hover:not(:disabled), .visual-control button[aria-pressed="true"] { transform: translateY(-2px); border-color: var(--node-color); color: var(--node-color); background: radial-gradient(circle at 50% 38%, color-mix(in srgb, var(--node-color) 22%, #13252c), #071116 70%); box-shadow: 0 0 0 2px color-mix(in srgb, var(--node-color) 23%, transparent), 0 0 16px color-mix(in srgb, var(--node-color) 28%, transparent); }
+.visual-control--tyre button { --node-color: #4bde95; }
+.energy-node--attack { --node-color: #ff334f !important; }
+.energy-node--balanced { --node-color: #f4b35e !important; }
+.energy-node--defend { --node-color: #398cff !important; }
+.energy-node--recharge { --node-color: #36dc79 !important; }
 .visual-control button:disabled, .pit-tyre-control button:disabled { opacity: .28; cursor: not-allowed; }
-.control-glyph { height: 15px; display: flex; align-items: end; gap: 2px; color: currentColor; }
-.control-glyph i { width: 3px; height: 4px; background: #23343c; }
+.control-glyph { position: relative; z-index: 1; height: 19px; display: flex; align-items: end; gap: 2px; color: currentColor; }
+.control-glyph i { width: 3px; height: 5px; background: #2a3f48; }
 .control-glyph i:nth-child(2) { height: 6px; }
-.control-glyph i:nth-child(3) { height: 9px; }
-.control-glyph i:nth-child(4) { height: 12px; }
-.control-glyph i:nth-child(5) { height: 15px; }
+.control-glyph i:nth-child(3) { height: 10px; }
+.control-glyph i:nth-child(4) { height: 14px; }
+.control-glyph i:nth-child(5) { height: 18px; }
 .control-glyph i.is-on { background: currentColor; box-shadow: 0 0 5px currentColor; }
-.control-glyph--energy { align-items: center; height: 13px; padding: 2px 4px; border: 1px solid currentColor; }
+.control-glyph--energy { align-items: center; height: 16px; padding: 2px 4px; border: 1px solid currentColor; }
 .control-glyph--energy i { width: 6px; height: 7px !important; }
-.control-glyph--tyre { align-items: center; gap: 1px; width: 17px; height: 17px; padding: 3px; border: 2px solid currentColor; border-radius: 50%; }
+.control-glyph--tyre { align-items: center; gap: 1px; width: 20px; height: 20px; padding: 4px; border: 2px solid currentColor; border-radius: 50%; }
 .control-glyph--tyre i { width: 2px; height: 5px !important; transform: rotate(18deg); }
-.pit-tyre-control__buttons { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; }
-.pit-tyre-control button { min-width: 0; height: 44px; display: flex; align-items: center; justify-content: center; gap: 4px; padding: 3px; border: 1px solid var(--line); color: #80969e; background: #09151b; cursor: pointer; }
-.pit-tyre-control button > span:last-of-type { font: 7px var(--font-mono); }
-.pit-tyre-control button em { min-width: 12px; color: #b8c8ce; font: 700 7px var(--font-mono); font-style: normal; }
-.pit-tyre-control button:hover:not(:disabled), .pit-tyre-control button.is-active { border-color: rgba(255,255,255,.42); background: rgba(255,255,255,.05); }
-.pit-tyre-control .stay-out-control b { width: 21px; height: 21px; display: grid; place-items: center; border: 1px solid var(--red); border-radius: 50%; color: var(--red); }
-.tyre-set-strip { display: grid; grid-template-columns: repeat(5, 1fr); gap: 3px; margin-top: 5px; }
-.tyre-set-strip > span { min-width: 0; display: flex; align-items: center; justify-content: center; gap: 2px; }
-.tyre-set-dot { width: 4px; height: 4px; border: 1px solid #526a73; border-radius: 50%; background: #253941; }
-.tyre-set-dot--fitted { border-color: var(--accent); background: var(--accent); box-shadow: 0 0 4px var(--accent); }
-.tyre-set-dot--reserved { border-color: var(--yellow); background: var(--yellow); box-shadow: 0 0 4px var(--yellow); }
-.tyre-set-dot--used { border-color: #293a41; background: transparent; opacity: .35; }
+.pit-tyre-control__buttons { display: grid; grid-template-columns: repeat(3, 1fr); place-items: center; gap: 5px 3px; }
+.pit-tyre-control button { cursor: pointer; transition: transform .14s ease, filter .14s ease; }
+.pit-tyre-control .tyre-select-button { position: relative; width: 48px; height: 48px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; color: #b8c8ce; background: transparent; }
+.pit-tyre-control .tyre-select-button:hover:not(:disabled), .pit-tyre-control .tyre-select-button[aria-pressed="true"] { transform: scale(1.1); filter: brightness(1.18); }
+.pit-tyre-control .tyre-select-button[aria-pressed="true"]::after { content: ""; position: absolute; inset: 0; border: 2px solid #fff; border-radius: 50%; box-shadow: 0 0 13px rgba(255,255,255,.5); }
+.pit-tyre-control .stay-out-control { width: 42px; height: 42px; display: grid; place-items: center; padding: 0; border: 1px solid rgba(255,82,105,.55); border-radius: 50%; color: var(--red); background: radial-gradient(circle, rgba(255,82,105,.11), transparent 70%); }
+.pit-tyre-control .stay-out-control b { font: 500 20px var(--font-mono); }
+.pit-tyre-control .stay-out-control:hover:not(:disabled) { transform: scale(1.08); box-shadow: 0 0 12px rgba(255,82,105,.28); }
+.visual-control button:focus-visible, .pit-tyre-control button:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
 .command-target strong { display: block; margin-top: 6px; font: 700 12px var(--font-mono); }
 .command-target small { display: block; margin-top: 5px; color: var(--green); font: 9px var(--font-mono); letter-spacing: .06em; }
 .command-group { min-width: 0; padding-left: 13px; border-left: 1px solid var(--line); }
@@ -345,14 +346,25 @@ button { font: inherit; }
 .fatal-state button { padding: 10px 16px; border: 1px solid var(--line); color: var(--text); background: var(--panel); cursor: pointer; }
 
 @media (max-width: 1700px) and (min-width: 901px) {
-  .command-console { grid-template-columns: 92px minmax(170px, 1.2fr) minmax(132px, 1fr) minmax(132px, 1fr) minmax(148px, .95fr); gap: 6px; }
-  .command-console__target { padding-right: 6px; }
-  .visual-control, .pit-tyre-control { padding-right: 6px; }
-  .visual-control > div { grid-template-columns: repeat(auto-fit, minmax(34px, 1fr)); }
-  .visual-control button strong { font-size: 6px; }
-  .visual-control button small { font-size: 5.5px; }
-  .pit-tyre-control button { gap: 2px; }
-  .f1-tyre-badge--size-medium { width: 27px; height: 27px; font-size: 9px; }
+  .map-column { grid-template-rows: 58px minmax(260px, 1fr) clamp(258px, 29dvh, 300px); }
+  .command-console {
+    grid-template-columns: 100px minmax(0, 1.18fr) minmax(0, 1fr);
+    grid-template-areas:
+      "target pace energy"
+      "target tyre pit";
+    gap: 9px 10px;
+  }
+  .command-console__target { grid-area: target; padding-right: 10px; }
+  .command-console__target strong { font-size: 16px; }
+  .visual-control--pace { grid-area: pace; }
+  .visual-control--energy { grid-area: energy; padding-right: 0; border-right: 0; }
+  .visual-control--tyre { grid-area: tyre; }
+  .pit-tyre-control { grid-area: pit; }
+  .visual-control, .pit-tyre-control { align-self: center; padding-right: 10px; }
+  .visual-control button { max-width: 64px; }
+  .visual-control button strong { font-size: 10px; }
+  .pit-tyre-control__buttons { display: flex; justify-content: space-around; gap: 3px; }
+  .pit-tyre-control .tyre-select-button { width: 50px; height: 50px; }
 }
 
 @media (max-width: 1250px) and (min-width: 901px) {
@@ -381,8 +393,6 @@ button { font: inherit; }
   .race-grid { grid-template-columns: 220px minmax(420px, 1fr) 250px; }
   .strategy-strip { grid-template-columns: 120px 1fr 1fr; }
   .command-group--strategy { grid-column: 1 / -1; padding: 8px 0 0; border-top: 1px solid var(--line); border-left: 0; }
-  .command-console { grid-template-columns: 100px 1fr 1fr; }
-  .visual-control--tyre, .pit-tyre-control { grid-column: span 1; }
   .command-group button { min-width: 42px; padding: 0 5px; }
 }
 
@@ -399,7 +409,10 @@ button { font: inherit; }
   .timing-panel { max-height: 440px; }
   .map-column { min-height: 760px; order: -1; grid-template-rows: 66px minmax(380px, 1fr) auto; }
   .strategy-strip { grid-template-columns: 1fr; height: auto; }
-  .command-console { grid-template-columns: 1fr; }
+  .command-console {
+    grid-template-columns: 1fr;
+    grid-template-areas: "target" "pace" "energy" "tyre" "pit";
+  }
   .command-console__target, .visual-control, .pit-tyre-control { padding: 8px 0; border-right: 0; border-bottom: 1px solid var(--line); }
   .command-group { padding: 8px 0 0; border-left: 0; border-top: 1px solid var(--line); }
   .status-column { grid-template-columns: 1fr 1fr; grid-template-rows: auto auto; overflow: visible; }
