@@ -16,7 +16,8 @@ Open [http://localhost:3000](http://localhost:3000).
 - The race starts automatically at 1×. Use the transport button in the top-right to pause or resume.
 - Select 1×, 2×, 4×, 8×, or 16× simulation speed.
 - Click a car marker or timing-tower row to inspect it.
-- Select either Mercedes driver and issue Pace or Tyre Management commands from the strategy dock.
+- Select either Mercedes driver and issue Pace, Tyre Management, Energy, and pit commands from the strategy dock.
+- Use ATTACK inside a one-second window to deploy Overtake energy, DEFEND to answer a close car, and RECHARGE to rebuild the battery.
 - Reset restores seed `20260712` and the original grid.
 
 ## Verification
@@ -32,9 +33,9 @@ The footer exposes the fixed tick, seed, and deterministic state hash.
 
 ## Current scope
 
-Included: the 11-team/22-driver 2026 grid, Silverstone's 5.891 km Grand Prix layout and 52-lap race distance, continuously extrapolated curved-centreline movement, lap/position/gaps, tyre life and temperature, fuel burn, Pace and Tyre Management commands, PixiJS live map, timing tower, two player-car cards, fixed tick, speed controls, deterministic reset, and debug data.
+Included: the 11-team/22-driver 2026 grid, Silverstone's 5.891 km Grand Prix layout and 52-lap race distance, real-lap telemetry-derived speed targets, continuously extrapolated curved-centreline movement, lap/position/gaps, tyre compounds and pit stops, changing weather, race-control incidents, safety-car phases, strategy recommendations, tyre life and temperature, fuel burn, Pace and Tyre Management commands, 2026-style Straight/Partial/Corner active-aero states, battery deployment and harvesting, Overtake eligibility, attack/defend battles, PixiJS live map, timing tower, two player-car cards, fixed tick, speed controls, deterministic reset, and debug data.
 
-Intentionally deferred: tyre-set changes and pit stops, 2026 energy deployment, active-aero rules beyond zone visualization, battle resolution, weather, safety car, qualifying, and team management. These are sequenced in `F1_2026_GAME_DESIGN.md`.
+Intentionally deferred: per-weekend tyre-set inventory, detailed component temperatures and failures, qualifying, post-race analysis, championship progression, and team management. These are sequenced in `F1_2026_GAME_DESIGN.md`.
 
 ## Data sources
 

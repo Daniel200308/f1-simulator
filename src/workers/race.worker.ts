@@ -1,7 +1,7 @@
 /// <reference lib="webworker" />
 
 import type { RaceSnapshot, SimulationSpeed } from "@/domain/race";
-import { cancelCarPit, createInitialSnapshot, FIXED_STEP_SECONDS, setCarPace, setCarPit, setCarStartingTyre, setCarTyreMode, stepSnapshot } from "@/simulation/engine";
+import { cancelCarPit, createInitialSnapshot, FIXED_STEP_SECONDS, setCarEnergyMode, setCarPace, setCarPit, setCarStartingTyre, setCarTyreMode, stepSnapshot } from "@/simulation/engine";
 import type { WorkerCommand, WorkerEvent } from "@/simulation/protocol";
 
 const context: DedicatedWorkerGlobalScope = self as unknown as DedicatedWorkerGlobalScope;
@@ -72,6 +72,10 @@ context.onmessage = (message: MessageEvent<WorkerCommand>) => {
         break;
       case "SET_TYRE_MODE":
         snapshot = setCarTyreMode(snapshot, message.data.carId, message.data.mode);
+        publish();
+        break;
+      case "SET_ENERGY_MODE":
+        snapshot = setCarEnergyMode(snapshot, message.data.carId, message.data.mode);
         publish();
         break;
       case "BOX":

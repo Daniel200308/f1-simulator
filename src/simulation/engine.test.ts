@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import type { RaceSnapshot } from "@/domain/race";
-import { cancelCarPit, createInitialSnapshot, estimatePitOutPosition, PIT_ENTRY_START, setCarPace, setCarPit, setCarStartingTyre, setCarTyreMode, stepSnapshot } from "@/simulation/engine";
+import { cancelCarPit, createInitialSnapshot, estimatePitOutPosition, PIT_ENTRY_START, setCarEnergyMode, setCarPace, setCarPit, setCarStartingTyre, setCarTyreMode, stepSnapshot } from "@/simulation/engine";
 import { SILVERSTONE_REFERENCE_LAP_SECONDS, telemetryReferenceLapTime, telemetrySpeedAtDistance } from "@/simulation/silverstone-telemetry";
 import { strategyRecommendation } from "@/simulation/strategy";
+import { SILVERSTONE_CIRCUIT } from "@/simulation/track";
 
 function runTicks(seed: number, ticks: number) {
   let state: RaceSnapshot = { ...createInitialSnapshot(seed), status: "RUNNING" };
@@ -21,6 +22,7 @@ describe("race simulation", () => {
     expect(state.raceControl).toBe("GREEN");
     expect(state.events).toEqual([]);
     expect(state.cars.every((car) => car.incidentStatus === "RUNNING" && car.damageLevel === 0)).toBe(true);
+    expect(state.cars.every((car) => car.batteryPercent >= 70 && car.energyMode === "BALANCED" && car.battleStatus === "CLEAR")).toBe(true);
   });
 
   it("deploys race control and records a deterministic incident", () => {
@@ -140,6 +142,70 @@ describe("race simulation", () => {
     expect(attackingCar.totalDistance).toBeGreaterThan(conservingCar.totalDistance);
     expect(attackingCar.tyreLife).toBeLessThan(conservingCar.tyreLife);
     expect(attackingCar.fuelRemainingKg).toBeLessThan(conservingCar.fuelRemainingKg);
+  });
+
+  it("activates 2026 overtake energy when a car is within one second in a straight-mode zone", () => {
+    const initial = createInitialSnapshot(1_006);
+    const segmentIndex = SILVERSTONE_CIRCUIT.segments.findIndex((segment) => segment.activeAeroAllowed);
+    const segment = SILVERSTONE_CIRCUIT.segments[segmentIndex];
+    const leaderDistance = segment.startDistance + Math.min(80, segment.length * 0.55);
+    const attackerDistance = leaderDistance - 22;
+    const positioned: RaceSnapshot = {
+      ...initial,
+      status: "RUNNING",
+      cars: initial.cars.map((car) => {
+        if (car.carId === "mercedes-1") return { ...car, totalDistance: attackerDistance, lapDistance: attackerDistance, currentSegment: segmentIndex, racePosition: 2, currentSpeed: 270, reactionTime: 0, gapToCarAhead: 0.3, energyMode: "ATTACK", batteryPercent: 80 };
+        if (car.carId === "mercedes-2") return { ...car, totalDistance: leaderDistance, lapDistance: leaderDistance, currentSegment: segmentIndex, racePosition: 1, currentSpeed: 270, reactionTime: 0 };
+        return { ...car, totalDistance: -500 - car.gridPosition * 15, currentSpeed: 0 };
+      }),
+    };
+    const next = stepSnapshot(positioned);
+    const attacker = next.cars.find((car) => car.carId === "mercedes-1")!;
+    expect(attacker.activeAeroMode).toBe("STRAIGHT");
+    expect(attacker.overtakeEligible).toBe(true);
+    expect(attacker.overtakeActive).toBe(true);
+    expect(attacker.energyState).toBe("OVERTAKE");
+    expect(attacker.batteryPercent).toBeLessThan(80);
+    expect(["ATTACKING", "SIDE_BY_SIDE"]).toContain(attacker.battleStatus);
+  });
+
+  it("records a completed on-track pass as an overtake battle event", () => {
+    const initial = createInitialSnapshot(8_808);
+    const segmentIndex = SILVERSTONE_CIRCUIT.segments.findIndex((segment) => segment.activeAeroAllowed);
+    const segment = SILVERSTONE_CIRCUIT.segments[segmentIndex];
+    const leaderDistance = segment.startDistance + Math.min(100, segment.length * 0.6);
+    const attackingDistance = leaderDistance - 3;
+    const duel: RaceSnapshot = {
+      ...initial,
+      status: "RUNNING",
+      cars: initial.cars.map((car) => {
+        if (car.carId === "mercedes-1") return { ...car, totalDistance: attackingDistance, lapDistance: attackingDistance, currentSegment: segmentIndex, racePosition: 2, currentSpeed: 330, reactionTime: 0, gapToCarAhead: 0.04, energyMode: "ATTACK", energyState: "OVERTAKE", batteryPercent: 80, overtakeEligible: true, overtakeActive: true, battleStatus: "SIDE_BY_SIDE", battleCarId: "mercedes-2" };
+        if (car.carId === "mercedes-2") return { ...car, totalDistance: leaderDistance, lapDistance: leaderDistance, currentSegment: segmentIndex, racePosition: 1, currentSpeed: 120, reactionTime: 0, battleStatus: "DEFENDING", battleCarId: "mercedes-1" };
+        return { ...car, totalDistance: -600 - car.gridPosition * 15, currentSpeed: 0 };
+      }),
+    };
+    const next = stepSnapshot(duel);
+    const winner = next.cars.find((car) => car.carId === "mercedes-1")!;
+    expect(winner.racePosition).toBe(1);
+    expect(winner.overtakes).toBe(1);
+    expect(next.events.some((event) => event.type === "BATTLE" && event.message.includes("passed"))).toBe(true);
+    expect(next.radioMessages.some((message) => message.message.includes("Great move"))).toBe(true);
+  });
+
+  it("makes attack mode faster but more energy intensive than recharge mode", () => {
+    const carId = "mercedes-1";
+    const initial = createInitialSnapshot(4_404);
+    let attack: RaceSnapshot = { ...setCarEnergyMode(initial, carId, "ATTACK"), status: "RUNNING" };
+    let recharge: RaceSnapshot = { ...setCarEnergyMode(initial, carId, "RECHARGE"), status: "RUNNING" };
+    for (let index = 0; index < 800; index += 1) {
+      attack = stepSnapshot(attack);
+      recharge = stepSnapshot(recharge);
+    }
+    const attackingCar = attack.cars.find((car) => car.carId === carId)!;
+    const rechargingCar = recharge.cars.find((car) => car.carId === carId)!;
+    expect(attackingCar.totalDistance).toBeGreaterThan(rechargingCar.totalDistance);
+    expect(attackingCar.batteryPercent).toBeLessThan(rechargingCar.batteryPercent);
+    expect(recharge.radioMessages.some((message) => message.message.includes("Energy target confirmed"))).toBe(true);
   });
 
   it("gives soft tyres more pace and wear than hard tyres", () => {

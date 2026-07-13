@@ -1,4 +1,4 @@
-import type { ActiveIncident, PaceMode, RaceCarState, RaceControlStatus, RaceEvent, RaceSnapshot, RaceStatus, RacingLineMode, RadioMessage, SafetyCarPhase, TyreCompound, TyreMode, WeatherState } from "@/domain/race";
+import type { ActiveAeroMode, ActiveIncident, BattleStatus, EnergyMode, EnergyState, PaceMode, RaceCarState, RaceControlStatus, RaceEvent, RaceSnapshot, RaceStatus, RacingLineMode, RadioMessage, SafetyCarPhase, TyreCompound, TyreMode, WeatherState } from "@/domain/race";
 import { DRIVER_BY_ID, DRIVERS, TEAM_BY_ID } from "@/fixtures/grid";
 import { signedNoise } from "@/simulation/random";
 import { telemetrySpeedAtDistance } from "@/simulation/silverstone-telemetry";
@@ -17,6 +17,8 @@ const COMPOUND_SPEED: Record<TyreCompound, number> = { SOFT: 1.012, MEDIUM: 1, H
 const COMPOUND_WEAR: Record<TyreCompound, number> = { SOFT: 1.34, MEDIUM: 1, HARD: 0.76, INTERMEDIATE: 1.12, WET: 0.92 };
 const COMPOUND_TEMPERATURE: Record<TyreCompound, number> = { SOFT: 2, MEDIUM: 0, HARD: -3, INTERMEDIATE: -8, WET: -12 };
 const DRY_COMPOUNDS: readonly TyreCompound[] = ["SOFT", "MEDIUM", "HARD"];
+const ENERGY_DEPLOYMENT: Record<EnergyMode, number> = { ATTACK: 1.05, BALANCED: 0.12, DEFEND: 0.82, RECHARGE: 0 };
+const ENERGY_HARVEST: Record<EnergyMode, number> = { ATTACK: 0.05, BALANCED: 0.28, DEFEND: 0.08, RECHARGE: 0.92 };
 
 export const PIT_ENTRY_START = SILVERSTONE_CIRCUIT.lengthMeters - 430;
 export const PIT_LANE_START = SILVERSTONE_CIRCUIT.lengthMeters - 300;
@@ -63,6 +65,17 @@ function createCar(driverId: string, index: number): RaceCarState {
     fuelRemainingKg: 105,
     paceMode: "STANDARD",
     tyreMode: "BALANCED",
+    energyMode: "BALANCED",
+    energyState: "NEUTRAL",
+    batteryPercent: 72 + (index % 4) * 4,
+    activeAeroMode: "CORNER",
+    overtakeEligible: false,
+    overtakeActive: false,
+    boostActive: false,
+    battleStatus: "CLEAR",
+    battleCarId: null,
+    dirtyAirLoss: 0,
+    overtakes: 0,
     pitStatus: "TRACK",
     pitTimer: 0,
     pitStops: 0,
@@ -133,8 +146,12 @@ function targetSpeedKph(car: RaceCarState, index: number, seed: number, tick: nu
   const fuelWeight = 1 + Math.max(0, 105 - car.fuelRemainingKg) * 0.00017;
   const slipstream = segment.kind === "STRAIGHT" && car.gapToCarAhead > 0 && car.gapToCarAhead < 1.15 ? 1.018 : 1;
   const attackBoost = car.racingLineMode === "ATTACK" ? 1.006 : 1;
+  const energyBoost = car.overtakeActive ? 1.027 : car.boostActive ? 1.016 : car.energyState === "DEPLOYING" ? 1.004 : 1;
+  const lowEnergyPenalty = car.batteryPercent < 8 ? 0.992 : 1;
+  const dirtyAirFactor = 1 - car.dirtyAirLoss;
   const performance = team.performance * driver.pace * PACE_SPEED[car.paceMode] * TYRE_SPEED[car.tyreMode]
-    * COMPOUND_SPEED[car.tyreCompound] * surfaceGrip(car.tyreCompound, trackWetness) * temperatureGrip * wearGrip * fuelWeight * slipstream * attackBoost * (1 + formWave + stableNoise);
+    * COMPOUND_SPEED[car.tyreCompound] * surfaceGrip(car.tyreCompound, trackWetness) * temperatureGrip * wearGrip * fuelWeight
+    * slipstream * attackBoost * energyBoost * lowEnergyPenalty * dirtyAirFactor * (1 + formWave + stableNoise);
   const telemetryTarget = telemetrySpeedAtDistance(car.lapDistance);
   return Math.max(65, telemetryTarget * performance);
 }
@@ -160,7 +177,7 @@ function withPositionData(car: RaceCarState): RaceCarState {
   };
 }
 
-function rankCars(cars: readonly RaceCarState[]): RaceCarState[] {
+function rankCars(cars: readonly RaceCarState[], raceControl: RaceControlStatus): RaceCarState[] {
   const ordered = [...cars].sort((a, b) => {
     const aCompleted = a.finishTime !== null;
     const bCompleted = b.finishTime !== null;
@@ -177,14 +194,19 @@ function rankCars(cars: readonly RaceCarState[]): RaceCarState[] {
 
   const leader = ordered[0];
   const averageLeaderSpeedMps = Math.max(1, leader.currentSpeed / 3.6);
-  const updates = new Map<string, Pick<RaceCarState, "racePosition" | "gapToLeader" | "gapToCarAhead" | "gapToCarBehind" | "racingLineMode" | "trackLineOffset">>();
+  const updates = new Map<string, Pick<RaceCarState, "racePosition" | "gapToLeader" | "gapToCarAhead" | "gapToCarBehind" | "racingLineMode" | "trackLineOffset" | "battleStatus" | "battleCarId">>();
 
   ordered.forEach((car, index) => {
     const ahead = ordered[index - 1];
     const behind = ordered[index + 1];
     const distanceAhead = ahead ? ahead.totalDistance - car.totalDistance : Infinity;
     const distanceBehind = behind ? car.totalDistance - behind.totalDistance : Infinity;
+    const speedReference = Math.max(20, ahead?.currentSpeed ?? 0, car.currentSpeed) / 3.6;
+    const gapAhead = ahead ? Math.max(0, distanceAhead / speedReference) : 0;
+    const gapBehind = behind ? Math.max(0, distanceBehind / (Math.max(20, car.currentSpeed, behind.currentSpeed) / 3.6)) : 0;
     let racingLineMode: RacingLineMode = "RACING";
+    let battleStatus: BattleStatus = "CLEAR";
+    let battleCarId: string | null = null;
     const trackLineOffset = 0;
     if (car.currentLap === 1 && car.totalDistance < 260) {
       racingLineMode = "GRID";
@@ -193,13 +215,25 @@ function rankCars(cars: readonly RaceCarState[]): RaceCarState[] {
     } else if (behind && distanceBehind < 30) {
       racingLineMode = "DEFEND";
     }
+    if (raceControl === "GREEN" && ahead && distanceAhead < 8) {
+      battleStatus = "SIDE_BY_SIDE";
+      battleCarId = ahead.carId;
+    } else if (raceControl === "GREEN" && ahead && gapAhead <= 1.2) {
+      battleStatus = "ATTACKING";
+      battleCarId = ahead.carId;
+    } else if (raceControl === "GREEN" && behind && gapBehind <= 1.2) {
+      battleStatus = "DEFENDING";
+      battleCarId = behind.carId;
+    }
     updates.set(car.carId, {
       racePosition: index + 1,
       gapToLeader: index === 0 ? 0 : Math.max(0, (leader.totalDistance - car.totalDistance) / averageLeaderSpeedMps),
-      gapToCarAhead: ahead ? Math.max(0, (ahead.totalDistance - car.totalDistance) / Math.max(20, ahead.currentSpeed / 3.6, car.currentSpeed / 3.6)) : 0,
-      gapToCarBehind: behind ? Math.max(0, (car.totalDistance - behind.totalDistance) / Math.max(20, car.currentSpeed / 3.6, behind.currentSpeed / 3.6)) : 0,
+      gapToCarAhead: gapAhead,
+      gapToCarBehind: gapBehind,
       racingLineMode,
       trackLineOffset,
+      battleStatus,
+      battleCarId,
     });
   });
 
@@ -409,6 +443,44 @@ function enforceRaceControlOrder(
   return cars.map((car) => updates.get(car.carId) ?? car);
 }
 
+interface EnergyTactics {
+  activeAeroMode: ActiveAeroMode;
+  energyState: EnergyState;
+  overtakeEligible: boolean;
+  overtakeActive: boolean;
+  boostActive: boolean;
+  dirtyAirLoss: number;
+}
+
+function energyTacticsFor(car: RaceCarState, raceControl: RaceControlStatus, trackWetness: number): EnergyTactics {
+  const segment = SILVERSTONE_CIRCUIT.segments[car.currentSegment];
+  const lowGrip = trackWetness > 0.48;
+  const activeAeroMode: ActiveAeroMode = lowGrip && segment.activeAeroAllowed
+    ? "PARTIAL"
+    : segment.activeAeroAllowed ? "STRAIGHT" : "CORNER";
+  const greenTrack = raceControl === "GREEN" && car.pitStatus === "TRACK" && car.incidentStatus === "RUNNING";
+  const overtakeEligible = greenTrack && activeAeroMode === "STRAIGHT" && car.gapToCarAhead > 0 && car.gapToCarAhead <= 1 && car.batteryPercent >= 10;
+  const overtakeActive = overtakeEligible && car.energyMode === "ATTACK";
+  const boostActive = greenTrack && activeAeroMode === "STRAIGHT" && car.energyMode === "DEFEND" && car.gapToCarBehind > 0 && car.gapToCarBehind <= 1.15 && car.batteryPercent >= 8;
+  const deploying = greenTrack && car.batteryPercent >= 5 && (overtakeActive || boostActive || (car.energyMode === "ATTACK" && (segment.kind === "STRAIGHT" || segment.kind === "FAST")));
+  const harvesting = car.energyMode === "RECHARGE" || (!deploying && (segment.kind === "SLOW" || car.batteryPercent < 22));
+  const energyState: EnergyState = overtakeActive ? "OVERTAKE" : boostActive ? "DEFENDING" : deploying ? "DEPLOYING" : harvesting ? "HARVESTING" : "NEUTRAL";
+  const closeInCorners = greenTrack && segment.kind !== "STRAIGHT" && car.gapToCarAhead > 0 && car.gapToCarAhead < 1.55;
+  const dirtyAirLoss = closeInCorners ? Math.min(0.018, (1.55 - car.gapToCarAhead) * 0.0115) : 0;
+  return { activeAeroMode, energyState, overtakeEligible, overtakeActive, boostActive, dirtyAirLoss };
+}
+
+function updateBattery(car: RaceCarState, tactics: EnergyTactics): number {
+  const segment = SILVERSTONE_CIRCUIT.segments[car.currentSegment];
+  const harvestZone = segment.kind === "SLOW" ? 1 : segment.kind === "MEDIUM" ? 0.52 : segment.kind === "FAST" ? 0.16 : 0.04;
+  const deploymentZone = segment.kind === "STRAIGHT" ? 1 : segment.kind === "FAST" ? 0.64 : 0.24;
+  const deploy = tactics.energyState === "OVERTAKE" || tactics.energyState === "DEFENDING" || tactics.energyState === "DEPLOYING"
+    ? ENERGY_DEPLOYMENT[car.energyMode] * deploymentZone * FIXED_STEP_SECONDS
+    : 0;
+  const harvest = ENERGY_HARVEST[car.energyMode] * harvestZone * FIXED_STEP_SECONDS;
+  return Math.max(0, Math.min(100, car.batteryPercent + harvest - deploy));
+}
+
 export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
   if (snapshot.status === "FINISHED") return snapshot;
 
@@ -431,7 +503,20 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
     return { ...car, scheduledPitCompound: nextCompound };
   });
 
-  const advancedCars = strategicCars.map((car, index) => {
+  const tacticalCars = strategicCars.map((car) => {
+    const team = TEAM_BY_ID.get(car.teamId);
+    if (team?.isPlayer || car.pitStatus !== "TRACK" || incidentUpdate.raceControl !== "GREEN") return car;
+    const energyMode: EnergyMode = car.batteryPercent < 24
+      ? "RECHARGE"
+      : car.gapToCarAhead > 0 && car.gapToCarAhead <= 1.05
+        ? "ATTACK"
+        : car.gapToCarBehind > 0 && car.gapToCarBehind <= 0.9
+          ? "DEFEND"
+          : car.batteryPercent > 62 ? "BALANCED" : "RECHARGE";
+    return { ...car, energyMode };
+  });
+
+  const advancedCars = tacticalCars.map((car, index) => {
     if (car.finished) return car;
     const lapDistanceBefore = normalizeLapDistance(car.totalDistance);
     let pitStatus = car.pitStatus;
@@ -443,11 +528,14 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
     let tyreTemperature = car.tyreTemperature;
     let brakeTemperature = car.brakeTemperature;
     let scheduledPitCompound = car.scheduledPitCompound;
+    const energyTactics = energyTacticsFor(car, incidentUpdate.raceControl, weather.trackWetness);
+    const batteryPercent = updateBattery(car, energyTactics);
+    const tacticalCar: RaceCarState = { ...car, ...energyTactics, batteryPercent };
 
     if (pitStatus === "TRACK" && scheduledPitCompound && incidentUpdate.pitLaneOpen && car.totalDistance >= 0 && lapDistanceBefore >= PIT_ENTRY_START) pitStatus = "PIT_ENTRY";
     if (pitStatus === "PIT_ENTRY" && lapDistanceBefore >= PIT_LANE_START) pitStatus = "PIT_LANE";
     if (pitStatus === "PIT_LANE" && lapDistanceBefore >= PIT_BOX_DISTANCE) {
-      const doubleStacked = strategicCars.some((other) => other.carId !== car.carId && other.teamId === car.teamId && (
+      const doubleStacked = tacticalCars.some((other) => other.carId !== car.carId && other.teamId === car.teamId && (
         other.pitStatus === "PIT_STOP"
         || (other.pitStatus === "PIT_LANE" && normalizeLapDistance(other.totalDistance) >= PIT_BOX_DISTANCE && other.gridPosition < car.gridPosition)
       ));
@@ -472,7 +560,7 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
     const stoppedInBox = pitStatus === "PIT_STOP";
     const released = elapsedTime >= car.reactionTime;
     const incidentSpeedFactor = car.incidentStatus === "SPUN" ? 0.12 : car.incidentStatus === "DAMAGED" ? Math.max(0.82, 1 - car.damageLevel * 0.18) : 1;
-    const unconstrainedTarget = targetSpeedKph({ ...car, tyreCompound }, index, snapshot.seed, tick, weather.trackWetness) * incidentSpeedFactor;
+    const unconstrainedTarget = targetSpeedKph({ ...tacticalCar, tyreCompound }, index, snapshot.seed, tick, weather.trackWetness) * incidentSpeedFactor;
     let vscDeltaSeconds = car.vscDeltaSeconds;
     const localizedYellow = incidentUpdate.raceControl === "YELLOW" && car.currentSector === incidentUpdate.yellowSector;
     const safetyGapFactor = car.racePosition === 1 || car.gapToCarAhead < 0.75 ? 0.42 : car.gapToCarAhead > 1.8 ? 0.51 : 0.46;
@@ -510,7 +598,7 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
       if (incidentTimer === 0) incidentStatus = "RUNNING";
     }
     const positioned = withPositionData({
-      ...car,
+      ...tacticalCar,
       currentSpeed,
       totalDistance,
       totalRaceTime: elapsedTime,
@@ -534,7 +622,26 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
   });
 
   const controlledCars = enforceRaceControlOrder(advancedCars, snapshot.cars, incidentUpdate.raceControl, incidentUpdate.yellowSector);
-  const cars = rankCars(controlledCars);
+  const rankedCars = rankCars(controlledCars, incidentUpdate.raceControl);
+  const battleEvents: RaceEvent[] = [];
+  const battleRadio: RadioMessage[] = [];
+  const cars = rankedCars.map((car) => {
+    const previous = snapshot.cars.find((candidate) => candidate.carId === car.carId);
+    if (!previous || incidentUpdate.raceControl !== "GREEN" || car.pitStatus !== "TRACK") return car;
+    const positionsGained = Math.max(0, previous.racePosition - car.racePosition);
+    if (positionsGained === 0 || (previous.battleStatus !== "ATTACKING" && previous.battleStatus !== "SIDE_BY_SIDE" && !previous.overtakeActive)) return car;
+    const previousOpponent = snapshot.cars.find((candidate) => candidate.racePosition === car.racePosition);
+    const currentOpponent = previousOpponent ? rankedCars.find((candidate) => candidate.carId === previousOpponent.carId) : undefined;
+    if (!previousOpponent || currentOpponent?.pitStatus !== "TRACK") return car;
+    const attacker = DRIVER_BY_ID.get(car.driverId)?.shortName ?? car.driverId;
+    const defender = DRIVER_BY_ID.get(previousOpponent.driverId)?.shortName ?? previousOpponent.driverId;
+    const message = `${attacker} passed ${defender} for P${car.racePosition}`;
+    battleEvents.push({ id: `${tick}-${car.carId}-pass`, elapsedTime, type: "BATTLE", message });
+    if (TEAM_BY_ID.get(car.teamId)?.isPlayer) {
+      battleRadio.push({ id: `${tick}-${car.carId}-pass-radio`, elapsedTime, carId: car.carId, source: "ENGINEER", message: `Great move. ${defender} cleared.`, priority: "NORMAL" });
+    }
+    return { ...car, overtakes: previous.overtakes + positionsGained };
+  });
   const status: RaceStatus = cars.every((car) => car.finished) ? "FINISHED" : "RUNNING";
   return {
     ...snapshot,
@@ -548,8 +655,8 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
     safetyCarPhase: incidentUpdate.safetyCarPhase,
     pitLaneOpen: incidentUpdate.pitLaneOpen,
     activeIncident: incidentUpdate.activeIncident,
-    events: incidentUpdate.events,
-    radioMessages: incidentUpdate.radioMessages,
+    events: [...battleEvents, ...incidentUpdate.events].slice(0, 24),
+    radioMessages: [...battleRadio, ...incidentUpdate.radioMessages].slice(0, 30),
     cars,
     checksum: checksumFor(tick, cars),
   };
@@ -568,6 +675,14 @@ export function setCarTyreMode(snapshot: RaceSnapshot, carId: string, mode: Tyre
     ...snapshot,
     cars: snapshot.cars.map((car) => car.carId === carId ? { ...car, tyreMode: mode } : car),
     radioMessages: appendRadio(snapshot, carId, `Tyre instruction ${mode}.`, "NORMAL", "tyre"),
+  };
+}
+
+export function setCarEnergyMode(snapshot: RaceSnapshot, carId: string, mode: EnergyMode): RaceSnapshot {
+  return {
+    ...snapshot,
+    cars: snapshot.cars.map((car) => car.carId === carId ? { ...car, energyMode: mode } : car),
+    radioMessages: appendRadio(snapshot, carId, `Energy mode ${mode}.`, mode === "ATTACK" ? "WARNING" : "NORMAL", "energy"),
   };
 }
 
@@ -620,6 +735,7 @@ function appendRadio(snapshot: RaceSnapshot, carId: string, message: string, pri
   const responseByCommand: Record<string, string> = {
     pace: "Copy. Pace mode confirmed.",
     tyre: "Understood. Managing the tyres.",
+    energy: "Copy. Energy target confirmed.",
     box: "Copy. Boxing this lap.",
     "stay-out": "Copy. Staying out.",
   };
@@ -638,7 +754,7 @@ export function checksumFor(tick: number, cars: readonly RaceCarState[]): string
   let hash = 2_166_136_261 ^ tick;
   for (const car of cars) {
     const value = Math.round(car.totalDistance * 1_000) ^ Math.round(car.currentSpeed * 100)
-      ^ Math.round(car.tyreLife * 100) ^ Math.round(car.fuelRemainingKg * 100);
+      ^ Math.round(car.tyreLife * 100) ^ Math.round(car.fuelRemainingKg * 100) ^ Math.round(car.batteryPercent * 100);
     hash ^= value;
     hash = Math.imul(hash, 16_777_619);
   }

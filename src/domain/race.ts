@@ -1,6 +1,10 @@
 export type RaceStatus = "READY" | "RUNNING" | "PAUSED" | "FINISHED";
 export type PaceMode = "ATTACK" | "PUSH" | "STANDARD" | "CONSERVE" | "COOL";
 export type TyreMode = "GRIP" | "BALANCED" | "SAVE" | "TEMPERATURE";
+export type EnergyMode = "ATTACK" | "BALANCED" | "DEFEND" | "RECHARGE";
+export type EnergyState = "NEUTRAL" | "HARVESTING" | "DEPLOYING" | "OVERTAKE" | "DEFENDING";
+export type ActiveAeroMode = "CORNER" | "STRAIGHT" | "PARTIAL";
+export type BattleStatus = "CLEAR" | "ATTACKING" | "DEFENDING" | "SIDE_BY_SIDE";
 export type RacingLineMode = "GRID" | "RACING" | "ATTACK" | "DEFEND";
 export type TyreCompound = "SOFT" | "MEDIUM" | "HARD" | "INTERMEDIATE" | "WET";
 export type PitStatus = "TRACK" | "PIT_ENTRY" | "PIT_LANE" | "PIT_STOP" | "PIT_EXIT";
@@ -12,7 +16,7 @@ export type IncidentStatus = "RUNNING" | "SPUN" | "DAMAGED" | "RETIRED";
 export interface RaceEvent {
   id: string;
   elapsedTime: number;
-  type: "INCIDENT" | "RACE_CONTROL" | "PIT";
+  type: "INCIDENT" | "RACE_CONTROL" | "PIT" | "BATTLE";
   message: string;
 }
 
@@ -120,6 +124,17 @@ export interface RaceCarState {
   fuelRemainingKg: number;
   paceMode: PaceMode;
   tyreMode: TyreMode;
+  energyMode: EnergyMode;
+  energyState: EnergyState;
+  batteryPercent: number;
+  activeAeroMode: ActiveAeroMode;
+  overtakeEligible: boolean;
+  overtakeActive: boolean;
+  boostActive: boolean;
+  battleStatus: BattleStatus;
+  battleCarId: string | null;
+  dirtyAirLoss: number;
+  overtakes: number;
   pitStatus: PitStatus;
   pitTimer: number;
   pitStops: number;

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import type { PaceMode, SimulationSpeed, TyreCompound, TyreMode } from "@/domain/race";
+import type { EnergyMode, PaceMode, SimulationSpeed, TyreCompound, TyreMode } from "@/domain/race";
 import { CarStatusPanel } from "@/components/race/car-status";
 import { RaceMap } from "@/components/race/race-map";
 import { TimingTower } from "@/components/race/timing-tower";
@@ -16,6 +16,7 @@ import { useRaceStore } from "@/store/race-store";
 const SPEEDS: readonly SimulationSpeed[] = [1, 2, 4, 8, 16];
 const PACE_MODES: readonly PaceMode[] = ["ATTACK", "PUSH", "STANDARD", "CONSERVE", "COOL"];
 const TYRE_MODES: readonly TyreMode[] = ["GRIP", "BALANCED", "SAVE", "TEMPERATURE"];
+const ENERGY_MODES: readonly EnergyMode[] = ["ATTACK", "BALANCED", "DEFEND", "RECHARGE"];
 const PIT_COMPOUNDS: readonly TyreCompound[] = ["SOFT", "MEDIUM", "HARD", "INTERMEDIATE", "WET"];
 type StartPhase = "MENU" | "LIGHTS" | "GO" | "RACING";
 const TYRE_SHORT: Record<TyreCompound, string> = { SOFT: "S", MEDIUM: "M", HARD: "H", INTERMEDIATE: "I", WET: "W" };
@@ -129,7 +130,8 @@ export function RaceShell() {
           <div className="strategy-strip">
             <div className="command-target"><span className="eyebrow">DRIVER COMMAND</span><strong>{selectedDriver?.shortName ?? "—"} · {selectedTeam?.shortName ?? "—"}</strong><small>{selectedTeam?.isPlayer ? "LIVE CONTROL" : "RIVAL · READ ONLY"}</small></div>
             <div className="command-group"><span>PACE</span><div>{PACE_MODES.map((mode) => <button className={selectedCar?.paceMode === mode ? "is-active" : ""} disabled={!selectedTeam?.isPlayer} key={mode} onClick={() => selectedCar && controls.setPace(selectedCar.carId, mode)} type="button">{mode}</button>)}</div></div>
-            <div className="command-group"><span>TYRE / PIT STRATEGY · {snapshot?.pitLaneOpen === false ? "PIT CLOSED" : "PIT OPEN"}</span><div>{TYRE_MODES.map((mode) => <button className={selectedCar?.tyreMode === mode ? "is-active" : ""} disabled={!selectedTeam?.isPlayer} key={mode} onClick={() => selectedCar && controls.setTyreMode(selectedCar.carId, mode)} type="button">{mode}</button>)}{PIT_COMPOUNDS.map((compound) => <button className={selectedCar?.scheduledPitCompound === compound ? "is-active" : ""} disabled={!selectedTeam?.isPlayer || selectedCar?.pitStatus !== "TRACK" || snapshot?.pitLaneOpen === false} key={compound} onClick={() => selectedCar && controls.box(selectedCar.carId, compound)} type="button">BOX {TYRE_SHORT[compound]}</button>)}<button disabled={!selectedTeam?.isPlayer || !selectedCar?.scheduledPitCompound} onClick={() => selectedCar && controls.stayOut(selectedCar.carId)} type="button">STAY OUT</button></div></div>
+            <div className="command-group command-group--energy"><span>ENERGY · {selectedCar?.energyState ?? "NEUTRAL"} · {Math.round(selectedCar?.batteryPercent ?? 0)}%</span><div>{ENERGY_MODES.map((mode) => <button className={selectedCar?.energyMode === mode ? "is-active" : ""} disabled={!selectedTeam?.isPlayer} key={mode} onClick={() => selectedCar && controls.setEnergyMode(selectedCar.carId, mode)} type="button">{mode}</button>)}</div></div>
+            <div className="command-group command-group--strategy"><span>TYRE / PIT STRATEGY · {snapshot?.pitLaneOpen === false ? "PIT CLOSED" : "PIT OPEN"}</span><div>{TYRE_MODES.map((mode) => <button className={selectedCar?.tyreMode === mode ? "is-active" : ""} disabled={!selectedTeam?.isPlayer} key={mode} onClick={() => selectedCar && controls.setTyreMode(selectedCar.carId, mode)} type="button">{mode}</button>)}{PIT_COMPOUNDS.map((compound) => <button className={selectedCar?.scheduledPitCompound === compound ? "is-active" : ""} disabled={!selectedTeam?.isPlayer || selectedCar?.pitStatus !== "TRACK" || snapshot?.pitLaneOpen === false} key={compound} onClick={() => selectedCar && controls.box(selectedCar.carId, compound)} type="button">BOX {TYRE_SHORT[compound]}</button>)}<button disabled={!selectedTeam?.isPlayer || !selectedCar?.scheduledPitCompound} onClick={() => selectedCar && controls.stayOut(selectedCar.carId)} type="button">STAY OUT</button></div></div>
             <StrategyTimeline />
           </div>
         </section>
