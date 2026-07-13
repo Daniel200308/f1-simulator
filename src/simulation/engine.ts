@@ -1,7 +1,9 @@
-import type { ActiveAeroMode, ActiveIncident, BattleStatus, EnergyMode, EnergyState, PaceMode, PitStopIssue, RaceCarState, RaceControlStatus, RaceEvent, RaceSnapshot, RaceStatus, RacingLineMode, RadioMessage, TyreCompound, TyreMode, TyreSetState, TyreTemperatureState, WeatherState } from "@/domain/race";
+import type { ActiveAeroMode, ActiveIncident, BattleStatus, CoolingMode, EnergyMode, EnergyState, PaceMode, PitStopIssue, RaceCarState, RaceControlStatus, RaceEvent, RaceSnapshot, RaceStatus, RacingLineMode, RadioMessage, TyreCompound, TyreMode, TyreSetState, TyreTemperatureState, WeatherState } from "@/domain/race";
 import { DRIVER_BY_ID, DRIVERS, TEAM_BY_ID } from "@/fixtures/grid";
 import { buildAiStrategyDecision } from "@/simulation/ai-strategy";
+import { resolvePitStopExecution } from "@/simulation/pit-operations";
 import { signedNoise } from "@/simulation/random";
+import { calculateFieldRacecraft } from "@/simulation/racecraft";
 import {
   VSC_SPEED_FACTOR,
   advanceSafetyCarPosition,
@@ -16,6 +18,7 @@ import {
   type SafetyCarFormation,
 } from "@/simulation/race-control";
 import { telemetrySpeedAtDistance } from "@/simulation/silverstone-telemetry";
+import { advanceBrakeTemperatures, advanceThermalStress, assessVehicleThermals, averageCornerTemperature, thermalPerformanceFactor, thermalSeverityRank, THERMAL_THRESHOLDS } from "@/simulation/thermal-management";
 import { normalizeLapDistance, pointAtDistance, sectorAtDistance, segmentIndexAtDistance, SILVERSTONE_CIRCUIT, SILVERSTONE_CORNERS } from "@/simulation/track";
 import { createSpatialWeather, effectiveWaterAtDistance, updateSpatialWeather, WEATHER_SURFACE_ZONE_COUNT } from "@/simulation/weather";
 
@@ -44,6 +47,8 @@ const ENERGY_STORE_TEMPERATURE_MAX = 85;
 const DRY_COMPOUNDS: readonly TyreCompound[] = ["SOFT", "MEDIUM", "HARD"];
 const ENERGY_DEPLOYMENT: Record<EnergyMode, number> = { ATTACK: 1.05, BALANCED: 0.12, DEFEND: 0.82, RECHARGE: 0 };
 const ENERGY_HARVEST: Record<EnergyMode, number> = { ATTACK: 0.05, BALANCED: 0.28, DEFEND: 0.08, RECHARGE: 0.92 };
+const COOLING_SPEED: Record<CoolingMode, number> = { NORMAL: 1, LIFT_AND_COAST: 0.982, MAX_COOLING: 0.958 };
+const COOLING_FUEL: Record<CoolingMode, number> = { NORMAL: 1, LIFT_AND_COAST: 0.92, MAX_COOLING: 0.84 };
 
 export const PIT_ENTRY_START = SILVERSTONE_CIRCUIT.lengthMeters - 430;
 export const PIT_LANE_START = SILVERSTONE_CIRCUIT.lengthMeters - 300;
@@ -144,10 +149,19 @@ function createCar(driverId: string, index: number): RaceCarState {
     tyreSets,
     activeTyreSetId,
     scheduledPitTyreSetId: null,
+    brakeTemperatures: uniformTyreTemperatures(480),
     brakeTemperature: 480,
     powerUnitTemperature: 98,
     gearboxTemperature: 86,
     energyStoreTemperature: 43,
+    coolingMode: "NORMAL",
+    brakeBiasPercent: 56.5,
+    powerUnitStress: 0,
+    gearboxStress: 0,
+    energyStoreStress: 0,
+    brakeStress: 0,
+    thermalDeratePercent: 0,
+    thermalRiskPercent: 0,
     fuelRemainingKg: 105,
     paceMode: "STANDARD",
     tyreMode: "BALANCED",
@@ -162,6 +176,9 @@ function createCar(driverId: string, index: number): RaceCarState {
     battleCarId: null,
     dirtyAirLoss: 0,
     overtakes: 0,
+    lastOvertakeAt: null,
+    overtakeOpponentTimes: {},
+    pendingOvertake: null,
     pitStatus: "TRACK",
     pitTimer: 0,
     pitStopTargetSeconds: PIT_STOP_DURATION,
@@ -249,7 +266,8 @@ function targetSpeedKph(car: RaceCarState, index: number, seed: number, tick: nu
   const dirtyAirFactor = 1 - car.dirtyAirLoss;
   const performance = team.performance * driver.pace * PACE_SPEED[car.paceMode] * TYRE_SPEED[car.tyreMode]
     * COMPOUND_SPEED[car.tyreCompound] * surfaceGrip(car.tyreCompound, trackWetness) * temperatureGrip * wearGrip * fuelWeight
-    * slipstream * attackBoost * energyBoost * lowEnergyPenalty * dirtyAirFactor * (1 + formWave + stableNoise);
+    * slipstream * attackBoost * energyBoost * lowEnergyPenalty * dirtyAirFactor * COOLING_SPEED[car.coolingMode ?? "NORMAL"]
+    * thermalPerformanceFactor(car) * (1 + formWave + stableNoise);
   const telemetryTarget = telemetrySpeedAtDistance(car.lapDistance);
   return Math.max(65, telemetryTarget * performance);
 }
@@ -421,22 +439,28 @@ function advancePowerUnitTemperatures(
   const wetCooling = clamp(context.localWater, 0, 1) * (5 + speedLoad * 10)
     + clamp(context.rainIntensity, 0, 1) * 3.5;
   const damageHeat = clamp(car.damageLevel, 0, 1);
+  const coolingMode = car.coolingMode ?? "NORMAL";
+  const coolingLoadFactor = coolingMode === "MAX_COOLING" ? 0.62 : coolingMode === "LIFT_AND_COAST" ? 0.8 : 1;
+  const coolingOffset = coolingMode === "MAX_COOLING" ? 10 : coolingMode === "LIFT_AND_COAST" ? 5 : 0;
 
   const powerUnitTarget = 77
-    + pitLoad * (18 * paceLoad + 13 * speedLoad + 7 * accelerationLoad + 5 * segmentLoad + 5 * energyLoad)
+    + pitLoad * coolingLoadFactor * (18 * paceLoad + 13 * speedLoad + 7 * accelerationLoad + 5 * segmentLoad + 5 * energyLoad)
     + climateHeat
     + damageHeat * 20
-    - wetCooling;
+    - wetCooling
+    - coolingOffset;
   const gearboxTarget = 61
-    + pitLoad * (13 * paceLoad + 15 * speedLoad + 9 * shiftLoad + 8 * (1 - segmentLoad) + 3 * energyLoad)
+    + pitLoad * coolingLoadFactor * (13 * paceLoad + 15 * speedLoad + 9 * shiftLoad + 8 * (1 - segmentLoad) + 3 * energyLoad)
     + climateHeat * 0.7
     + damageHeat * 16
-    - wetCooling * 0.72;
+    - wetCooling * 0.72
+    - coolingOffset * 0.72;
   const energyStoreTarget = Math.max(context.airTemperature + 9, 29
-    + pitLoad * (5 * paceLoad + 4 * speedLoad + 25 * energyLoad)
+    + pitLoad * coolingLoadFactor * (5 * paceLoad + 4 * speedLoad + 25 * energyLoad)
     + (context.airTemperature - 20) * 0.32
     + damageHeat * 10
-    - wetCooling * 0.32);
+    - wetCooling * 0.32
+    - coolingOffset * 0.38);
 
   const advance = (value: number, target: number, responsePerSecond: number, minimum: number, maximum: number) => {
     const safeValue = Number.isFinite(value) ? clamp(value, minimum, maximum) : clamp(target, minimum, maximum);
@@ -661,7 +685,7 @@ function updateIncidents(snapshot: RaceSnapshot, weather: WeatherState, tick: nu
       }
       const location = `T${corner.number} ${corner.name}`;
       const message = incidentStatus === "SPUN" ? `${driver?.shortName ?? car.driverId} spun at ${location} and rejoined` : incidentStatus === "DAMAGED" ? `${driver?.shortName ?? car.driverId} has vehicle damage at ${location}` : `${driver?.shortName ?? car.driverId} retired at ${location}`;
-      newEvents.push({ id: `${tick}-${car.carId}`, elapsedTime, type: "INCIDENT", message });
+      newEvents.push({ id: `${tick}-${car.carId}`, elapsedTime, type: "INCIDENT", message, carId: car.carId });
       newRadio.push({ id: `${tick}-${car.carId}-radio`, elapsedTime, carId: car.carId, source: "RACE CONTROL", message, priority: incidentStatus === "RETIRED" ? "URGENT" : "WARNING" });
       return {
         ...car,
@@ -870,17 +894,24 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
     return decision.pitNow && decision.compound ? reserveTyreSet(strategicCar, decision.compound) : strategicCar;
   });
 
+  // Racecraft orders are stable enough to refresh at 2 Hz; keeping them off
+  // the 10 Hz physics path avoids recalculating the whole field 650k times in
+  // a full Grand Prix while still reacting faster than the visible timing UI.
+  const updateAiTactics = tick % 5 === 0 && incidentUpdate.raceControl === "GREEN";
+  const fieldRacecraft = new Map((updateAiTactics
+    ? calculateFieldRacecraft({ raceControl: incidentUpdate.raceControl, weather, cars: strategicCars })
+    : []).map((decision) => [decision.carId, decision]));
   const tacticalCars = strategicCars.map((car) => {
     const team = TEAM_BY_ID.get(car.teamId);
-    if (team?.isPlayer || car.pitStatus !== "TRACK" || incidentUpdate.raceControl !== "GREEN") return car;
-    const energyMode: EnergyMode = car.batteryPercent < 24
-      ? "RECHARGE"
-      : car.gapToCarAhead > 0 && car.gapToCarAhead <= 1.05
-        ? "ATTACK"
-        : car.gapToCarBehind > 0 && car.gapToCarBehind <= 0.9
-          ? "DEFEND"
-          : car.batteryPercent > 62 ? "BALANCED" : "RECHARGE";
-    return { ...car, energyMode };
+    if (!updateAiTactics || team?.isPlayer || car.finished || car.incidentStatus === "RETIRED" || car.pitStatus !== "TRACK") return car;
+    const thermalAssessment = assessVehicleThermals(car);
+    const racecraft = fieldRacecraft.get(car.carId);
+    if (!racecraft) return car;
+    const energyMode: EnergyMode = racecraft.recommendedEnergyMode;
+    const coolingMode: CoolingMode = thermalAssessment.severity === "CRITICAL"
+      ? "MAX_COOLING"
+      : thermalAssessment.severity === "WARNING" ? "LIFT_AND_COAST" : "NORMAL";
+    return { ...car, energyMode, coolingMode, paceMode: racecraft.recommendedPaceMode };
   });
 
   const vscEvents: RaceEvent[] = [];
@@ -899,10 +930,17 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
     let tyreSets = car.tyreSets;
     let activeTyreSetId = car.activeTyreSetId;
     let scheduledPitTyreSetId = car.scheduledPitTyreSetId;
+    let brakeTemperatures = car.brakeTemperatures ?? uniformTyreTemperatures(car.brakeTemperature);
     let brakeTemperature = car.brakeTemperature;
     let powerUnitTemperature = car.powerUnitTemperature ?? 98;
     let gearboxTemperature = car.gearboxTemperature ?? 86;
     let energyStoreTemperature = car.energyStoreTemperature ?? 43;
+    let powerUnitStress = car.powerUnitStress ?? 0;
+    let gearboxStress = car.gearboxStress ?? 0;
+    let energyStoreStress = car.energyStoreStress ?? 0;
+    let brakeStress = car.brakeStress ?? 0;
+    let thermalDeratePercent = car.thermalDeratePercent ?? 0;
+    let thermalRiskPercent = car.thermalRiskPercent ?? 0;
     let scheduledPitCompound = car.scheduledPitCompound;
     let pitStopTargetSeconds = car.pitStopTargetSeconds;
     let lastPitStopTime = car.lastPitStopTime;
@@ -916,27 +954,17 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
     if (pitStatus === "TRACK" && scheduledPitCompound && incidentUpdate.pitLaneOpen && car.totalDistance >= 0 && lapDistanceBefore >= PIT_ENTRY_START) pitStatus = "PIT_ENTRY";
     if (pitStatus === "PIT_ENTRY" && lapDistanceBefore >= PIT_LANE_START) pitStatus = "PIT_LANE";
     if (pitStatus === "PIT_LANE" && lapDistanceBefore >= PIT_BOX_DISTANCE) {
-      const doubleStacked = tacticalCars.some((other) => other.carId !== car.carId && other.teamId === car.teamId && (
-        other.pitStatus === "PIT_STOP"
-        || (other.pitStatus === "PIT_LANE" && normalizeLapDistance(other.totalDistance) >= PIT_BOX_DISTANCE && other.gridPosition < car.gridPosition)
-      ));
       pitStatus = "PIT_STOP";
       pitTimer = 0;
-      const stopNoise = signedNoise(snapshot.seed, 7_000 + index, tick);
-      const baseDuration = 2.2 + Math.abs(stopNoise) * 0.65;
-      if (doubleStacked) {
-        pitStopIssue = "DOUBLE_STACK";
-        pitStopTargetSeconds = baseDuration + 1.6 + Math.abs(signedNoise(snapshot.seed, 7_100 + index, tick)) * 1.2;
-      } else if (stopNoise > 0.88) {
-        pitStopIssue = "WHEEL_GUN";
-        pitStopTargetSeconds = baseDuration + 2.1 + Math.abs(signedNoise(snapshot.seed, 7_200 + index, tick)) * 1.8;
-      } else if (stopNoise > 0.68) {
-        pitStopIssue = "SLOW_RELEASE";
-        pitStopTargetSeconds = baseDuration + 0.8 + Math.abs(signedNoise(snapshot.seed, 7_300 + index, tick)) * 0.8;
-      } else {
-        pitStopIssue = "NONE";
-        pitStopTargetSeconds = baseDuration;
-      }
+      const operation = resolvePitStopExecution({
+        seed: snapshot.seed,
+        tick,
+        elapsedTime,
+        pitLaneOpen: incidentUpdate.pitLaneOpen,
+        cars: tacticalCars,
+      }, car.carId);
+      pitStopIssue = operation.issue;
+      pitStopTargetSeconds = operation.stationarySeconds;
     }
 
     if (pitStatus === "PIT_STOP") {
@@ -955,7 +983,7 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
               : set);
           activeTyreSetId = scheduledPitTyreSetId;
         }
-        if (!usedTyreCompounds.includes(tyreCompound)) usedTyreCompounds = [...usedTyreCompounds, tyreCompound];
+        usedTyreCompounds = [...usedTyreCompounds, tyreCompound];
         scheduledPitCompound = null;
         scheduledPitTyreSetId = null;
         tyreAgeLaps = 0;
@@ -1011,7 +1039,7 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
         vscViolationCount += 1;
         const driver = DRIVER_BY_ID.get(car.driverId)?.shortName ?? car.carId;
         const message = `${driver} VSC DELTA VIOLATION · ${vscDeltaSeconds.toFixed(3)}s`;
-        vscEvents.push({ id: `${tick}-${car.carId}-vsc`, elapsedTime, type: "RACE_CONTROL", message });
+        vscEvents.push({ id: `${tick}-${car.carId}-vsc`, elapsedTime, type: "RACE_CONTROL", message, carId: car.carId });
         vscRadio.push({ id: `${tick}-${car.carId}-vsc-radio`, elapsedTime, carId: null, source: "RACE CONTROL", message, priority: "URGENT" });
       }
     } else {
@@ -1052,17 +1080,52 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
         pitStatus,
       },
     ));
-    const segmentKind = SILVERSTONE_CIRCUIT.segments[car.currentSegment].kind;
-    const brakeTarget = segmentKind === "SLOW" ? 920 : segmentKind === "MEDIUM" ? 760 : segmentKind === "FAST" ? 620 : 470;
-    brakeTemperature += (brakeTarget - brakeTemperature) * 0.025;
+    const segmentKind = SILVERSTONE_CIRCUIT.segments[segmentIndexAtDistance(lapDistanceAfter)].kind;
+    const cornerLoad = cornerThermalLoadAtDistance(lapDistanceAfter);
+    brakeTemperatures = advanceBrakeTemperatures(brakeTemperatures, {
+      previousSpeedKph: car.currentSpeed,
+      currentSpeedKph: currentSpeed,
+      segmentKind,
+      cornerIntensity: cornerLoad.intensity,
+      hotterSide: cornerLoad.hotterSide,
+      localWater,
+      airTemperature: weather.airTemperature,
+      pitStopped: stoppedInBox,
+      brakeBiasPercent: tacticalCar.brakeBiasPercent ?? 56.5,
+      coolingMode: tacticalCar.coolingMode ?? "NORMAL",
+    }, FIXED_STEP_SECONDS);
+    brakeTemperature = averageCornerTemperature(brakeTemperatures);
+    powerUnitStress = advanceThermalStress(powerUnitStress, powerUnitTemperature, THERMAL_THRESHOLDS.powerUnit.warning, THERMAL_THRESHOLDS.powerUnit.critical, FIXED_STEP_SECONDS);
+    gearboxStress = advanceThermalStress(gearboxStress, gearboxTemperature, THERMAL_THRESHOLDS.gearbox.warning, THERMAL_THRESHOLDS.gearbox.critical, FIXED_STEP_SECONDS);
+    energyStoreStress = advanceThermalStress(energyStoreStress, energyStoreTemperature, THERMAL_THRESHOLDS.energyStore.warning, THERMAL_THRESHOLDS.energyStore.critical, FIXED_STEP_SECONDS);
+    brakeStress = advanceThermalStress(brakeStress, Math.max(...Object.values(brakeTemperatures)), THERMAL_THRESHOLDS.brakes.warning, THERMAL_THRESHOLDS.brakes.critical, FIXED_STEP_SECONDS);
+    const thermalAssessment = assessVehicleThermals({
+      ...tacticalCar,
+      tyreCompound,
+      tyreTemperatures,
+      tyreTemperature,
+      brakeTemperatures,
+      brakeTemperature,
+      powerUnitTemperature,
+      gearboxTemperature,
+      energyStoreTemperature,
+      powerUnitStress,
+      gearboxStress,
+      energyStoreStress,
+      brakeStress,
+    });
+    thermalDeratePercent = thermalAssessment.deratePercent;
+    thermalRiskPercent = thermalAssessment.reliabilityRiskPercent;
     const wetTyreDryPenalty = tyreCompound === "INTERMEDIATE" || tyreCompound === "WET" ? 1 + (1 - localWater) * 1.5 : 1;
     tyreLife = Math.max(0, tyreLife - distanceDelta * 0.00054 * PACE_WEAR[car.paceMode] * TYRE_WEAR[car.tyreMode] * COMPOUND_WEAR[tyreCompound] * wetTyreDryPenalty);
     tyreAgeLaps += distanceDelta / SILVERSTONE_CIRCUIT.lengthMeters;
     tyreSets = tyreSets.map((set) => set.id === activeTyreSetId ? { ...set, condition: tyreLife, lapsUsed: tyreAgeLaps } : set);
-    const fuelRemainingKg = Math.max(0, car.fuelRemainingKg - distanceDelta * 0.00032 * PACE_FUEL[car.paceMode]);
+    const fuelRemainingKg = Math.max(0, car.fuelRemainingKg - distanceDelta * 0.00032 * PACE_FUEL[car.paceMode] * COOLING_FUEL[tacticalCar.coolingMode ?? "NORMAL"]);
     const finished = totalDistance >= raceDistance;
     let incidentStatus = car.incidentStatus;
     let incidentTimer = car.incidentTimer;
+    const thermalDamage = Math.max(0, thermalRiskPercent - 24) * 0.000002 * FIXED_STEP_SECONDS;
+    const damageLevel = Math.min(1, car.damageLevel + thermalDamage);
     if (incidentStatus === "SPUN") {
       incidentTimer = Math.max(0, incidentTimer - FIXED_STEP_SECONDS);
       if (incidentTimer === 0) incidentStatus = "RUNNING";
@@ -1080,10 +1143,17 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
       tyreSets,
       activeTyreSetId,
       scheduledPitTyreSetId,
+      brakeTemperatures,
       brakeTemperature,
       powerUnitTemperature,
       gearboxTemperature,
       energyStoreTemperature,
+      powerUnitStress,
+      gearboxStress,
+      energyStoreStress,
+      brakeStress,
+      thermalDeratePercent,
+      thermalRiskPercent,
       pitStatus,
       pitTimer,
       pitStopTargetSeconds,
@@ -1094,6 +1164,7 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
       usedTyreCompounds,
       incidentStatus,
       incidentTimer,
+      damageLevel,
       vscDeltaSeconds,
       vscViolationSeconds,
       vscComplianceStatus,
@@ -1117,11 +1188,12 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
   const timedCars = controlledCars.map((car) => {
     const previous = snapshot.cars.find((candidate) => candidate.carId === car.carId);
     if (!previous || previous.finished) return car;
-    const finished = car.totalDistance >= raceDistance;
+    const crossedFinishLine = car.totalDistance >= raceDistance;
+    const finished = car.incidentStatus === "RETIRED" || crossedFinishLine;
     const corrected = {
       ...car,
       finished,
-      finishTime: finished ? elapsedTime : null,
+      finishTime: crossedFinishLine ? car.finishTime ?? elapsedTime : null,
     };
     return withTimingData(previous, corrected, elapsedTime);
   });
@@ -1130,21 +1202,86 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
   const battleRadio: RadioMessage[] = [];
   const cars = rankedCars.map((car) => {
     const previous = snapshot.cars.find((candidate) => candidate.carId === car.carId);
-    if (!previous || incidentUpdate.raceControl !== "GREEN" || car.pitStatus !== "TRACK") return car;
+    if (!previous) return car;
+    if (incidentUpdate.raceControl !== "GREEN" || car.pitStatus !== "TRACK" || car.finished) {
+      return previous.pendingOvertake ? { ...car, pendingOvertake: null } : car;
+    }
+
+    if (previous.pendingOvertake) {
+      const pending = previous.pendingOvertake;
+      const opponent = rankedCars.find((candidate) => candidate.carId === pending.opponentCarId);
+      const passStillHeld = opponent?.pitStatus === "TRACK" && car.racePosition < opponent.racePosition;
+      if (!passStillHeld) return { ...car, pendingOvertake: null };
+      const immediateChaser = opponent.racePosition === car.racePosition + 1;
+      const passIsClear = !immediateChaser || car.gapToCarBehind >= 0.18;
+      const pendingSeconds = elapsedTime - pending.detectedAt;
+      if (!passIsClear && pendingSeconds > 8) return { ...car, pendingOvertake: null };
+      if (pendingSeconds < 2.5 || !passIsClear) return car;
+      const lastPassAgainstOpponent = previous.overtakeOpponentTimes?.[opponent.carId] ?? Number.NEGATIVE_INFINITY;
+      if (elapsedTime - lastPassAgainstOpponent < 12) return { ...car, pendingOvertake: null };
+      const attacker = DRIVER_BY_ID.get(car.driverId)?.shortName ?? car.driverId;
+      const defender = DRIVER_BY_ID.get(opponent.driverId)?.shortName ?? opponent.driverId;
+      const message = `${attacker} passed ${defender} for P${car.racePosition}`;
+      battleEvents.push({ id: `${tick}-${car.carId}-pass`, elapsedTime, type: "BATTLE", message, carId: car.carId });
+      if (TEAM_BY_ID.get(car.teamId)?.isPlayer) {
+        battleRadio.push({ id: `${tick}-${car.carId}-pass-radio`, elapsedTime, carId: car.carId, source: "ENGINEER", message: `Great move. ${defender} cleared.`, priority: "NORMAL" });
+      }
+      return {
+        ...car,
+        overtakes: previous.overtakes + pending.positionsGained,
+        lastOvertakeAt: elapsedTime,
+        overtakeOpponentTimes: { ...(previous.overtakeOpponentTimes ?? {}), [opponent.carId]: elapsedTime },
+        pendingOvertake: null,
+      };
+    }
+
     const positionsGained = Math.max(0, previous.racePosition - car.racePosition);
     if (positionsGained === 0 || (previous.battleStatus !== "ATTACKING" && previous.battleStatus !== "SIDE_BY_SIDE" && !previous.overtakeActive)) return car;
     const previousOpponent = snapshot.cars.find((candidate) => candidate.racePosition === car.racePosition);
     const currentOpponent = previousOpponent ? rankedCars.find((candidate) => candidate.carId === previousOpponent.carId) : undefined;
     if (!previousOpponent || currentOpponent?.pitStatus !== "TRACK") return car;
-    const attacker = DRIVER_BY_ID.get(car.driverId)?.shortName ?? car.driverId;
-    const defender = DRIVER_BY_ID.get(previousOpponent.driverId)?.shortName ?? previousOpponent.driverId;
-    const message = `${attacker} passed ${defender} for P${car.racePosition}`;
-    battleEvents.push({ id: `${tick}-${car.carId}-pass`, elapsedTime, type: "BATTLE", message });
-    if (TEAM_BY_ID.get(car.teamId)?.isPlayer) {
-      battleRadio.push({ id: `${tick}-${car.carId}-pass-radio`, elapsedTime, carId: car.carId, source: "ENGINEER", message: `Great move. ${defender} cleared.`, priority: "NORMAL" });
-    }
-    return { ...car, overtakes: previous.overtakes + positionsGained };
+    // Official-style race reports exclude opening-lap reshuffles, while a
+    // per-rival hold rejects rapid timing-line swaps without hiding a later
+    // pass on a different car.
+    if (previous.currentLap <= 1) return car;
+    const lastPassAgainstOpponent = previous.overtakeOpponentTimes?.[previousOpponent.carId] ?? Number.NEGATIVE_INFINITY;
+    const repeatedOpponentCoolingDown = elapsedTime - lastPassAgainstOpponent < 12;
+    if (repeatedOpponentCoolingDown) return car;
+    return {
+      ...car,
+      pendingOvertake: { opponentCarId: previousOpponent.carId, detectedAt: elapsedTime, positionsGained: 1 },
+    };
   });
+  const thermalEvents: RaceEvent[] = [];
+  const thermalRadio: RadioMessage[] = [];
+  for (const car of cars) {
+    if (!TEAM_BY_ID.get(car.teamId)?.isPlayer) continue;
+    const previous = snapshot.cars.find((candidate) => candidate.carId === car.carId);
+    if (!previous) continue;
+    const before = assessVehicleThermals(previous);
+    const after = assessVehicleThermals(car);
+    const escalated = [...after.alerts]
+      .filter((alert) => {
+        const prior = before.alerts.find((candidate) => candidate.system === alert.system)?.severity ?? "NOMINAL";
+        return thermalSeverityRank(alert.severity) > thermalSeverityRank(prior);
+      })
+      .sort((a, b) => thermalSeverityRank(b.severity) - thermalSeverityRank(a.severity));
+    if (escalated.length === 0) continue;
+    const driver = DRIVER_BY_ID.get(car.driverId)?.shortName ?? car.driverId;
+    for (const alert of escalated) {
+      const message = `${driver} ${alert.title} · ${alert.message}`;
+      thermalEvents.push({ id: `${tick}-${car.carId}-${alert.id}`, elapsedTime, type: "THERMAL", message, carId: car.carId });
+    }
+    const highestPriorityAlert = escalated[0];
+    thermalRadio.push({
+      id: `${tick}-${car.carId}-${highestPriorityAlert.id}-radio`,
+      elapsedTime,
+      carId: car.carId,
+      source: "ENGINEER",
+      message: `${highestPriorityAlert.title}. ${highestPriorityAlert.message}. Recommend ${highestPriorityAlert.actionLabel}.`,
+      priority: highestPriorityAlert.severity === "CRITICAL" ? "URGENT" : "WARNING",
+    });
+  }
   const status: RaceStatus = cars.every((car) => car.finished) ? "FINISHED" : "RUNNING";
   return {
     ...snapshot,
@@ -1165,8 +1302,8 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
     pitLaneOpen: incidentUpdate.pitLaneOpen,
     pitLaneStatus: incidentUpdate.pitLaneStatus,
     activeIncident: incidentUpdate.activeIncident,
-    events: [...battleEvents, ...vscEvents, ...incidentUpdate.events].slice(0, 24),
-    radioMessages: [...battleRadio, ...vscRadio, ...incidentUpdate.radioMessages].slice(0, 30),
+    events: [...thermalEvents, ...battleEvents, ...vscEvents, ...incidentUpdate.events].slice(0, 24),
+    radioMessages: [...thermalRadio, ...battleRadio, ...vscRadio, ...incidentUpdate.radioMessages].slice(0, 30),
     cars,
     checksum: checksumFor(tick, cars, weather, {
       raceControl: incidentUpdate.raceControl,
@@ -1179,6 +1316,7 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
 }
 
 export function setCarPace(snapshot: RaceSnapshot, carId: string, mode: PaceMode): RaceSnapshot {
+  if (!canReceiveCarCommand(snapshot, carId)) return snapshot;
   return {
     ...snapshot,
     cars: snapshot.cars.map((car) => car.carId === carId ? { ...car, paceMode: mode } : car),
@@ -1187,6 +1325,7 @@ export function setCarPace(snapshot: RaceSnapshot, carId: string, mode: PaceMode
 }
 
 export function setCarTyreMode(snapshot: RaceSnapshot, carId: string, mode: TyreMode): RaceSnapshot {
+  if (!canReceiveCarCommand(snapshot, carId)) return snapshot;
   return {
     ...snapshot,
     cars: snapshot.cars.map((car) => car.carId === carId ? { ...car, tyreMode: mode } : car),
@@ -1195,6 +1334,7 @@ export function setCarTyreMode(snapshot: RaceSnapshot, carId: string, mode: Tyre
 }
 
 export function setCarEnergyMode(snapshot: RaceSnapshot, carId: string, mode: EnergyMode): RaceSnapshot {
+  if (!canReceiveCarCommand(snapshot, carId)) return snapshot;
   return {
     ...snapshot,
     cars: snapshot.cars.map((car) => car.carId === carId ? { ...car, energyMode: mode } : car),
@@ -1202,7 +1342,34 @@ export function setCarEnergyMode(snapshot: RaceSnapshot, carId: string, mode: En
   };
 }
 
+export function setCarCoolingMode(snapshot: RaceSnapshot, carId: string, mode: CoolingMode): RaceSnapshot {
+  if (!canReceiveCarCommand(snapshot, carId)) return snapshot;
+  return {
+    ...snapshot,
+    cars: snapshot.cars.map((car) => car.carId === carId ? { ...car, coolingMode: mode } : car),
+    radioMessages: appendRadio(
+      snapshot,
+      carId,
+      mode === "NORMAL" ? "Return to normal cooling." : mode === "MAX_COOLING" ? "Maximum cooling, lift early." : "Lift and coast enabled.",
+      mode === "MAX_COOLING" ? "WARNING" : "NORMAL",
+      "cooling",
+    ),
+  };
+}
+
+export function setCarBrakeBias(snapshot: RaceSnapshot, carId: string, brakeBiasPercent: number): RaceSnapshot {
+  if (!canReceiveCarCommand(snapshot, carId)) return snapshot;
+  const bias = Math.round(clamp(brakeBiasPercent, 50, 64) * 10) / 10;
+  return {
+    ...snapshot,
+    cars: snapshot.cars.map((car) => car.carId === carId ? { ...car, brakeBiasPercent: bias } : car),
+    radioMessages: appendRadio(snapshot, carId, `Brake balance ${bias.toFixed(1)} percent forward.`, "NORMAL", "brake-bias"),
+  };
+}
+
 export function setCarPit(snapshot: RaceSnapshot, carId: string, compound: TyreCompound): RaceSnapshot {
+  const requestedCar = snapshot.cars.find((car) => car.carId === carId);
+  if (!canReceiveCarCommand(snapshot, carId) || requestedCar?.pitStatus !== "TRACK") return snapshot;
   const cars = snapshot.cars.map((car) => car.carId === carId && car.pitStatus === "TRACK" ? reserveTyreSet(car, compound) : car);
   const scheduled = cars.find((car) => car.carId === carId)?.scheduledPitCompound === compound;
   return {
@@ -1213,6 +1380,8 @@ export function setCarPit(snapshot: RaceSnapshot, carId: string, compound: TyreC
 }
 
 export function cancelCarPit(snapshot: RaceSnapshot, carId: string): RaceSnapshot {
+  const requestedCar = snapshot.cars.find((car) => car.carId === carId);
+  if (!canReceiveCarCommand(snapshot, carId) || requestedCar?.pitStatus !== "TRACK" || !requestedCar.scheduledPitCompound) return snapshot;
   return {
     ...snapshot,
     cars: snapshot.cars.map((car) => car.carId === carId && car.pitStatus === "TRACK" ? releaseReservedTyreSet(car) : car),
@@ -1242,6 +1411,15 @@ export function setCarStartingTyre(snapshot: RaceSnapshot, carId: string, compou
   };
 }
 
+function canReceiveCarCommand(snapshot: RaceSnapshot, carId: string): boolean {
+  const car = snapshot.cars.find((candidate) => candidate.carId === carId);
+  return Boolean(car
+    && TEAM_BY_ID.get(car.teamId)?.isPlayer
+    && !car.finished
+    && car.incidentStatus !== "RETIRED"
+    && snapshot.status !== "FINISHED");
+}
+
 export function estimatePitOutPosition(snapshot: RaceSnapshot, carId: string): number {
   const car = snapshot.cars.find((candidate) => candidate.carId === carId);
   if (!car) return 0;
@@ -1268,6 +1446,8 @@ function appendRadio(snapshot: RaceSnapshot, carId: string, message: string, pri
     pace: "Copy. Pace mode confirmed.",
     tyre: "Understood. Managing the tyres.",
     energy: "Copy. Energy target confirmed.",
+    cooling: "Copy. Cooling instruction confirmed.",
+    "brake-bias": "Brake balance confirmed.",
     box: "Copy. Boxing this lap.",
     "stay-out": "Copy. Staying out.",
   };
@@ -1291,9 +1471,19 @@ export function checksumFor(
   let hash = 2_166_136_261 ^ tick;
   for (const car of cars) {
     const tyreTemperatures = car.tyreTemperatures ?? uniformTyreTemperatures(car.tyreTemperature);
+    const opponentHistoryCode = Object.entries(car.overtakeOpponentTimes ?? {}).sort(([left], [right]) => left.localeCompare(right)).reduce(
+      (code, [opponentId, passTime]) => [...opponentId].reduce((next, character) => Math.imul(next, 31) + character.charCodeAt(0) | 0, code ^ Math.round(passTime * 10)),
+      0,
+    );
+    const pendingOvertakeCode = car.pendingOvertake
+      ? [...car.pendingOvertake.opponentCarId].reduce((code, character) => Math.imul(code, 31) + character.charCodeAt(0) | 0, Math.round(car.pendingOvertake.detectedAt * 10) ^ car.pendingOvertake.positionsGained)
+      : 0;
     const value = Math.round(car.totalDistance * 1_000) ^ Math.round(car.currentSpeed * 100)
       ^ Math.round(car.tyreLife * 100) ^ Math.round(car.fuelRemainingKg * 100) ^ Math.round(car.batteryPercent * 100)
       ^ Math.round(car.vscDeltaSeconds * 1_000) ^ Math.round(car.vscViolationSeconds * 100)
+      ^ Math.round((car.lastOvertakeAt ?? 0) * 10)
+      ^ opponentHistoryCode
+      ^ pendingOvertakeCode
       ^ ((car.safetyCarQueuePosition ?? 0) << 8);
     hash ^= value;
     hash = Math.imul(hash, 16_777_619);
@@ -1302,9 +1492,17 @@ export function checksumFor(
       hash = Math.imul(hash, 16_777_619);
     }
     for (const temperature of [
+      car.brakeTemperatures?.frontLeft ?? car.brakeTemperature,
+      car.brakeTemperatures?.frontRight ?? car.brakeTemperature,
+      car.brakeTemperatures?.rearLeft ?? car.brakeTemperature,
+      car.brakeTemperatures?.rearRight ?? car.brakeTemperature,
       car.powerUnitTemperature ?? 98,
       car.gearboxTemperature ?? 86,
       car.energyStoreTemperature ?? 43,
+      car.powerUnitStress ?? 0,
+      car.gearboxStress ?? 0,
+      car.energyStoreStress ?? 0,
+      car.brakeStress ?? 0,
     ]) {
       hash ^= Math.round(temperature * 100);
       hash = Math.imul(hash, 16_777_619);

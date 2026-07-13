@@ -1,8 +1,8 @@
 "use client";
 
 import { DRIVER_BY_ID } from "@/fixtures/grid";
-import { calculateLiveStrategy } from "@/simulation/live-strategy";
 import { SILVERSTONE_TELEMETRY_SOURCE } from "@/simulation/silverstone-telemetry";
+import { calculateStrategyIntelligence } from "@/simulation/strategy-intelligence";
 import { strategyRecommendation } from "@/simulation/strategy";
 import { SILVERSTONE_CIRCUIT } from "@/simulation/track";
 import { useRaceStore } from "@/store/race-store";
@@ -13,16 +13,19 @@ export function StrategyTimeline() {
   const car = snapshot?.cars.find((candidate) => candidate.carId === selectedCarId);
   if (!snapshot || !car) return <div className="strategy-timeline strategy-timeline--empty">WAITING FOR STRATEGY DATA</div>;
   const recommendation = strategyRecommendation(snapshot, car);
-  const live = calculateLiveStrategy({
+  const intelligence = calculateStrategyIntelligence({
     raceControl: snapshot.raceControl,
     pitLaneOpen: snapshot.pitLaneOpen,
     weather: snapshot.weather,
     cars: snapshot.cars,
+    elapsedTime: snapshot.elapsedTime,
   }, car.carId);
+  const live = intelligence.liveStrategy;
+  const recommendedScenario = intelligence.scenarios.find((scenario) => scenario.recommended)!;
   const crossover = live.crossover;
-  const recommendedCompound = live.recommendedCompound ?? recommendation.recommendedCompound;
+  const recommendedCompound = intelligence.recommendedCompound ?? live.recommendedCompound ?? recommendation.recommendedCompound;
   const targetDriver = live.battle.targetCarId ? DRIVER_BY_ID.get(live.battle.targetCarId) : null;
-  const callLabel = live.call.replace("_", " ");
+  const callLabel = intelligence.recommendedScenarioId.replace("_", " ");
   const battleLabel = live.battle.preferred === "UNDERCUT"
     ? `UND +${live.battle.undercutGainSeconds.toFixed(1)}s`
     : live.battle.preferred === "OVERCUT"
@@ -36,7 +39,7 @@ export function StrategyTimeline() {
     <div className="strategy-timeline">
       <div className="strategy-live-grid">
         <div className={`strategy-live-call strategy-live-call--${live.call.toLowerCase().replace("_", "-")}`}>
-          <span>LIVE CALL</span><strong>{callLabel}</strong><small>{recommendedCompound} · {Math.round(live.confidence * 100)}%</small>
+          <span>LIVE CALL</span><strong>{callLabel}</strong><small>{recommendedCompound} · {Math.round(intelligence.confidence * 100)}%</small>
         </div>
         <div className="strategy-live-metric"><span>PIT WINDOW</span><strong>L{recommendation.pitWindowStart}–{recommendation.pitWindowEnd}</strong><small>{recommendedCompound}</small></div>
         <div className="strategy-live-metric"><span>PIT LOSS</span><strong>{live.pitLoss.expectedSeconds.toFixed(1)}s</strong><small>{live.pitLoss.greenFlagSavingSeconds > 0 ? `SAVE ${live.pitLoss.greenFlagSavingSeconds.toFixed(1)}s` : "GREEN BASE"}</small></div>
@@ -51,7 +54,7 @@ export function StrategyTimeline() {
           return <i className={className} key={lap} title={`Lap ${lap}`} />;
         })}
       </div>
-      <div className="strategy-timeline__footer"><span className="strategy-crossover" title={live.reasons.join(" ")}><b>CROSSOVER</b> {crossoverLabel}</span><span title={`${live.reasons.join(" ")} · ${SILVERSTONE_TELEMETRY_SOURCE}`}>MODEL 2.0 · {live.reasons[0] ?? "LIVE RACE MODEL"}</span></div>
+      <div className="strategy-timeline__footer"><span className="strategy-crossover" title={recommendedScenario.reasons.join(" ")}><b>SCENARIO P{recommendedScenario.predictedFinishPosition}</b> {crossoverLabel}</span><span title={`${recommendedScenario.reasons.join(" ")} · ${SILVERSTONE_TELEMETRY_SOURCE}`}>MODEL 3.0 · {recommendedScenario.label.toUpperCase()} · {recommendedScenario.projectedFinishTimeDeltaSeconds >= 0 ? "+" : ""}{recommendedScenario.projectedFinishTimeDeltaSeconds.toFixed(1)}s</span></div>
     </div>
   );
 }

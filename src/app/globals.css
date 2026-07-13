@@ -160,9 +160,14 @@ button { font: inherit; }
 .f1-tyre-badge--intermediate { --tyre-color: #36dc79; }
 .f1-tyre-badge--wet { --tyre-color: #398cff; }
 
-.map-column { min-width: 0; min-height: 0; display: grid; grid-template-rows: 58px minmax(260px, 1fr) clamp(212px, 22dvh, 244px); overflow: hidden; }
+.map-column { position: relative; min-width: 0; min-height: 0; display: grid; grid-template-rows: 58px minmax(260px, 1fr) clamp(212px, 22dvh, 244px); overflow: hidden; }
 .circuit-title { display: flex; align-items: center; justify-content: space-between; padding: 0 17px; border-bottom: 1px solid var(--line); }
 .circuit-title h1 { font-size: 17px; }
+.operations-launcher { min-width: 0; display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
+.operations-launcher > button { height: 30px; display: inline-flex; align-items: center; gap: 5px; padding: 0 9px; border: 1px solid rgba(132,161,172,.2); border-radius: 16px; color: #8ba0a8; background: linear-gradient(145deg, rgba(17,34,41,.88), rgba(6,14,19,.96)); cursor: pointer; font: 850 8px var(--font-mono); letter-spacing: .035em; white-space: nowrap; transition: .15s ease; }
+.operations-launcher > button:hover:not(:disabled) { transform: translateY(-1px); border-color: rgba(32,215,231,.58); color: var(--accent); box-shadow: 0 0 12px rgba(32,215,231,.13); }
+.operations-launcher > button:disabled { cursor: not-allowed; opacity: .32; }
+.operations-launcher > .live-pill { margin-left: 2px; }
 .live-pill { padding: 7px 9px; border: 1px solid rgba(75, 222, 149, .28); color: var(--green); background: rgba(75, 222, 149, .08); font: 9px var(--font-mono); letter-spacing: .08em; }
 .live-pill--yellow, .live-pill--vsc { color: var(--yellow); border-color: rgba(244, 211, 94, .38); background: rgba(244, 211, 94, .09); }
 .live-pill--safety_car { color: var(--red); border-color: rgba(255, 82, 105, .4); background: rgba(255, 82, 105, .1); }
@@ -241,6 +246,16 @@ button { font: inherit; }
 .command-driver-select:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 .command-link-status { overflow: hidden; color: var(--yellow); font: 8px var(--font-mono); letter-spacing: .04em; text-overflow: ellipsis; white-space: nowrap; }
 .command-link-status.is-live { color: var(--green); }
+.vehicle-command-mini { min-width: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 4px 6px; padding-top: 5px; border-top: 1px solid rgba(148,177,190,.12); }
+.vehicle-command-mini > span { color: #718993; font: 7px var(--font-mono); letter-spacing: .05em; white-space: nowrap; }
+.cooling-mode-selector, .brake-bias-control { min-width: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3px; }
+.cooling-mode-selector button, .brake-bias-control button { min-width: 0; height: 23px; padding: 0 3px; border: 1px solid rgba(132,161,172,.22); border-radius: 12px; color: #78909a; background: rgba(7,16,21,.86); cursor: pointer; font: 800 7px var(--font-mono); }
+.cooling-mode-selector button:hover:not(:disabled), .cooling-mode-selector button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: rgba(32,215,231,.11); box-shadow: 0 0 9px rgba(32,215,231,.14); }
+.cooling-mode-selector button[aria-pressed="true"]:last-child { border-color: var(--red); color: var(--red); background: rgba(255,82,105,.1); }
+.brake-bias-control { grid-template-columns: 23px minmax(0,1fr) 23px; align-items: center; }
+.brake-bias-control b { color: #dce8eb; font: 900 9px var(--font-mono); text-align: center; }
+.brake-bias-control button:hover:not(:disabled) { border-color: var(--yellow); color: var(--yellow); }
+.cooling-mode-selector button:disabled, .brake-bias-control button:disabled { cursor: not-allowed; opacity: .3; }
 .visual-control, .pit-tyre-control { min-width: 0; padding: 0 6px 2px; border-right: 1px solid var(--line); }
 .pit-tyre-control { padding-right: 0; border-right: 0; }
 .visual-control header, .pit-tyre-control header { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 8px; color: var(--muted); font: 10px var(--font-mono); letter-spacing: .08em; }
@@ -548,6 +563,14 @@ button { font: inherit; }
 .thermal-wheel--rr { right: 3px; bottom: 2px; }
 .thermal-wheel--fl::after, .thermal-wheel--rl::after { left: 100%; }
 .thermal-wheel--fr::after, .thermal-wheel--rr::after { right: 100%; transform: rotate(180deg); }
+.brake-heat { --thermal-color: #ff9d4d; position: absolute; z-index: 4; display: flex; align-items: center; gap: 2px; color: var(--thermal-color); font: 800 6px var(--font-mono); text-shadow: 0 0 5px color-mix(in srgb, var(--thermal-color) 45%, transparent); }
+.brake-heat b { color: #cbd9dd; font-size: 6px; font-weight: 800; }
+.brake-heat--frontLeft { top: 16px; left: calc(50% - 38px); }
+.brake-heat--frontRight { top: 16px; right: calc(50% - 38px); flex-direction: row-reverse; }
+.brake-heat--rearLeft { bottom: 13px; left: calc(50% - 38px); }
+.brake-heat--rearRight { right: calc(50% - 38px); bottom: 13px; flex-direction: row-reverse; }
+.brake-heat[data-state="critical"] { animation: thermal-pulse 1s ease-in-out infinite; }
+@keyframes thermal-pulse { 50% { opacity: .52; filter: drop-shadow(0 0 4px currentColor); } }
 .vehicle-thermal__systems { min-width: 0; display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); align-items: stretch; border-top: 1px solid rgba(148,177,190,.12); }
 .system-temperature { --thermal-color: var(--green); min-width: 0; position: relative; display: grid; grid-template-columns: 14px minmax(0,1fr); grid-template-rows: 11px 13px; align-items: center; column-gap: 3px; padding: 2px 4px 1px; border-right: 1px solid rgba(148,177,190,.1); color: var(--thermal-color); }
 .system-temperature:last-child { border-right: 0; }
@@ -565,6 +588,14 @@ button { font: inherit; }
 .car-health > i { height: 2px; margin-top: 3px; }
 .engineer-panel { padding: 7px 10px; }
 .engineer-panel > .eyebrow { font-size: 8px; }
+.thermal-alert { --alert-color: var(--yellow); min-width: 0; display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 7px; margin-top: 4px; padding: 4px 5px 4px 7px; border-left: 2px solid var(--alert-color); background: linear-gradient(90deg, color-mix(in srgb, var(--alert-color) 14%, transparent), transparent); }
+.thermal-alert--critical { --alert-color: var(--red); }
+.thermal-alert > span { min-width: 0; }
+.thermal-alert b, .thermal-alert small { display: block; overflow: hidden; font-family: var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
+.thermal-alert b { color: var(--alert-color); font-size: 8px; }
+.thermal-alert small { margin-top: 2px; color: #8ca2aa; font-size: 6px; }
+.thermal-alert button { height: 24px; padding: 0 7px; border: 1px solid color-mix(in srgb, var(--alert-color) 65%, #32434b); border-radius: 12px; color: var(--alert-color); background: color-mix(in srgb, var(--alert-color) 9%, #071116); cursor: pointer; font: 900 7px var(--font-mono); white-space: nowrap; }
+.thermal-alert button:hover { box-shadow: 0 0 10px color-mix(in srgb, var(--alert-color) 28%, transparent); filter: brightness(1.12); }
 .event-list { gap: 2px; margin-top: 4px; }
 .event-row { grid-template-columns: 30px 1fr; gap: 5px; padding: 3px 0; }
 .event-row time { font-size: 7px; }
@@ -605,6 +636,8 @@ button { font: inherit; }
 @media (max-width: 1380px) and (min-width: 901px) {
   .broadcast-strip { grid-template-columns: 88px 112px 126px minmax(145px, 1fr); }
   .broadcast-conditions { display: none; }
+  .operations-launcher > button { width: 30px; justify-content: center; padding: 0; }
+  .operations-launcher > button span { display: none; }
   .visual-control button { max-width: 50px; }
   .visual-control button strong { font-size: 9px; }
   .pit-tyre-control .tyre-select-button { width: 40px; height: 40px; }

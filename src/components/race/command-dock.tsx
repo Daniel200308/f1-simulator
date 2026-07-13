@@ -1,6 +1,6 @@
 "use client";
 
-import type { EnergyMode, PaceMode, RaceCarState, TyreCompound, TyreMode } from "@/domain/race";
+import type { CoolingMode, EnergyMode, PaceMode, RaceCarState, TyreCompound, TyreMode } from "@/domain/race";
 import { TyreBadge } from "@/components/race/tyre-badge";
 import { DRIVER_BY_ID, PLAYER_CAR_IDS, TEAM_BY_ID } from "@/fixtures/grid";
 import { useRaceStore } from "@/store/race-store";
@@ -30,6 +30,8 @@ export interface CommandDockControls {
   setPace: (carId: string, mode: PaceMode) => void;
   setEnergyMode: (carId: string, mode: EnergyMode) => void;
   setTyreMode: (carId: string, mode: TyreMode) => void;
+  setCoolingMode: (carId: string, mode: CoolingMode) => void;
+  setBrakeBias: (carId: string, brakeBiasPercent: number) => void;
   box: (carId: string, compound: TyreCompound) => void;
   stayOut: (carId: string) => void;
 }
@@ -44,7 +46,7 @@ export function CommandDock({ car, controls, pitLaneOpen }: { car?: RaceCarState
   const setSelectedCarId = useRaceStore((state) => state.setSelectedCarId);
   const driver = car ? DRIVER_BY_ID.get(car.driverId) : undefined;
   const team = car ? TEAM_BY_ID.get(car.teamId) : undefined;
-  const enabled = Boolean(car && team?.isPlayer);
+  const enabled = Boolean(car && team?.isPlayer && !car.finished && car.incidentStatus !== "RETIRED");
   const tyreSetsFor = (compound: TyreCompound) => car?.tyreSets?.filter((set) => set.compound === compound) ?? [];
   const availableSetsFor = (compound: TyreCompound) => tyreSetsFor(compound).filter((set) => set.status === "AVAILABLE").length;
 
@@ -73,6 +75,28 @@ export function CommandDock({ car, controls, pitLaneOpen }: { car?: RaceCarState
           })}
         </div>
         <small className={enabled ? "command-link-status is-live" : "command-link-status"}>{enabled ? `${driver?.shortName} · ${team?.shortName} LINKED` : "SELECT PLAYER CAR"}</small>
+        <div className="vehicle-command-mini">
+          <span>COOLING</span>
+          <div className="cooling-mode-selector" role="group" aria-label="Vehicle cooling mode">
+            {(["NORMAL", "LIFT_AND_COAST", "MAX_COOLING"] as const).map((mode) => (
+              <button
+                aria-label={`Set cooling ${mode.replaceAll("_", " ")}`}
+                aria-pressed={car?.coolingMode === mode}
+                disabled={!enabled}
+                key={mode}
+                onClick={() => car && controls.setCoolingMode(car.carId, mode)}
+                title={mode.replaceAll("_", " ")}
+                type="button"
+              >{mode === "NORMAL" ? "N" : mode === "LIFT_AND_COAST" ? "L+C" : "MAX"}</button>
+            ))}
+          </div>
+          <span>BRAKE BIAS</span>
+          <div className="brake-bias-control">
+            <button aria-label="Move brake bias rearward" disabled={!enabled || (car?.brakeBiasPercent ?? 50) <= 50} onClick={() => car && controls.setBrakeBias(car.carId, car.brakeBiasPercent - 0.5)} type="button">−</button>
+            <b>{(car?.brakeBiasPercent ?? 56.5).toFixed(1)}%</b>
+            <button aria-label="Move brake bias forward" disabled={!enabled || (car?.brakeBiasPercent ?? 64) >= 64} onClick={() => car && controls.setBrakeBias(car.carId, car.brakeBiasPercent + 0.5)} type="button">+</button>
+          </div>
+        </div>
       </div>
 
       <section className="visual-control visual-control--pace">
@@ -96,7 +120,7 @@ export function CommandDock({ car, controls, pitLaneOpen }: { car?: RaceCarState
           const available = availableSetsFor(compound);
           const isScheduled = car?.scheduledPitCompound === compound;
           return <button aria-label={`Box for ${compound}, ${available} sets available`} aria-pressed={isScheduled} className="tyre-select-button" disabled={!enabled || car?.pitStatus !== "TRACK" || !pitLaneOpen || (available === 0 && !isScheduled)} key={compound} onClick={() => car && controls.box(car.carId, compound)} title={`${compound} · ${available} fresh set${available === 1 ? "" : "s"}`} type="button"><TyreBadge compound={compound} size="large" /></button>;
-        })}<button aria-label="Stay out" className="stay-out-control" disabled={!enabled || !car?.scheduledPitCompound} onClick={() => car && controls.stayOut(car.carId)} title="Cancel pit call" type="button"><b>×</b></button></div>
+        })}<button aria-label="Stay out" className="stay-out-control" disabled={!enabled || car?.pitStatus !== "TRACK" || !car?.scheduledPitCompound} onClick={() => car && controls.stayOut(car.carId)} title="Cancel pit call" type="button"><b>×</b></button></div>
       </section>
     </div>
   );

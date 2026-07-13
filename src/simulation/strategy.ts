@@ -28,7 +28,7 @@ export function strategyRecommendation(snapshot: RaceSnapshot, car: RaceCarState
   const measuredWear = car.tyreAgeLaps > 1 ? (100 - car.tyreLife) / car.tyreAgeLaps : EXPECTED_WEAR_PER_LAP[car.tyreCompound];
   const wearPerLap = Math.max(2.2, measuredWear);
   const estimatedTyreLapsRemaining = Math.max(1, Math.floor((car.tyreLife - 28) / wearPerLap));
-  const remainingRaceLaps = SILVERSTONE_CIRCUIT.totalLaps - car.currentLap;
+  const remainingRaceLaps = car.finished ? 0 : Math.max(0, SILVERSTONE_CIRCUIT.totalLaps - car.currentLap + 1);
   const pitWindowStart = Math.min(SILVERSTONE_CIRCUIT.totalLaps, Math.max(car.currentLap, car.currentLap + estimatedTyreLapsRemaining - 2));
   const pitWindowEnd = Math.min(SILVERSTONE_CIRCUIT.totalLaps, pitWindowStart + 3);
   const baselineCompound: TyreCompound = snapshot.weather.trackWetness > 0.62

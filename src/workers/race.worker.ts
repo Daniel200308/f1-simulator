@@ -1,7 +1,7 @@
 /// <reference lib="webworker" />
 
 import type { RaceSnapshot, SimulationSpeed } from "@/domain/race";
-import { cancelCarPit, createInitialSnapshot, FIXED_STEP_SECONDS, setCarEnergyMode, setCarPace, setCarPit, setCarStartingTyre, setCarTyreMode, stepSnapshot } from "@/simulation/engine";
+import { cancelCarPit, createInitialSnapshot, FIXED_STEP_SECONDS, setCarBrakeBias, setCarCoolingMode, setCarEnergyMode, setCarPace, setCarPit, setCarStartingTyre, setCarTyreMode, stepSnapshot } from "@/simulation/engine";
 import type { WorkerCommand, WorkerEvent } from "@/simulation/protocol";
 import { criticalRaceControlTransition } from "@/simulation/race-control-transitions";
 
@@ -17,10 +17,12 @@ let autoPauseReason: string | null = null;
 let accumulator = 0;
 let previousWallTime = performance.now();
 let previousPublishTime = 0;
+let lastPublishedTick = -1;
 
 function publish(): void {
   const event: WorkerEvent = { type: "SNAPSHOT", snapshot, speed, paused, autoPauseEnabled, autoPauseReason };
   context.postMessage(event);
+  lastPublishedTick = snapshot.tick;
 }
 
 function pulse(now: number): void {
@@ -46,7 +48,10 @@ function pulse(now: number): void {
     }
   }
 
-  if (now - previousPublishTime >= 50 || snapshot.status === "FINISHED") {
+  const snapshotAdvanced = snapshot.tick !== lastPublishedTick;
+  const livePublishDue = !paused && snapshot.status !== "FINISHED" && now - previousPublishTime >= 50;
+  const settledSnapshotChanged = snapshotAdvanced && (paused || snapshot.status === "FINISHED");
+  if (livePublishDue || settledSnapshotChanged) {
     publish();
     previousPublishTime = now;
   }
@@ -96,6 +101,14 @@ context.onmessage = (message: MessageEvent<WorkerCommand>) => {
         break;
       case "SET_ENERGY_MODE":
         snapshot = setCarEnergyMode(snapshot, message.data.carId, message.data.mode);
+        publish();
+        break;
+      case "SET_COOLING_MODE":
+        snapshot = setCarCoolingMode(snapshot, message.data.carId, message.data.mode);
+        publish();
+        break;
+      case "SET_BRAKE_BIAS":
+        snapshot = setCarBrakeBias(snapshot, message.data.carId, message.data.brakeBiasPercent);
         publish();
         break;
       case "BOX":

@@ -442,7 +442,7 @@ export function calculateLiveStrategy(
   if (!car) throw new RangeError(`Unknown carId: ${carId}.`);
 
   const totalLaps = context.totalLaps ?? SILVERSTONE_CIRCUIT.totalLaps;
-  const remainingLaps = Math.max(0, totalLaps - car.currentLap);
+  const remainingLaps = car.finished ? 0 : Math.max(0, totalLaps - car.currentLap + 1);
   const doubleStack = doubleStackProjection(context, car);
   const byRaceControl = Object.fromEntries(
     RACE_CONTROLS.map((control) => [control, estimateLivePitLossSeconds(control, doubleStack.queueDelaySeconds)]),
