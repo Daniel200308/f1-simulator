@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-import type { SimulationSpeed, TyreCompound } from "@/domain/race";
+import type { TyreCompound } from "@/domain/race";
 import { CarStatusPanel } from "@/components/race/car-status";
 import { CommandDock } from "@/components/race/command-dock";
 import { RaceMap } from "@/components/race/race-map";
+import { RaceTopbar, type RaceStartPhase } from "@/components/race/race-topbar";
 import { TimingTower } from "@/components/race/timing-tower";
 import { StrategyTimeline } from "@/components/race/strategy-timeline";
 import { PLAYER_CAR_IDS } from "@/fixtures/grid";
@@ -14,21 +15,12 @@ import { DEFAULT_SEED, FIXED_STEP_SECONDS } from "@/simulation/engine";
 import { SILVERSTONE_CIRCUIT } from "@/simulation/track";
 import { useRaceStore } from "@/store/race-store";
 
-const SPEEDS: readonly SimulationSpeed[] = [1, 2, 4, 8, 16];
 const PIT_COMPOUNDS: readonly TyreCompound[] = ["SOFT", "MEDIUM", "HARD", "INTERMEDIATE", "WET"];
-type StartPhase = "MENU" | "LIGHTS" | "GO" | "RACING";
 const TYRE_SHORT: Record<TyreCompound, string> = { SOFT: "S", MEDIUM: "M", HARD: "H", INTERMEDIATE: "I", WET: "W" };
-
-function formatTime(seconds: number): string {
-  const hours = Math.floor(seconds / 3_600);
-  const minutes = Math.floor((seconds % 3_600) / 60);
-  const secs = Math.floor(seconds % 60);
-  return [hours, minutes, secs].map((value) => value.toString().padStart(2, "0")).join(":");
-}
 
 export function RaceShell() {
   const controls = useRaceWorker();
-  const [startPhase, setStartPhase] = useState<StartPhase>("MENU");
+  const [startPhase, setStartPhase] = useState<RaceStartPhase>("MENU");
   const [lightsOn, setLightsOn] = useState(0);
   const [startingTyres, setStartingTyres] = useState<Record<string, TyreCompound>>({ [PLAYER_CAR_IDS[0]]: "MEDIUM", [PLAYER_CAR_IDS[1]]: "MEDIUM" });
   const startTimers = useRef<number[]>([]);
@@ -40,10 +32,7 @@ export function RaceShell() {
   const error = useRaceStore((state) => state.error);
   const snapshotCount = useRaceStore((state) => state.snapshotCount);
   const selectedCarId = useRaceStore((state) => state.selectedCarId);
-  const leader = useMemo(() => snapshot?.cars.find((car) => car.racePosition === 1), [snapshot]);
   const selectedCar = snapshot?.cars.find((car) => car.carId === selectedCarId);
-  const sectorConditions = new Set(snapshot?.weather.sectors?.map((sector) => sector.condition) ?? []);
-  const weatherLabel = sectorConditions.size > 1 ? "MIXED" : sectorConditions.size === 1 ? [...sectorConditions][0].replace("_", " ") : (snapshot?.weather.condition ?? "DRY").replace("_", " ");
   const raceControlLabel = snapshot?.raceControl === "YELLOW"
     ? `YELLOW S${snapshot.yellowSector ?? "—"}`
     : snapshot?.raceControl === "SAFETY_CAR"
@@ -103,31 +92,19 @@ export function RaceShell() {
           </div>
         </div>
       )}
-      <header className="topbar">
-        <div className="brand-block"><i className="brand-mark">P</i><div><strong>PROJECT PITWALL</strong><small>LIVE RACE OPERATIONS</small></div></div>
-        <div className="broadcast-strip">
-          <div className="broadcast-session"><span>ROUND 09</span><strong>RACE</strong><em>GBR</em></div>
-          <div className="broadcast-lap"><span>LAP</span><strong>{leader?.currentLap ?? 1}</strong><em>/ {SILVERSTONE_CIRCUIT.totalLaps}</em><i><b style={{ width: `${((leader?.currentLap ?? 1) / SILVERSTONE_CIRCUIT.totalLaps) * 100}%` }} /></i></div>
-          <div className="broadcast-clock"><span>RACE TIME</span><strong>{formatTime(snapshot?.elapsedTime ?? 0)}</strong></div>
-          <div className={`broadcast-status condition--${(snapshot?.raceControl ?? "GREEN").toLowerCase()}`}><span>RACE CONTROL</span><strong><i className="status-flag" /> {startPhase === "RACING" ? raceControlLabel : "GRID"}</strong><small>{snapshot?.pitLaneOpen === false ? "PIT CLOSED" : "PIT OPEN"}</small></div>
-          <div className="broadcast-conditions"><span><small>TRACK</small><strong>{Math.round(snapshot?.weather.trackTemperature ?? 31)}°</strong></span><span><small>WEATHER</small><strong>{weatherLabel}</strong></span></div>
-        </div>
-        <div className="transport">
-          <button aria-label={paused ? "Resume race" : "Pause race"} className="pause-button" disabled={startPhase !== "RACING"} onClick={paused ? controls.play : controls.pause} title={paused ? "Resume race" : "Pause race"} type="button">{paused ? "▶" : "Ⅱ"}</button>
-          <button
-            aria-label={`Important race-control event auto pause ${autoPauseEnabled ? "on" : "off"}`}
-            aria-pressed={autoPauseEnabled}
-            className="auto-pause-toggle"
-            onClick={() => controls.setAutoPause(!autoPauseEnabled)}
-            title={autoPauseReason ?? "Pause on yellow, VSC, safety car and restart calls"}
-            type="button"
-          ><i /><span>AUTO</span><small>EVENT HOLD</small></button>
-          <div className="speed-buttons">
-            {SPEEDS.map((value) => <button className={speed === value ? "is-active" : ""} key={value} onClick={() => controls.setSpeed(value)} type="button">{value}×</button>)}
-          </div>
-          <button className="reset-button" onClick={resetToMenu} type="button">RESET</button>
-        </div>
-      </header>
+      <RaceTopbar
+        snapshot={snapshot}
+        speed={speed}
+        paused={paused}
+        autoPauseEnabled={autoPauseEnabled}
+        autoPauseReason={autoPauseReason}
+        startPhase={startPhase}
+        onPlay={controls.play}
+        onPause={controls.pause}
+        onSetAutoPause={controls.setAutoPause}
+        onSetSpeed={controls.setSpeed}
+        onReset={resetToMenu}
+      />
 
       <section className="race-grid">
         <TimingTower />

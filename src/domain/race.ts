@@ -192,6 +192,12 @@ export interface RaceCarState {
   activeTyreSetId: string;
   scheduledPitTyreSetId: string | null;
   brakeTemperature: number;
+  /** Combined engine/turbo cooling-loop temperature, in degrees Celsius. */
+  powerUnitTemperature: number;
+  /** Gearbox oil/casing temperature, in degrees Celsius. */
+  gearboxTemperature: number;
+  /** Hybrid energy-store pack temperature, in degrees Celsius. */
+  energyStoreTemperature: number;
   fuelRemainingKg: number;
   paceMode: PaceMode;
   tyreMode: TyreMode;

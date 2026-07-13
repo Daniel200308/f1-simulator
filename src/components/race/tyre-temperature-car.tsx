@@ -1,7 +1,11 @@
+import Image from "next/image";
+import { BatteryCharging, CircleGauge, Cog, Disc3, Thermometer } from "lucide-react";
+import type { CSSProperties, ReactNode } from "react";
+
 import type { TyreCompound, TyreTemperatureState } from "@/domain/race";
 
 interface ThermalBand {
-  label: "COLD" | "WARMING" | "OPTIMAL" | "HOT" | "OVERHEAT";
+  label: "COLD" | "WARMING" | "OPTIMAL" | "HOT" | "CRITICAL";
   color: string;
 }
 
@@ -13,13 +17,21 @@ const IDEAL_TEMPERATURES: Record<TyreCompound, readonly [number, number]> = {
   WET: [60, 80],
 };
 
-function thermalBand(temperature: number, compound: TyreCompound): ThermalBand {
+function tyreThermalBand(temperature: number, compound: TyreCompound): ThermalBand {
   const [minimum, maximum] = IDEAL_TEMPERATURES[compound];
   if (temperature < minimum - 8) return { label: "COLD", color: "#398cff" };
   if (temperature < minimum) return { label: "WARMING", color: "#20d7e7" };
   if (temperature <= maximum) return { label: "OPTIMAL", color: "#4bde95" };
   if (temperature <= maximum + 10) return { label: "HOT", color: "#f4d35e" };
-  return { label: "OVERHEAT", color: "#ff5269" };
+  return { label: "CRITICAL", color: "#ff5269" };
+}
+
+function systemThermalBand(temperature: number, thresholds: readonly [number, number, number]): ThermalBand {
+  const [coldBelow, hotAbove, criticalAbove] = thresholds;
+  if (temperature < coldBelow) return { label: "COLD", color: "#398cff" };
+  if (temperature <= hotAbove) return { label: "OPTIMAL", color: "#4bde95" };
+  if (temperature <= criticalAbove) return { label: "HOT", color: "#f4d35e" };
+  return { label: "CRITICAL", color: "#ff5269" };
 }
 
 function ThermalWheel({
@@ -33,62 +45,112 @@ function ThermalWheel({
   temperature: number;
   compound: TyreCompound;
 }) {
-  const band = thermalBand(temperature, compound);
+  const band = tyreThermalBand(temperature, compound);
   return (
     <span
       className={`thermal-wheel ${className}`}
-      data-temperature={temperature.toFixed(1)}
-      data-wheel={label}
-      style={{ color: band.color }}
-      title={`${label} ${temperature.toFixed(1)}°C · ${band.label.toLowerCase()}`}
+      data-state={band.label.toLowerCase()}
+      style={{ "--thermal-color": band.color } as CSSProperties}
+      title={`${label} tyre ${temperature.toFixed(1)}°C · ${band.label.toLowerCase()}`}
     >
       <small>{label}</small>
       <strong>{Math.round(temperature)}°</strong>
-      <i />
+      <i aria-hidden="true" />
     </span>
   );
 }
 
-function FormulaCarSilhouette() {
+function SystemTemperature({
+  icon,
+  label,
+  temperature,
+  thresholds,
+}: {
+  icon: ReactNode;
+  label: string;
+  temperature: number;
+  thresholds: readonly [number, number, number];
+}) {
+  const band = systemThermalBand(temperature, thresholds);
   return (
-    <svg aria-hidden="true" className="tyre-thermal__car" viewBox="0 0 48 82">
-      <path className="tyre-thermal__wing" d="M4 5h40v5H29l-2 5h-6l-2-5H4z" />
-      <path className="tyre-thermal__body" d="M24 5c3 0 4 6 4 13l5 10-2 14 5 17-4 12H16l-4-12 5-17-2-14 5-10c0-7 1-13 4-13z" />
-      <path className="tyre-thermal__floor" d="m15 31 5 5h8l5-5 4 30-8-3H19l-8 3z" />
-      <path className="tyre-thermal__cockpit" d="M24 23c4 0 6 5 5 12l-5 5-5-5c-1-7 1-12 5-12z" />
-      <path className="tyre-thermal__halo" d="M18 30c0-10 12-10 12 0M24 24v13" />
-      <rect className="tyre-thermal__tyre" x="3" y="18" width="8" height="18" rx="2" />
-      <rect className="tyre-thermal__tyre" x="37" y="18" width="8" height="18" rx="2" />
-      <rect className="tyre-thermal__tyre" x="2" y="54" width="9" height="20" rx="2" />
-      <rect className="tyre-thermal__tyre" x="37" y="54" width="9" height="20" rx="2" />
-      <path className="tyre-thermal__wing" d="M6 70h36v7H6z" />
-      <path className="tyre-thermal__spine" d="M24 13v53" />
-    </svg>
+    <span
+      className="system-temperature"
+      data-state={band.label.toLowerCase()}
+      style={{ "--thermal-color": band.color } as CSSProperties}
+      title={`${label} ${temperature.toFixed(1)}°C · ${band.label.toLowerCase()}`}
+    >
+      <i aria-hidden="true">{icon}</i>
+      <small>{label}</small>
+      <strong>{Math.round(temperature)}°</strong>
+      <b aria-hidden="true" />
+    </span>
   );
 }
 
-export function TyreTemperatureCar({ temperatures, compound }: { temperatures: TyreTemperatureState; compound: TyreCompound }) {
+interface VehicleThermalMapProps {
+  temperatures: TyreTemperatureState;
+  compound: TyreCompound;
+  brakeTemperature: number;
+  powerUnitTemperature: number;
+  gearboxTemperature: number;
+  energyStoreTemperature: number;
+}
+
+export function VehicleThermalMap({
+  temperatures,
+  compound,
+  brakeTemperature,
+  powerUnitTemperature,
+  gearboxTemperature,
+  energyStoreTemperature,
+}: VehicleThermalMapProps) {
   const [minimum, maximum] = IDEAL_TEMPERATURES[compound];
+  const wheelTemperatures = Object.values(temperatures);
+  const hottestTyre = Math.max(...wheelTemperatures);
+  const hottestBand = tyreThermalBand(hottestTyre, compound);
   const description = [
-    `Front left ${temperatures.frontLeft.toFixed(1)} degrees`,
-    `front right ${temperatures.frontRight.toFixed(1)} degrees`,
-    `rear left ${temperatures.rearLeft.toFixed(1)} degrees`,
-    `rear right ${temperatures.rearRight.toFixed(1)} degrees`,
+    `front left tyre ${temperatures.frontLeft.toFixed(1)} degrees`,
+    `front right tyre ${temperatures.frontRight.toFixed(1)} degrees`,
+    `rear left tyre ${temperatures.rearLeft.toFixed(1)} degrees`,
+    `rear right tyre ${temperatures.rearRight.toFixed(1)} degrees`,
+    `brakes ${brakeTemperature.toFixed(1)} degrees`,
+    `power unit ${powerUnitTemperature.toFixed(1)} degrees`,
+    `gearbox ${gearboxTemperature.toFixed(1)} degrees`,
+    `energy store ${energyStoreTemperature.toFixed(1)} degrees`,
   ].join(", ");
 
   return (
-    <div aria-label={`Live four-wheel tyre temperatures. ${description}`} className="tyre-thermal" role="img">
-      <div className="tyre-thermal__header">
-        <span>4-WHEEL TEMPS</span>
-        <b>{minimum}–{maximum}° OPT</b>
-      </div>
-      <div className="tyre-thermal__diagram">
+    <section aria-label={`Live vehicle temperatures. ${description}`} className="vehicle-thermal" role="img">
+      <header className="vehicle-thermal__header">
+        <span><Thermometer size={12} aria-hidden="true" /> LIVE THERMAL MAP</span>
+        <b style={{ color: hottestBand.color }}>{hottestBand.label}</b>
+        <small>{minimum}–{maximum}° TYRE WINDOW</small>
+      </header>
+
+      <div className="vehicle-thermal__stage">
         <ThermalWheel className="thermal-wheel--fl" compound={compound} label="FL" temperature={temperatures.frontLeft} />
         <ThermalWheel className="thermal-wheel--fr" compound={compound} label="FR" temperature={temperatures.frontRight} />
         <ThermalWheel className="thermal-wheel--rl" compound={compound} label="RL" temperature={temperatures.rearLeft} />
         <ThermalWheel className="thermal-wheel--rr" compound={compound} label="RR" temperature={temperatures.rearRight} />
-        <FormulaCarSilhouette />
+        <Image
+          alt=""
+          aria-hidden="true"
+          className="vehicle-thermal__car"
+          height={118}
+          priority
+          src="/assets/telemetry/formula-car-top.png"
+          unoptimized
+          width={71}
+        />
+        <span className="vehicle-thermal__core" aria-hidden="true"><CircleGauge size={11} /></span>
       </div>
-    </div>
+
+      <div className="vehicle-thermal__systems">
+        <SystemTemperature icon={<Disc3 size={12} />} label="BRAKE" thresholds={[350, 900, 1050]} temperature={brakeTemperature} />
+        <SystemTemperature icon={<CircleGauge size={12} />} label="PU" thresholds={[82, 118, 125]} temperature={powerUnitTemperature} />
+        <SystemTemperature icon={<Cog size={12} />} label="GBX" thresholds={[65, 110, 120]} temperature={gearboxTemperature} />
+        <SystemTemperature icon={<BatteryCharging size={12} />} label="E-STORE" thresholds={[18, 55, 63]} temperature={energyStoreTemperature} />
+      </div>
+    </section>
   );
 }

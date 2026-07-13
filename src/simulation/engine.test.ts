@@ -568,6 +568,133 @@ describe("race simulation", () => {
     }
   });
 
+  it("publishes live power-unit, gearbox and energy-store temperatures", () => {
+    const initial = createInitialSnapshot(6_060);
+    const startingCar = initial.cars[0];
+    const state = runTicks(6_060, 360);
+    const car = state.cars.find((candidate) => candidate.carId === startingCar.carId)!;
+
+    expect(startingCar.powerUnitTemperature).toBe(98);
+    expect(startingCar.gearboxTemperature).toBe(86);
+    expect(startingCar.energyStoreTemperature).toBe(43);
+    expect(Math.abs(car.powerUnitTemperature - startingCar.powerUnitTemperature)).toBeGreaterThan(0.2);
+    expect(Math.abs(car.gearboxTemperature - startingCar.gearboxTemperature)).toBeGreaterThan(0.2);
+    expect(Math.abs(car.energyStoreTemperature - startingCar.energyStoreTemperature)).toBeGreaterThan(0.2);
+  });
+
+  it("heats the power unit and energy store more under attack and deployment", () => {
+    const initial = createInitialSnapshot(7_171);
+    const carId = "mercedes-1";
+    const configure = (paceMode: "ATTACK" | "COOL", energyMode: "ATTACK" | "RECHARGE"): RaceSnapshot => ({
+      ...initial,
+      status: "RUNNING",
+      cars: initial.cars.map((car) => car.carId === carId
+        ? {
+          ...car,
+          reactionTime: 0,
+          currentSpeed: 245,
+          totalDistance: 4_500,
+          lapDistance: 4_500,
+          currentSegment: segmentIndexAtDistance(4_500),
+          paceMode,
+          energyMode,
+          batteryPercent: 100,
+        }
+        : { ...car, finished: true, finishTime: 0 }),
+    });
+    let attack = configure("ATTACK", "ATTACK");
+    let cooling = configure("COOL", "RECHARGE");
+    for (let index = 0; index < 280; index += 1) {
+      attack = stepSnapshot(attack);
+      cooling = stepSnapshot(cooling);
+    }
+    const attackCar = attack.cars.find((car) => car.carId === carId)!;
+    const coolingCar = cooling.cars.find((car) => car.carId === carId)!;
+
+    expect(attackCar.powerUnitTemperature).toBeGreaterThan(coolingCar.powerUnitTemperature + 3);
+    expect(attackCar.gearboxTemperature).toBeGreaterThan(coolingCar.gearboxTemperature + 2);
+    expect(attackCar.energyStoreTemperature).toBeGreaterThan(coolingCar.energyStoreTemperature + 3);
+  });
+
+  it("cools all three systems in the pit and responds to rain-cooled conditions", () => {
+    const initial = createInitialSnapshot(8_282);
+    const carId = "mercedes-1";
+    const hotCar = (car: RaceSnapshot["cars"][number]) => car.carId === carId
+      ? {
+        ...car,
+        reactionTime: 0,
+        currentSpeed: 0,
+        pitStatus: "PIT_STOP" as const,
+        pitStopTargetSeconds: 1_000,
+        powerUnitTemperature: 128,
+        gearboxTemperature: 142,
+        energyStoreTemperature: 78,
+      }
+      : { ...car, finished: true, finishTime: 0 };
+    const dryWeather = {
+      ...initial.weather,
+      condition: "DRY" as const,
+      rainIntensity: 0,
+      trackWetness: 0,
+      airTemperature: 24,
+      trackTemperature: 36,
+      surfaceZones: initial.weather.surfaceZones!.map((zone) => ({ ...zone, rainIntensity: 0, wetness: 0, standingWater: 0, dryingLine: 1 })),
+    };
+    const wetWeather = {
+      ...dryWeather,
+      condition: "HEAVY_RAIN" as const,
+      rainIntensity: 0.9,
+      trackWetness: 0.92,
+      airTemperature: 17,
+      trackTemperature: 19,
+      surfaceZones: dryWeather.surfaceZones.map((zone) => ({ ...zone, rainIntensity: 0.9, wetness: 0.92, standingWater: 0.3, dryingLine: 0.02 })),
+    };
+    let dry: RaceSnapshot = { ...initial, status: "RUNNING", weather: dryWeather, cars: initial.cars.map(hotCar) };
+    let wet: RaceSnapshot = { ...initial, status: "RUNNING", weather: wetWeather, cars: initial.cars.map(hotCar) };
+    for (let index = 0; index < 240; index += 1) {
+      dry = stepSnapshot(dry);
+      wet = stepSnapshot(wet);
+    }
+    const dryCar = dry.cars.find((car) => car.carId === carId)!;
+    const wetCar = wet.cars.find((car) => car.carId === carId)!;
+
+    expect(wetCar.powerUnitTemperature).toBeLessThan(128);
+    expect(wetCar.gearboxTemperature).toBeLessThan(142);
+    expect(wetCar.energyStoreTemperature).toBeLessThan(78);
+    expect(wetCar.powerUnitTemperature).toBeLessThan(dryCar.powerUnitTemperature);
+    expect(wetCar.gearboxTemperature).toBeLessThan(dryCar.gearboxTemperature);
+    expect(wetCar.energyStoreTemperature).toBeLessThan(dryCar.energyStoreTemperature);
+  });
+
+  it("keeps power-unit telemetry deterministic, bounded and checksum-visible", () => {
+    const first = runTicks(9_393, 600);
+    const second = runTicks(9_393, 600);
+    expect(first.cars.map((car) => [car.powerUnitTemperature, car.gearboxTemperature, car.energyStoreTemperature]))
+      .toEqual(second.cars.map((car) => [car.powerUnitTemperature, car.gearboxTemperature, car.energyStoreTemperature]));
+    for (const car of first.cars) {
+      expect(car.powerUnitTemperature).toBeGreaterThanOrEqual(68);
+      expect(car.powerUnitTemperature).toBeLessThanOrEqual(140);
+      expect(car.gearboxTemperature).toBeGreaterThanOrEqual(50);
+      expect(car.gearboxTemperature).toBeLessThanOrEqual(150);
+      expect(car.energyStoreTemperature).toBeGreaterThanOrEqual(18);
+      expect(car.energyStoreTemperature).toBeLessThanOrEqual(85);
+    }
+
+    const initial = createInitialSnapshot(9_393);
+    const alteredCars = initial.cars.map((car, index) => index === 0 ? { ...car, powerUnitTemperature: car.powerUnitTemperature + 1 } : car);
+    expect(checksumFor(0, initial.cars, initial.weather)).not.toBe(checksumFor(0, alteredCars, initial.weather));
+    const corrected = stepSnapshot({
+      ...initial,
+      status: "RUNNING",
+      cars: initial.cars.map((car, index) => index === 0
+        ? { ...car, powerUnitTemperature: 999, gearboxTemperature: -999, energyStoreTemperature: 999 }
+        : car),
+    }).cars[0];
+    expect(corrected.powerUnitTemperature).toBeLessThanOrEqual(140);
+    expect(corrected.gearboxTemperature).toBeGreaterThanOrEqual(50);
+    expect(corrected.energyStoreTemperature).toBeLessThanOrEqual(85);
+  });
+
   it("builds rain and track wetness during the forecast weather window", () => {
     const state = runTicks(20260712, 5_000);
     expect(state.weather.radarCells).toHaveLength(24);
