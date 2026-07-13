@@ -40,6 +40,8 @@ export function RaceShell() {
   const selectedCarId = useRaceStore((state) => state.selectedCarId);
   const leader = useMemo(() => snapshot?.cars.find((car) => car.racePosition === 1), [snapshot]);
   const selectedCar = snapshot?.cars.find((car) => car.carId === selectedCarId);
+  const sectorConditions = new Set(snapshot?.weather.sectors?.map((sector) => sector.condition) ?? []);
+  const weatherLabel = sectorConditions.size > 1 ? "MIXED" : sectorConditions.size === 1 ? [...sectorConditions][0].replace("_", " ") : (snapshot?.weather.condition ?? "DRY").replace("_", " ");
   const raceControlLabel = snapshot?.raceControl === "YELLOW"
     ? `YELLOW S${snapshot.yellowSector ?? "—"}`
     : snapshot?.raceControl === "SAFETY_CAR"
@@ -106,7 +108,7 @@ export function RaceShell() {
           <div className="broadcast-lap"><span>LAP</span><strong>{leader?.currentLap ?? 1}</strong><em>/ {SILVERSTONE_CIRCUIT.totalLaps}</em><i><b style={{ width: `${((leader?.currentLap ?? 1) / SILVERSTONE_CIRCUIT.totalLaps) * 100}%` }} /></i></div>
           <div className="broadcast-clock"><span>RACE TIME</span><strong>{formatTime(snapshot?.elapsedTime ?? 0)}</strong></div>
           <div className={`broadcast-status condition--${(snapshot?.raceControl ?? "GREEN").toLowerCase()}`}><span>RACE CONTROL</span><strong><i className="status-flag" /> {startPhase === "RACING" ? raceControlLabel : "GRID"}</strong><small>{snapshot?.pitLaneOpen === false ? "PIT CLOSED" : "PIT OPEN"}</small></div>
-          <div className="broadcast-conditions"><span><small>TRACK</small><strong>{Math.round(snapshot?.weather.trackTemperature ?? 31)}°</strong></span><span><small>WEATHER</small><strong>{(snapshot?.weather.condition ?? "DRY").replace("_", " ")}</strong></span></div>
+          <div className="broadcast-conditions"><span><small>TRACK</small><strong>{Math.round(snapshot?.weather.trackTemperature ?? 31)}°</strong></span><span><small>WEATHER</small><strong>{weatherLabel}</strong></span></div>
         </div>
         <div className="transport">
           <button className="pause-button" disabled={startPhase !== "RACING"} onClick={paused ? controls.play : controls.pause} type="button">{paused ? "▶" : "Ⅱ"}</button>

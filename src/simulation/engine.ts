@@ -4,6 +4,7 @@ import { buildAiStrategyDecision } from "@/simulation/ai-strategy";
 import { signedNoise } from "@/simulation/random";
 import { telemetrySpeedAtDistance } from "@/simulation/silverstone-telemetry";
 import { normalizeLapDistance, sectorAtDistance, segmentIndexAtDistance, SILVERSTONE_CIRCUIT, SILVERSTONE_CORNERS } from "@/simulation/track";
+import { createSpatialWeather, effectiveWaterAtDistance, updateSpatialWeather, WEATHER_SURFACE_ZONE_COUNT } from "@/simulation/weather";
 
 export const FIXED_STEP_SECONDS = 0.1;
 export const DEFAULT_SEED = 20_260_712;
@@ -157,19 +158,13 @@ function createCar(driverId: string, index: number): RaceCarState {
 
 export function createInitialSnapshot(seed = DEFAULT_SEED, status: RaceStatus = "PAUSED"): RaceSnapshot {
   const cars = DRIVERS.map((driver, index) => createCar(driver.id, index));
+  const weather = createSpatialWeather(seed);
   return {
     seed,
     tick: 0,
     elapsedTime: 0,
     status,
-    weather: {
-      condition: "DRY",
-      rainIntensity: 0,
-      trackWetness: 0,
-      airTemperature: 22,
-      trackTemperature: 31,
-      forecastRainInMinutes: Math.ceil((180 + Math.abs(seed % 180)) / 60),
-    },
+    weather,
     raceControl: "GREEN",
     raceControlTimer: 0,
     yellowSector: null,
@@ -179,7 +174,7 @@ export function createInitialSnapshot(seed = DEFAULT_SEED, status: RaceStatus = 
     events: [],
     radioMessages: [],
     cars,
-    checksum: checksumFor(0, cars),
+    checksum: checksumFor(0, cars, weather),
   };
 }
 
@@ -212,11 +207,13 @@ function targetSpeedKph(car: RaceCarState, index: number, seed: number, tick: nu
   return Math.max(65, telemetryTarget * performance);
 }
 
-function tyreTemperatureTarget(car: RaceCarState): number {
+function tyreTemperatureTarget(car: RaceCarState, localWater = 0): number {
   const segment = SILVERSTONE_CIRCUIT.segments[car.currentSegment];
   const segmentLoad = segment.kind === "FAST" ? 3 : segment.kind === "MEDIUM" ? 1 : segment.kind === "SLOW" ? -1 : -3;
   const tyreModeOffset = car.tyreMode === "GRIP" ? 3 : car.tyreMode === "SAVE" ? -3 : car.tyreMode === "TEMPERATURE" ? -6 : 0;
-  return PACE_TEMPERATURE[car.paceMode] + COMPOUND_TEMPERATURE[car.tyreCompound] + segmentLoad + tyreModeOffset;
+  const wetCompound = car.tyreCompound === "INTERMEDIATE" || car.tyreCompound === "WET";
+  const surfaceOffset = wetCompound ? (1 - localWater) * 14 : -localWater * 8;
+  return PACE_TEMPERATURE[car.paceMode] + COMPOUND_TEMPERATURE[car.tyreCompound] + segmentLoad + tyreModeOffset + surfaceOffset;
 }
 
 function withPositionData(car: RaceCarState): RaceCarState {
@@ -358,27 +355,19 @@ function withTimingData(previous: RaceCarState, next: RaceCarState, elapsedTime:
   };
 }
 
-function updateWeather(previous: WeatherState, elapsedTime: number, seed: number): WeatherState {
-  const rainStart = 180 + Math.abs(seed % 180);
-  const rainEnd = rainStart + 620;
-  const insideRainWindow = elapsedTime >= rainStart && elapsedTime <= rainEnd;
-  const rainProgress = insideRainWindow ? (elapsedTime - rainStart) / (rainEnd - rainStart) : 0;
-  const rainShape = insideRainWindow ? Math.sin(rainProgress * Math.PI) : 0;
-  const variation = insideRainWindow ? signedNoise(seed, 9_991, Math.floor(elapsedTime / 45)) * 0.12 : 0;
-  const targetRain = Math.max(0, Math.min(1, rainShape * 0.82 + variation));
-  const rainIntensity = previous.rainIntensity + (targetRain - previous.rainIntensity) * 0.015;
-  const dryingRate = rainIntensity < 0.04 ? 0.00075 : 0.00012;
-  const trackWetness = Math.max(0, Math.min(1, previous.trackWetness + (rainIntensity * 0.006 - dryingRate) * FIXED_STEP_SECONDS));
-  const condition = rainIntensity > 0.58 ? "HEAVY_RAIN" : rainIntensity > 0.08 ? "LIGHT_RAIN" : elapsedTime > rainStart - 120 && elapsedTime < rainEnd ? "CLOUDY" : "DRY";
-  const forecastRainInMinutes = elapsedTime < rainStart ? Math.max(0, Math.ceil((rainStart - elapsedTime) / 60)) : rainIntensity > 0.04 ? 0 : null;
-  return {
-    condition,
-    rainIntensity,
-    trackWetness,
-    airTemperature: 22 - rainIntensity * 3.5,
-    trackTemperature: 31 - rainIntensity * 9 - trackWetness * 4,
-    forecastRainInMinutes,
-  };
+function surfaceTrafficForCars(cars: readonly RaceCarState[]): number[] {
+  const traffic = Array.from({ length: WEATHER_SURFACE_ZONE_COUNT }, () => 0.08);
+  for (const car of cars) {
+    if (car.finished || car.pitStatus !== "TRACK") continue;
+    const distanceCovered = Math.max(24, car.currentSpeed / 3.6);
+    const samples = Math.max(2, Math.ceil(distanceCovered / 24));
+    for (let sample = 0; sample <= samples; sample += 1) {
+      const distance = normalizeLapDistance(car.lapDistance - distanceCovered + (distanceCovered * sample) / samples);
+      const zoneIndex = Math.min(WEATHER_SURFACE_ZONE_COUNT - 1, Math.floor((distance / SILVERSTONE_CIRCUIT.lengthMeters) * WEATHER_SURFACE_ZONE_COUNT));
+      traffic[zoneIndex] = Math.min(1, traffic[zoneIndex] + 0.16);
+    }
+  }
+  return traffic;
 }
 
 function incidentSeverity(status: "SPUN" | "DAMAGED" | "RETIRED"): { control: RaceControlStatus; duration: number } {
@@ -417,7 +406,8 @@ function updateIncidents(snapshot: RaceSnapshot, weather: WeatherState, tick: nu
       if (car.finished || car.incidentStatus !== "RUNNING" || car.pitStatus !== "TRACK") return car;
       const tyreRisk = Math.max(0, 35 - car.tyreLife) / 18;
       const speedRisk = car.currentSpeed > 270 ? 0.55 : 0;
-      const risk = 0.000018 * (1 + weather.trackWetness * 7 + tyreRisk + speedRisk);
+      const localWater = effectiveWaterAtDistance(weather, car.lapDistance, SILVERSTONE_CIRCUIT.lengthMeters);
+      const risk = 0.000018 * (1 + localWater * 7 + tyreRisk + speedRisk);
       const roll = (signedNoise(snapshot.seed, 40_000 + index, tick) + 1) / 2;
       if (roll >= risk) return car;
 
@@ -543,13 +533,20 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
   const tick = snapshot.tick + 1;
   const elapsedTime = snapshot.elapsedTime + FIXED_STEP_SECONDS;
   const raceDistance = SILVERSTONE_CIRCUIT.totalLaps * SILVERSTONE_CIRCUIT.lengthMeters;
-  const weather = updateWeather(snapshot.weather, elapsedTime, snapshot.seed);
+  const weather = tick % 10 === 0
+    ? updateSpatialWeather(snapshot.weather, elapsedTime, snapshot.seed, {
+      deltaSeconds: 1,
+      trackLengthMeters: SILVERSTONE_CIRCUIT.lengthMeters,
+      trafficIntensity: surfaceTrafficForCars(snapshot.cars),
+    })
+    : snapshot.weather;
   const incidentUpdate = updateIncidents(snapshot, weather, tick, elapsedTime);
 
   const strategicCars = incidentUpdate.cars.map((car) => {
     const team = TEAM_BY_ID.get(car.teamId);
-    if (team?.isPlayer || car.scheduledPitCompound || car.pitStatus !== "TRACK" || car.currentLap >= SILVERSTONE_CIRCUIT.totalLaps) return car;
-    const decision = buildAiStrategyDecision({ trackWetness: weather.trackWetness, raceControl: incidentUpdate.raceControl, pitLaneOpen: incidentUpdate.pitLaneOpen, cars: incidentUpdate.cars }, car);
+    if (team?.isPlayer || tick % 300 !== 0 || car.scheduledPitCompound || car.pitStatus !== "TRACK" || car.currentLap >= SILVERSTONE_CIRCUIT.totalLaps) return car;
+    const localWater = effectiveWaterAtDistance(weather, car.lapDistance, SILVERSTONE_CIRCUIT.lengthMeters);
+    const decision = buildAiStrategyDecision({ trackWetness: localWater, weather, raceControl: incidentUpdate.raceControl, pitLaneOpen: incidentUpdate.pitLaneOpen, cars: incidentUpdate.cars }, car);
     const strategicCar = { ...car, strategyIntent: decision.intent, strategyConfidence: decision.confidence };
     return decision.pitNow && decision.compound ? reserveTyreSet(strategicCar, decision.compound) : strategicCar;
   });
@@ -586,7 +583,8 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
     let lastPitStopTime = car.lastPitStopTime;
     let pitStopIssue: PitStopIssue = car.pitStopIssue;
     let usedTyreCompounds = car.usedTyreCompounds;
-    const energyTactics = energyTacticsFor(car, incidentUpdate.raceControl, weather.trackWetness);
+    const localWater = effectiveWaterAtDistance(weather, lapDistanceBefore, SILVERSTONE_CIRCUIT.lengthMeters);
+    const energyTactics = energyTacticsFor(car, incidentUpdate.raceControl, localWater);
     const batteryPercent = updateBattery(car, energyTactics);
     const tacticalCar: RaceCarState = { ...car, ...energyTactics, batteryPercent };
 
@@ -644,7 +642,7 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
     const stoppedInBox = pitStatus === "PIT_STOP";
     const released = elapsedTime >= car.reactionTime;
     const incidentSpeedFactor = car.incidentStatus === "SPUN" ? 0.12 : car.incidentStatus === "DAMAGED" ? Math.max(0.82, 1 - car.damageLevel * 0.18) : 1;
-    const unconstrainedTarget = targetSpeedKph({ ...tacticalCar, tyreCompound }, index, snapshot.seed, tick, weather.trackWetness) * incidentSpeedFactor;
+    const unconstrainedTarget = targetSpeedKph({ ...tacticalCar, tyreCompound }, index, snapshot.seed, tick, localWater) * incidentSpeedFactor;
     let vscDeltaSeconds = car.vscDeltaSeconds;
     const localizedYellow = incidentUpdate.raceControl === "YELLOW" && car.currentSector === incidentUpdate.yellowSector;
     const safetyGapFactor = car.racePosition === 1 || car.gapToCarAhead < 0.75 ? 0.42 : car.gapToCarAhead > 1.8 ? 0.51 : 0.46;
@@ -666,11 +664,11 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
     const totalDistance = car.totalDistance + distanceDelta;
     const lapDistanceAfter = normalizeLapDistance(totalDistance);
     if (pitStatus === "PIT_EXIT" && lapDistanceAfter >= PIT_EXIT_END && lapDistanceAfter < PIT_ENTRY_START) pitStatus = "TRACK";
-    tyreTemperature += (tyreTemperatureTarget({ ...car, tyreCompound }) - tyreTemperature) * 0.014;
+    tyreTemperature += (tyreTemperatureTarget({ ...car, tyreCompound }, localWater) - tyreTemperature) * 0.014;
     const segmentKind = SILVERSTONE_CIRCUIT.segments[car.currentSegment].kind;
     const brakeTarget = segmentKind === "SLOW" ? 920 : segmentKind === "MEDIUM" ? 760 : segmentKind === "FAST" ? 620 : 470;
     brakeTemperature += (brakeTarget - brakeTemperature) * 0.025;
-    const wetTyreDryPenalty = tyreCompound === "INTERMEDIATE" || tyreCompound === "WET" ? 1 + (1 - weather.trackWetness) * 1.5 : 1;
+    const wetTyreDryPenalty = tyreCompound === "INTERMEDIATE" || tyreCompound === "WET" ? 1 + (1 - localWater) * 1.5 : 1;
     tyreLife = Math.max(0, tyreLife - distanceDelta * 0.00054 * PACE_WEAR[car.paceMode] * TYRE_WEAR[car.tyreMode] * COMPOUND_WEAR[tyreCompound] * wetTyreDryPenalty);
     tyreAgeLaps += distanceDelta / SILVERSTONE_CIRCUIT.lengthMeters;
     tyreSets = tyreSets.map((set) => set.id === activeTyreSetId ? { ...set, condition: tyreLife, lapsUsed: tyreAgeLaps } : set);
@@ -750,7 +748,7 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
     events: [...battleEvents, ...incidentUpdate.events].slice(0, 24),
     radioMessages: [...battleRadio, ...incidentUpdate.radioMessages].slice(0, 30),
     cars,
-    checksum: checksumFor(tick, cars),
+    checksum: checksumFor(tick, cars, weather),
   };
 }
 
@@ -858,13 +856,21 @@ function appendRadio(snapshot: RaceSnapshot, carId: string, message: string, pri
   return [driver, engineer, ...snapshot.radioMessages].slice(0, 30);
 }
 
-export function checksumFor(tick: number, cars: readonly RaceCarState[]): string {
+export function checksumFor(tick: number, cars: readonly RaceCarState[], weather?: WeatherState): string {
   let hash = 2_166_136_261 ^ tick;
   for (const car of cars) {
     const value = Math.round(car.totalDistance * 1_000) ^ Math.round(car.currentSpeed * 100)
       ^ Math.round(car.tyreLife * 100) ^ Math.round(car.fuelRemainingKg * 100) ^ Math.round(car.batteryPercent * 100);
     hash ^= value;
     hash = Math.imul(hash, 16_777_619);
+  }
+  if (weather) {
+    const weatherValues = weather.surfaceZones?.map((zone) => Math.round((zone.wetness + zone.standingWater + zone.dryingLine) * 10_000))
+      ?? [Math.round(weather.rainIntensity * 10_000), Math.round(weather.trackWetness * 10_000)];
+    for (const value of weatherValues) {
+      hash ^= value;
+      hash = Math.imul(hash, 16_777_619);
+    }
   }
   return (hash >>> 0).toString(16).padStart(8, "0");
 }
