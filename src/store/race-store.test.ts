@@ -33,4 +33,16 @@ describe("race timing store", () => {
     expect(useRaceStore.getState().timingGaps[carId].leader).toBe(firstGap + 1.234);
     expect(useRaceStore.getState().timingGapRevision).toBe(2);
   });
+
+  it("keeps worker-side event auto-pause metadata in sync", () => {
+    const snapshot = createInitialSnapshot();
+    useRaceStore.getState().setSnapshot(snapshot, 16, true, false, "SAFETY CAR DEPLOYED");
+
+    expect(useRaceStore.getState()).toMatchObject({
+      speed: 16,
+      paused: true,
+      autoPauseEnabled: false,
+      autoPauseReason: "SAFETY CAR DEPLOYED",
+    });
+  });
 });

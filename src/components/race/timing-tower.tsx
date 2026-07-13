@@ -23,7 +23,7 @@ export function TimingTower() {
         <div><span className="eyebrow">FIELD</span><h2>Leader Board</h2></div>
         <span className="panel__counter">22 CARS</span>
       </header>
-      <div className="timing-head"><span>P</span><span>DRIVER</span><span>INTERVAL</span><span>STATE</span><span>TYRE</span></div>
+      <div className="timing-head"><span>P</span><span>DRIVER</span><span>TYRE</span><span>GAP</span><span>STATE</span></div>
       <div className="timing-list">
         {cars.map((car) => {
           const driver = DRIVER_BY_ID.get(car.driverId);
@@ -44,9 +44,9 @@ export function TimingTower() {
                 <strong>{driver.shortName}</strong>
                 <small>{team.shortName}</small>
               </span>
-              <span className="timing-gap">{gapLabel(car.racePosition, timingGaps[car.carId]?.ahead ?? car.gapToCarAhead)}</span>
-              <span className={`timing-speed tyre-${car.tyreCompound.toLowerCase()} battle-${car.battleStatus.toLowerCase()} incident-${car.incidentStatus.toLowerCase()}`}>{statusLabel}</span>
               <span className="timing-tyre"><TyreBadge compound={car.tyreCompound} size="small" title={`${car.tyreCompound} · ${car.tyreAgeLaps.toFixed(1)} laps`} /></span>
+              <span className="timing-gap">{gapLabel(car.racePosition, timingGaps[car.carId]?.ahead ?? car.gapToCarAhead)}</span>
+              <span className={`timing-state battle-${car.battleStatus.toLowerCase()} incident-${car.incidentStatus.toLowerCase()}`}>{statusLabel}</span>
             </button>
           );
         })}

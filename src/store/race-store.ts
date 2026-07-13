@@ -7,6 +7,8 @@ interface RaceStore {
   snapshot: RaceSnapshot | null;
   speed: SimulationSpeed;
   paused: boolean;
+  autoPauseEnabled: boolean;
+  autoPauseReason: string | null;
   selectedCarId: string;
   error: string | null;
   snapshotCount: number;
@@ -14,7 +16,7 @@ interface RaceStore {
   timingGaps: Record<string, { leader: number; ahead: number; behind: number }>;
   timingGapUpdatedAt: number;
   timingGapRevision: number;
-  setSnapshot: (snapshot: RaceSnapshot, speed: SimulationSpeed, paused: boolean) => void;
+  setSnapshot: (snapshot: RaceSnapshot, speed: SimulationSpeed, paused: boolean, autoPauseEnabled?: boolean, autoPauseReason?: string | null) => void;
   setSelectedCarId: (carId: string) => void;
   setError: (message: string) => void;
 }
@@ -23,6 +25,8 @@ export const useRaceStore = create<RaceStore>((set) => ({
   snapshot: null,
   speed: 1,
   paused: true,
+  autoPauseEnabled: true,
+  autoPauseReason: null,
   selectedCarId: PLAYER_CAR_IDS[0],
   error: null,
   snapshotCount: 0,
@@ -30,13 +34,15 @@ export const useRaceStore = create<RaceStore>((set) => ({
   timingGaps: {},
   timingGapUpdatedAt: 0,
   timingGapRevision: 0,
-  setSnapshot: (snapshot, speed, paused) => set((state) => {
+  setSnapshot: (snapshot, speed, paused, autoPauseEnabled, autoPauseReason) => set((state) => {
     const now = Date.now();
     const updateTiming = state.timingGapUpdatedAt === 0 || now - state.timingGapUpdatedAt >= 1_000;
     return {
       snapshot,
       speed,
       paused,
+      autoPauseEnabled: autoPauseEnabled ?? state.autoPauseEnabled,
+      autoPauseReason: autoPauseReason ?? null,
       error: null,
       snapshotCount: state.snapshotCount + 1,
       snapshotReceivedAt: now,

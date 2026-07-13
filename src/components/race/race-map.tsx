@@ -30,6 +30,7 @@ export function RaceMap({ startPhase, lightsOn }: { startPhase: "MENU" | "LIGHTS
   const hostRef = useRef<HTMLDivElement>(null);
   const snapshot = useRaceStore((state) => state.snapshot);
   const selectedCarId = useRaceStore((state) => state.selectedCarId);
+  const autoPauseReason = useRaceStore((state) => state.autoPauseReason);
   const selectedCar = snapshot?.cars.find((car) => car.carId === selectedCarId);
   const upcomingCorner = selectedCar ? upcomingCornerAtDistance(selectedCar.lapDistance) : null;
   const sectorSurface = ([1, 2, 3] as const).map((sector) => {
@@ -39,6 +40,14 @@ export function RaceMap({ startPhase, lightsOn }: { startPhase: "MENU" | "LIGHTS
   });
   const surfaceConditions = new Set(sectorSurface.map((sector) => sector.condition));
   const surfaceSummary = surfaceConditions.size > 1 ? "MIXED" : sectorSurface[0].condition.replace("_", " ");
+  const safetyQueueSize = snapshot?.cars.filter((car) => car.safetyCarQueuePosition !== null).length ?? 0;
+  const controlTitle = snapshot?.raceControl === "YELLOW"
+    ? `LOCAL YELLOW · SECTOR ${snapshot.yellowSector ?? "—"}`
+    : snapshot?.raceControl === "VSC"
+      ? "VIRTUAL SAFETY CAR"
+      : snapshot?.raceControl === "SAFETY_CAR"
+        ? snapshot.safetyCarPhase === "RESTART" ? "SAFETY CAR IN THIS LAP" : snapshot.safetyCarPhase === "BUNCHING" ? "FIELD BUNCHING" : "SAFETY CAR DEPLOYED"
+        : "GREEN FLAG";
 
   useEffect(() => {
     const host = hostRef.current;
@@ -77,7 +86,6 @@ export function RaceMap({ startPhase, lightsOn }: { startPhase: "MENU" | "LIGHTS
       const alertLayer = new PIXI.Container();
       app.stage.addChild(trackLayer, battleLayer, markerLayer, alertLayer);
 
-      const rainRadarLayer = new PIXI.Graphics();
       const trackBase = new PIXI.Graphics();
       const surfaceLayer = new PIXI.Graphics();
       const trackEdge = new PIXI.Graphics();
@@ -86,7 +94,7 @@ export function RaceMap({ startPhase, lightsOn }: { startPhase: "MENU" | "LIGHTS
       const pitLane = new PIXI.Graphics();
       const controlOverlay = new PIXI.Graphics();
       const cornerLayer = new PIXI.Container();
-      trackLayer.addChild(rainRadarLayer, trackBase, surfaceLayer, aeroLayer, pitLane, trackEdge, controlOverlay, startLine, cornerLayer);
+      trackLayer.addChild(trackBase, surfaceLayer, aeroLayer, pitLane, trackEdge, controlOverlay, startLine, cornerLayer);
       let viewport = createTrackViewport(SILVERSTONE_CIRCUIT.points, app.screen.width, app.screen.height);
       let projectedCenterline = SILVERSTONE_CIRCUIT.points.map((point) => projectTrackPoint(point, viewport));
 
@@ -123,18 +131,7 @@ export function RaceMap({ startPhase, lightsOn }: { startPhase: "MENU" | "LIGHTS
       }
 
       function drawSpatialWeather(weather: NonNullable<ReturnType<typeof useRaceStore.getState>["snapshot"]>["weather"]) {
-        rainRadarLayer.clear();
         surfaceLayer.clear();
-
-        weather.radarCells?.forEach((cell) => {
-          if (cell.rainIntensity < 0.035) return;
-          const point = projectTrackPoint({ x: cell.x, y: cell.y }, viewport);
-          const radius = Math.max(22, viewport.scale * (0.07 + cell.rainIntensity * 0.055));
-          rainRadarLayer.circle(point.x, point.y, radius).fill({
-            color: cell.rainIntensity > 0.65 ? 0x245bff : 0x398cff,
-            alpha: 0.025 + cell.rainIntensity * 0.08,
-          });
-        });
 
         weather.surfaceZones?.forEach((zone) => {
           const effectiveWater = Math.min(1, zone.wetness * (1 - zone.dryingLine * 0.45) + zone.standingWater * 0.22);
@@ -304,13 +301,12 @@ export function RaceMap({ startPhase, lightsOn }: { startPhase: "MENU" | "LIGHTS
           } else {
             incidentBadge.visible = false;
           }
-          if (snapshot.raceControl === "SAFETY_CAR") {
-            const leader = snapshot.cars.find((car) => car.racePosition === 1);
-            if (leader) {
-              const safetyPoint = projectTrackPoint(pointAtDistance(leader.totalDistance + 95), viewport);
-              safetyCarBadge.position.set(safetyPoint.x, safetyPoint.y);
-              safetyCarBadge.visible = true;
-            }
+          if (snapshot.raceControl === "SAFETY_CAR" && snapshot.safetyCarDistance !== null) {
+            const safetyPoint = snapshot.safetyCarInPitLane
+              ? projectPitPoint(snapshot.safetyCarDistance)
+              : projectTrackPoint(pointAtDistance(snapshot.safetyCarDistance), viewport);
+            safetyCarBadge.position.set(safetyPoint.x, safetyPoint.y);
+            safetyCarBadge.visible = true;
           } else {
             safetyCarBadge.visible = false;
           }
@@ -395,7 +391,29 @@ export function RaceMap({ startPhase, lightsOn }: { startPhase: "MENU" | "LIGHTS
         <small>{selectedCar ? `S${selectedCar.currentSector} · ${formatLapTime(selectedCar.currentLapTime)} · ${snapshot?.raceControl === "VSC" ? `Δ ${selectedCar.vscDeltaSeconds >= 0 ? "+" : ""}${selectedCar.vscDeltaSeconds.toFixed(2)}` : selectedCar.racingLineMode}` : "NO CAR DATA"}</small>
         <small>{selectedCar ? `BAT ${Math.round(selectedCar.batteryPercent)}% · ${selectedCar.overtakeActive ? "OVERTAKE ACTIVE" : selectedCar.overtakeEligible ? "OVERTAKE READY" : selectedCar.energyState} · ${selectedCar.activeAeroMode}` : "ENERGY OFFLINE"}</small>
       </div>
-      {snapshot && snapshot.raceControl !== "GREEN" && <div className={`race-control-banner race-control-banner--${snapshot.raceControl.toLowerCase()}`}><strong>{snapshot.raceControl === "YELLOW" ? `YELLOW · SECTOR ${snapshot.yellowSector}` : snapshot.raceControl === "SAFETY_CAR" ? `SAFETY CAR · ${snapshot.safetyCarPhase}` : "VIRTUAL SAFETY CAR"}</strong><span>{snapshot.activeIncident ? `T${snapshot.activeIncident.cornerNumber} ${snapshot.activeIncident.cornerName} · ${snapshot.activeIncident.status}` : "RACE CONTROL"}</span><small>PIT LANE {snapshot.pitLaneOpen ? "OPEN" : "CLOSED"}</small></div>}
+      {snapshot && snapshot.raceControl !== "GREEN" && (
+        <div aria-atomic="true" aria-live="assertive" className={`race-control-banner race-control-banner--${snapshot.raceControl.toLowerCase()}`} role="status">
+          <header>
+            <i className="race-control-flag" />
+            <div><strong>{controlTitle}</strong><span>{snapshot.activeIncident ? `T${snapshot.activeIncident.cornerNumber} ${snapshot.activeIncident.cornerName} · ${snapshot.activeIncident.status}` : "RACE CONTROL"}</span></div>
+            <b className={snapshot.pitLaneOpen ? "is-open" : "is-closed"}>PIT {snapshot.pitLaneOpen ? "OPEN" : "CLOSED"}</b>
+          </header>
+          {snapshot.raceControl === "SAFETY_CAR" && (
+            <div className="race-control-procedure" aria-label={`Safety car phase ${snapshot.safetyCarPhase}`}>
+              {(["DEPLOYED", "BUNCHING", "RESTART"] as const).map((phase, index) => {
+                const activeIndex = ["DEPLOYED", "BUNCHING", "RESTART"].indexOf(snapshot.safetyCarPhase);
+                return <span className={index < activeIndex ? "is-complete" : index === activeIndex ? "is-active" : ""} key={phase}><i />{phase}</span>;
+              })}
+            </div>
+          )}
+          <div className="race-control-metrics">
+            {snapshot.raceControl === "YELLOW" && <><span><small>ZONE</small><strong>S{snapshot.yellowSector ?? "—"}</strong></span><span><small>SPEED</small><strong>≤160</strong></span><span><small>RULE</small><strong>NO OVERTAKE</strong></span></>}
+            {snapshot.raceControl === "VSC" && <><span><small>YOUR DELTA</small><strong className={selectedCar?.vscDeltaSeconds != null && selectedCar.vscDeltaSeconds < 0 ? "is-negative" : "is-positive"}>{selectedCar ? `${selectedCar.vscDeltaSeconds >= 0 ? "+" : ""}${selectedCar.vscDeltaSeconds.toFixed(3)}` : "—"}</strong></span><span><small>COMPLIANCE</small><strong>{selectedCar?.vscComplianceStatus ?? "—"}</strong></span><span><small>TARGET</small><strong>62%</strong></span></>}
+            {snapshot.raceControl === "SAFETY_CAR" && <><span><small>QUEUE</small><strong>{selectedCar?.safetyCarQueuePosition ? `Q${selectedCar.safetyCarQueuePosition}/${safetyQueueSize}` : "PIT / OUT"}</strong></span><span><small>TARGET GAP</small><strong>{selectedCar?.safetyCarGapToTargetMeters != null ? `${selectedCar.safetyCarGapToTargetMeters >= 0 ? "+" : ""}${selectedCar.safetyCarGapToTargetMeters.toFixed(0)}m` : "—"}</strong></span><span><small>SC SPEED</small><strong>{Math.round(snapshot.safetyCarSpeed)} km/h</strong></span></>}
+          </div>
+          {autoPauseReason && <div className="race-control-auto-hold"><i /> EVENT HOLD · {autoPauseReason}</div>}
+        </div>
+      )}
       {(startPhase === "LIGHTS" || startPhase === "GO") && <div className={`track-start-sequence ${startPhase === "GO" ? "is-go" : ""}`} data-track-start-phase={startPhase}><div>{Array.from({ length: 5 }, (_, index) => <i className={index < lightsOn ? "is-on" : ""} key={index} />)}</div><span>{startPhase === "GO" ? "LIGHTS OUT" : "START"}</span></div>}
       <div className="track-weather">
         <div className="track-weather__title"><span>LOCAL SURFACE</span><strong>{surfaceSummary}</strong></div>

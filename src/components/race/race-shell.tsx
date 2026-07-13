@@ -35,6 +35,8 @@ export function RaceShell() {
   const snapshot = useRaceStore((state) => state.snapshot);
   const speed = useRaceStore((state) => state.speed);
   const paused = useRaceStore((state) => state.paused);
+  const autoPauseEnabled = useRaceStore((state) => state.autoPauseEnabled);
+  const autoPauseReason = useRaceStore((state) => state.autoPauseReason);
   const error = useRaceStore((state) => state.error);
   const snapshotCount = useRaceStore((state) => state.snapshotCount);
   const selectedCarId = useRaceStore((state) => state.selectedCarId);
@@ -111,7 +113,15 @@ export function RaceShell() {
           <div className="broadcast-conditions"><span><small>TRACK</small><strong>{Math.round(snapshot?.weather.trackTemperature ?? 31)}°</strong></span><span><small>WEATHER</small><strong>{weatherLabel}</strong></span></div>
         </div>
         <div className="transport">
-          <button className="pause-button" disabled={startPhase !== "RACING"} onClick={paused ? controls.play : controls.pause} type="button">{paused ? "▶" : "Ⅱ"}</button>
+          <button aria-label={paused ? "Resume race" : "Pause race"} className="pause-button" disabled={startPhase !== "RACING"} onClick={paused ? controls.play : controls.pause} title={paused ? "Resume race" : "Pause race"} type="button">{paused ? "▶" : "Ⅱ"}</button>
+          <button
+            aria-label={`Important race-control event auto pause ${autoPauseEnabled ? "on" : "off"}`}
+            aria-pressed={autoPauseEnabled}
+            className="auto-pause-toggle"
+            onClick={() => controls.setAutoPause(!autoPauseEnabled)}
+            title={autoPauseReason ?? "Pause on yellow, VSC, safety car and restart calls"}
+            type="button"
+          ><i /><span>AUTO</span><small>EVENT HOLD</small></button>
           <div className="speed-buttons">
             {SPEEDS.map((value) => <button className={speed === value ? "is-active" : ""} key={value} onClick={() => controls.setSpeed(value)} type="button">{value}×</button>)}
           </div>

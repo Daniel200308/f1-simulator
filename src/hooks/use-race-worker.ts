@@ -15,7 +15,13 @@ export function useRaceWorker() {
     workerRef.current = worker;
     worker.onmessage = (message: MessageEvent<WorkerEvent>) => {
       if (message.data.type === "SNAPSHOT") {
-        useRaceStore.getState().setSnapshot(message.data.snapshot, message.data.speed, message.data.paused);
+        useRaceStore.getState().setSnapshot(
+          message.data.snapshot,
+          message.data.speed,
+          message.data.paused,
+          message.data.autoPauseEnabled,
+          message.data.autoPauseReason,
+        );
       } else {
         useRaceStore.getState().setError(message.data.message);
       }
@@ -33,6 +39,7 @@ export function useRaceWorker() {
   return {
     play: () => send({ type: "PLAY" }),
     pause: () => send({ type: "PAUSE" }),
+    setAutoPause: (enabled: boolean) => send({ type: "SET_AUTO_PAUSE", enabled }),
     setSpeed: (speed: SimulationSpeed) => send({ type: "SET_SPEED", speed }),
     setPace: (carId: string, mode: PaceMode) => send({ type: "SET_PACE", carId, mode }),
     setTyreMode: (carId: string, mode: TyreMode) => send({ type: "SET_TYRE_MODE", carId, mode }),

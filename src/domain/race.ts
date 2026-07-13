@@ -14,6 +14,8 @@ export type PitStatus = "TRACK" | "PIT_ENTRY" | "PIT_LANE" | "PIT_STOP" | "PIT_E
 export type WeatherCondition = "DRY" | "CLOUDY" | "LIGHT_RAIN" | "HEAVY_RAIN";
 export type RaceControlStatus = "GREEN" | "YELLOW" | "VSC" | "SAFETY_CAR";
 export type SafetyCarPhase = "NONE" | "DEPLOYED" | "BUNCHING" | "RESTART";
+export type VscComplianceStatus = "COMPLIANT" | "WARNING" | "VIOLATION";
+export type PitLaneProcedureStatus = "OPEN" | "CLOSED";
 export type IncidentStatus = "RUNNING" | "SPUN" | "DAMAGED" | "RETIRED";
 export type WeatherSector = 1 | 2 | 3;
 
@@ -210,6 +212,11 @@ export interface RaceCarState {
   damageLevel: number;
   retiredReason: string | null;
   vscDeltaSeconds: number;
+  vscViolationSeconds: number;
+  vscComplianceStatus: VscComplianceStatus;
+  vscViolationCount: number;
+  safetyCarQueuePosition: number | null;
+  safetyCarGapToTargetMeters: number | null;
   currentSector: 1 | 2 | 3;
   currentLapTime: number;
   currentSectorTime: number;
@@ -233,7 +240,14 @@ export interface RaceSnapshot {
   raceControlTimer: number;
   yellowSector: 1 | 2 | 3 | null;
   safetyCarPhase: SafetyCarPhase;
+  safetyCarPhaseElapsedSeconds: number;
+  safetyCarDistance: number | null;
+  safetyCarSpeed: number;
+  safetyCarFieldBunched: boolean;
+  safetyCarInPitLane: boolean;
+  safetyCarRestartLineDistance: number | null;
   pitLaneOpen: boolean;
+  pitLaneStatus: PitLaneProcedureStatus;
   activeIncident: ActiveIncident | null;
   events: readonly RaceEvent[];
   radioMessages: readonly RadioMessage[];

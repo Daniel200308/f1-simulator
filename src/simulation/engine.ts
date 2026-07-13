@@ -1,7 +1,20 @@
-import type { ActiveAeroMode, ActiveIncident, BattleStatus, EnergyMode, EnergyState, PaceMode, PitStopIssue, RaceCarState, RaceControlStatus, RaceEvent, RaceSnapshot, RaceStatus, RacingLineMode, RadioMessage, SafetyCarPhase, TyreCompound, TyreMode, TyreSetState, WeatherState } from "@/domain/race";
+import type { ActiveAeroMode, ActiveIncident, BattleStatus, EnergyMode, EnergyState, PaceMode, PitStopIssue, RaceCarState, RaceControlStatus, RaceEvent, RaceSnapshot, RaceStatus, RacingLineMode, RadioMessage, TyreCompound, TyreMode, TyreSetState, WeatherState } from "@/domain/race";
 import { DRIVER_BY_ID, DRIVERS, TEAM_BY_ID } from "@/fixtures/grid";
 import { buildAiStrategyDecision } from "@/simulation/ai-strategy";
 import { signedNoise } from "@/simulation/random";
+import {
+  VSC_SPEED_FACTOR,
+  advanceSafetyCarPosition,
+  advanceSafetyCarProcedure,
+  buildSafetyCarFormation,
+  localYellowInstructionFor,
+  pitLaneProcedureFor,
+  raceControlPhaseMessage,
+  selectHigherPriorityRaceControl,
+  updateVscCompliance,
+  vscTargetElapsedSeconds,
+  type SafetyCarFormation,
+} from "@/simulation/race-control";
 import { telemetrySpeedAtDistance } from "@/simulation/silverstone-telemetry";
 import { normalizeLapDistance, sectorAtDistance, segmentIndexAtDistance, SILVERSTONE_CIRCUIT, SILVERSTONE_CORNERS } from "@/simulation/track";
 import { createSpatialWeather, effectiveWaterAtDistance, updateSpatialWeather, WEATHER_SURFACE_ZONE_COUNT } from "@/simulation/weather";
@@ -142,6 +155,11 @@ function createCar(driverId: string, index: number): RaceCarState {
     damageLevel: 0,
     retiredReason: null,
     vscDeltaSeconds: 0,
+    vscViolationSeconds: 0,
+    vscComplianceStatus: "COMPLIANT",
+    vscViolationCount: 0,
+    safetyCarQueuePosition: null,
+    safetyCarGapToTargetMeters: null,
     currentSector: 1,
     currentLapTime: 0,
     currentSectorTime: 0,
@@ -169,7 +187,14 @@ export function createInitialSnapshot(seed = DEFAULT_SEED, status: RaceStatus = 
     raceControlTimer: 0,
     yellowSector: null,
     safetyCarPhase: "NONE",
+    safetyCarPhaseElapsedSeconds: 0,
+    safetyCarDistance: null,
+    safetyCarSpeed: 0,
+    safetyCarFieldBunched: false,
+    safetyCarInPitLane: false,
+    safetyCarRestartLineDistance: null,
     pitLaneOpen: true,
+    pitLaneStatus: "OPEN",
     activeIncident: null,
     events: [],
     radioMessages: [],
@@ -385,21 +410,17 @@ function nearestCornerAtDistance(distanceMeters: number) {
   });
 }
 
-function safetyCarPhaseFor(control: RaceControlStatus, timer: number): SafetyCarPhase {
-  if (control !== "SAFETY_CAR") return "NONE";
-  if (timer > 50) return "DEPLOYED";
-  if (timer > 14) return "BUNCHING";
-  return "RESTART";
-}
-
 function updateIncidents(snapshot: RaceSnapshot, weather: WeatherState, tick: number, elapsedTime: number) {
   let raceControlTimer = Math.max(0, snapshot.raceControlTimer - FIXED_STEP_SECONDS);
-  let raceControl: RaceControlStatus = raceControlTimer > 0 ? snapshot.raceControl : "GREEN";
+  let raceControl: RaceControlStatus = snapshot.raceControl === "SAFETY_CAR"
+    ? "SAFETY_CAR"
+    : raceControlTimer > 0 ? snapshot.raceControl : "GREEN";
   let yellowSector = raceControl === "GREEN" ? null : snapshot.yellowSector;
   let activeIncident: ActiveIncident | null = raceControl === "GREEN" ? null : snapshot.activeIncident;
   const newEvents: RaceEvent[] = [];
   const newRadio: RadioMessage[] = [];
   let cars = [...snapshot.cars];
+  let safetyCarRedeployed = false;
 
   if (tick % 10 === 0) {
     cars = cars.map((car, index) => {
@@ -414,14 +435,20 @@ function updateIncidents(snapshot: RaceSnapshot, weather: WeatherState, tick: nu
       const outcomeRoll = (signedNoise(snapshot.seed, 50_000 + index, tick) + 1) / 2;
       const incidentStatus = outcomeRoll < 0.62 ? "SPUN" : outcomeRoll < 0.91 ? "DAMAGED" : "RETIRED";
       const severity = incidentSeverity(incidentStatus);
-      if (severity.duration > raceControlTimer) {
-        raceControl = severity.control;
+      const selectedControl = selectHigherPriorityRaceControl(raceControl, severity.control);
+      const incidentWinsControl = selectedControl !== raceControl || (selectedControl === severity.control && severity.duration > raceControlTimer);
+      if (incidentWinsControl) {
+        safetyCarRedeployed = safetyCarRedeployed || (raceControl === "SAFETY_CAR" && severity.control === "SAFETY_CAR");
+        raceControl = selectedControl;
         raceControlTimer = severity.duration;
       }
       const driver = DRIVER_BY_ID.get(car.driverId);
       const corner = nearestCornerAtDistance(car.lapDistance);
-      yellowSector = sectorAtDistance(car.lapDistance);
-      activeIncident = { carId: car.carId, distanceMeters: car.lapDistance, cornerNumber: corner.number, cornerName: corner.name, sector: yellowSector, status: incidentStatus };
+      const incidentSector = sectorAtDistance(car.lapDistance);
+      if (incidentWinsControl) {
+        yellowSector = incidentSector;
+        activeIncident = { carId: car.carId, distanceMeters: car.lapDistance, cornerNumber: corner.number, cornerName: corner.name, sector: incidentSector, status: incidentStatus };
+      }
       const location = `T${corner.number} ${corner.name}`;
       const message = incidentStatus === "SPUN" ? `${driver?.shortName ?? car.driverId} spun at ${location} and rejoined` : incidentStatus === "DAMAGED" ? `${driver?.shortName ?? car.driverId} has vehicle damage at ${location}` : `${driver?.shortName ?? car.driverId} retired at ${location}`;
       newEvents.push({ id: `${tick}-${car.carId}`, elapsedTime, type: "INCIDENT", message });
@@ -438,25 +465,102 @@ function updateIncidents(snapshot: RaceSnapshot, weather: WeatherState, tick: nu
     });
   }
 
+  let safetyCarPhase: RaceSnapshot["safetyCarPhase"] = raceControl === "SAFETY_CAR"
+    ? snapshot.raceControl === "SAFETY_CAR" && !safetyCarRedeployed && snapshot.safetyCarPhase !== "NONE" ? snapshot.safetyCarPhase : "DEPLOYED"
+    : "NONE";
+  let safetyCarPhaseElapsedSeconds = raceControl === "SAFETY_CAR" && snapshot.raceControl === "SAFETY_CAR" && !safetyCarRedeployed
+    ? snapshot.safetyCarPhaseElapsedSeconds
+    : 0;
+  let safetyCarDistance: number | null = null;
+  let safetyCarSpeed = 0;
+  let safetyCarFieldBunched = false;
+  let safetyCarInPitLane = false;
+  let safetyCarRestartLineDistance: number | null = raceControl === "SAFETY_CAR" && !safetyCarRedeployed ? snapshot.safetyCarRestartLineDistance : null;
+  let safetyCarFormation: SafetyCarFormation | null = null;
+
+  if (raceControl === "SAFETY_CAR" && safetyCarPhase !== "NONE") {
+    const leader = [...cars].filter((car) => !car.finished && car.pitStatus === "TRACK").sort((a, b) => a.racePosition - b.racePosition)[0];
+    if (leader) {
+      const safetyCar = advanceSafetyCarPosition({
+        previousTotalDistance: snapshot.raceControl === "SAFETY_CAR" && !safetyCarRedeployed ? snapshot.safetyCarDistance : null,
+        leaderTotalDistance: leader.totalDistance,
+        circuitLengthMeters: SILVERSTONE_CIRCUIT.lengthMeters,
+        phase: safetyCarPhase,
+        stepSeconds: FIXED_STEP_SECONDS,
+      });
+      safetyCarFormation = buildSafetyCarFormation(cars, safetyCar, safetyCarPhase);
+      safetyCarDistance = safetyCar.totalDistance;
+      safetyCarSpeed = safetyCar.speedKph;
+      safetyCarFieldBunched = safetyCarFormation.fieldBunched;
+      safetyCarInPitLane = safetyCarPhase === "RESTART" && safetyCarPhaseElapsedSeconds >= 4;
+      const leaderReachedRestartLine = safetyCarRestartLineDistance !== null && leader.totalDistance >= safetyCarRestartLineDistance;
+      const procedure = advanceSafetyCarProcedure({
+        state: { phase: safetyCarPhase, phaseElapsedSeconds: safetyCarPhaseElapsedSeconds },
+        stepSeconds: FIXED_STEP_SECONDS,
+        fieldBunched: safetyCarFieldBunched,
+        safetyCarInPitLane,
+        leaderReachedRestartLine,
+      });
+      safetyCarPhase = procedure.phase;
+      safetyCarPhaseElapsedSeconds = procedure.phaseElapsedSeconds;
+      if (procedure.changed && procedure.phase === "RESTART") {
+        safetyCarRestartLineDistance = (Math.floor(Math.max(0, leader.totalDistance) / SILVERSTONE_CIRCUIT.lengthMeters) + 1) * SILVERSTONE_CIRCUIT.lengthMeters;
+      }
+      if (procedure.changed && procedure.message && procedure.phase !== "NONE") {
+        const message = `${procedure.message.headline} — ${procedure.message.detail}`;
+        newEvents.push({ id: `${tick}-sc-phase`, elapsedTime, type: "RACE_CONTROL", message });
+        newRadio.push({ id: `${tick}-sc-phase-radio`, elapsedTime, carId: null, source: "RACE CONTROL", message, priority: procedure.message.priority });
+      }
+      if (procedure.phase === "NONE") {
+        raceControl = "GREEN";
+        raceControlTimer = 0;
+        yellowSector = null;
+        activeIncident = null;
+        safetyCarDistance = null;
+        safetyCarSpeed = 0;
+        safetyCarFieldBunched = false;
+        safetyCarInPitLane = true;
+        safetyCarRestartLineDistance = null;
+        safetyCarFormation = null;
+      }
+    }
+  }
+
+  if (safetyCarRedeployed) {
+    const message = "SAFETY CAR REDEPLOYED — NEW INCIDENT";
+    newEvents.push({ id: `${tick}-sc-redeployed`, elapsedTime, type: "RACE_CONTROL", message });
+    newRadio.push({ id: `${tick}-sc-redeployed-radio`, elapsedTime, carId: null, source: "RACE CONTROL", message, priority: "URGENT" });
+  }
+
+  const pitProcedure = pitLaneProcedureFor(raceControl, safetyCarPhase, safetyCarPhaseElapsedSeconds);
+  const pitLaneOpen = pitProcedure.open;
+  if (pitLaneOpen !== snapshot.pitLaneOpen) {
+    newEvents.push({ id: `${tick}-pit-procedure`, elapsedTime, type: "RACE_CONTROL", message: pitProcedure.message });
+    newRadio.push({ id: `${tick}-pit-procedure-radio`, elapsedTime, carId: null, source: "RACE CONTROL", message: pitProcedure.message, priority: pitLaneOpen ? "NORMAL" : "URGENT" });
+  }
+
   if (raceControl !== snapshot.raceControl) {
-    const message = raceControl === "GREEN" ? "GREEN FLAG — racing resumed" : raceControl === "YELLOW" ? `YELLOW FLAG — SECTOR ${yellowSector}` : `${raceControl.replace("_", " ")} deployed`;
+    const procedureMessage = raceControlPhaseMessage({ raceControl, safetyCarPhase, yellowSector, pitLaneOpen });
+    const message = `${procedureMessage.headline} — ${procedureMessage.detail}`;
     newEvents.push({ id: `${tick}-control`, elapsedTime, type: "RACE_CONTROL", message });
-    newRadio.push({ id: `${tick}-control-radio`, elapsedTime, carId: null, source: "RACE CONTROL", message, priority: raceControl === "GREEN" ? "NORMAL" : "URGENT" });
+    newRadio.push({ id: `${tick}-control-radio`, elapsedTime, carId: null, source: "RACE CONTROL", message, priority: procedureMessage.priority });
   }
-  const safetyCarPhase = safetyCarPhaseFor(raceControl, raceControlTimer);
-  if (safetyCarPhase !== snapshot.safetyCarPhase && (safetyCarPhase === "BUNCHING" || safetyCarPhase === "RESTART")) {
-    const message = safetyCarPhase === "RESTART" ? "SAFETY CAR IN THIS LAP — prepare for restart" : "SAFETY CAR field is bunching";
-    newEvents.push({ id: `${tick}-sc-phase`, elapsedTime, type: "RACE_CONTROL", message });
-    newRadio.push({ id: `${tick}-sc-phase-radio`, elapsedTime, carId: null, source: "RACE CONTROL", message, priority: "WARNING" });
-  }
-  const pitLaneOpen = raceControl !== "SAFETY_CAR" || raceControlTimer <= 60;
+
   return {
     cars,
     raceControl,
     raceControlTimer,
     yellowSector,
     safetyCarPhase,
+    safetyCarPhaseElapsedSeconds,
+    safetyCarDistance,
+    safetyCarSpeed,
+    safetyCarFieldBunched,
+    safetyCarInPitLane,
+    safetyCarRestartLineDistance,
+    safetyCarFormation,
     pitLaneOpen,
+    pitLaneStatus: pitProcedure.status,
     activeIncident,
     events: [...newEvents.reverse(), ...snapshot.events].slice(0, 24),
     radioMessages: [...newRadio.reverse(), ...snapshot.radioMessages].slice(0, 30),
@@ -468,20 +572,25 @@ function enforceRaceControlOrder(
   previousCars: readonly RaceCarState[],
   control: RaceControlStatus,
   yellowSector: 1 | 2 | 3 | null,
+  safetyCarFormation: SafetyCarFormation | null,
 ): RaceCarState[] {
   if (control === "GREEN") return [...cars];
   const byId = new Map(cars.map((car) => [car.carId, car]));
-  const previousOrder = [...previousCars].filter((car) => !car.finished).sort((a, b) => a.racePosition - b.racePosition);
+  const previousOrder = [...previousCars]
+    .filter((car) => !car.finished && car.pitStatus === "TRACK" && byId.get(car.carId)?.pitStatus === "TRACK")
+    .sort((a, b) => a.racePosition - b.racePosition);
+  const safetyTargets = new Map(safetyCarFormation?.queue.map((entry) => [entry.carId, entry]) ?? []);
   let aheadDistance = Infinity;
   const updates = new Map<string, RaceCarState>();
   for (const previous of previousOrder) {
     const car = byId.get(previous.carId);
     if (!car) continue;
     const controlled = control !== "YELLOW" || (yellowSector !== null && car.currentSector === yellowSector);
-    const minimumGap = control === "SAFETY_CAR" ? 14 : 5;
-    const maximumDistance = aheadDistance - minimumGap;
+    const minimumGap = control === "SAFETY_CAR" ? 12 : 5;
+    const queueTarget = control === "SAFETY_CAR" ? safetyTargets.get(car.carId)?.targetTotalDistance : undefined;
+    const maximumDistance = Math.min(aheadDistance - minimumGap, queueTarget ?? Infinity);
     const adjusted = controlled && Number.isFinite(maximumDistance) && car.totalDistance > maximumDistance
-      ? withPositionData({ ...car, totalDistance: maximumDistance, currentSpeed: Math.min(car.currentSpeed, 145) })
+      ? withPositionData({ ...car, totalDistance: maximumDistance, currentSpeed: Math.min(car.currentSpeed, safetyCarFormation?.safetyCar.speedKph ?? 145) })
       : car;
     updates.set(car.carId, adjusted);
     aheadDistance = adjusted.totalDistance;
@@ -564,6 +673,8 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
     return { ...car, energyMode };
   });
 
+  const vscEvents: RaceEvent[] = [];
+  const vscRadio: RadioMessage[] = [];
   const advancedCars = tacticalCars.map((car, index) => {
     if (car.finished) return car;
     const lapDistanceBefore = normalizeLapDistance(car.totalDistance);
@@ -644,23 +755,55 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
     const incidentSpeedFactor = car.incidentStatus === "SPUN" ? 0.12 : car.incidentStatus === "DAMAGED" ? Math.max(0.82, 1 - car.damageLevel * 0.18) : 1;
     const unconstrainedTarget = targetSpeedKph({ ...tacticalCar, tyreCompound }, index, snapshot.seed, tick, localWater) * incidentSpeedFactor;
     let vscDeltaSeconds = car.vscDeltaSeconds;
-    const localizedYellow = incidentUpdate.raceControl === "YELLOW" && car.currentSector === incidentUpdate.yellowSector;
-    const safetyGapFactor = car.racePosition === 1 || car.gapToCarAhead < 0.75 ? 0.42 : car.gapToCarAhead > 1.8 ? 0.51 : 0.46;
-    const restartFactor = car.racePosition === 1 ? 0.72 : car.gapToCarAhead > 0.55 ? 0.74 : 0.68;
-    const controlSpeedFactor = incidentUpdate.raceControl === "SAFETY_CAR"
-      ? incidentUpdate.safetyCarPhase === "RESTART" ? restartFactor : safetyGapFactor
-      : incidentUpdate.raceControl === "VSC" ? Math.max(0.57, Math.min(0.66, 0.62 - vscDeltaSeconds * 0.045))
-      : localizedYellow ? 0.74 : 1;
-    const racingTarget = released ? unconstrainedTarget * controlSpeedFactor : 0;
+    let vscViolationSeconds = car.vscViolationSeconds;
+    let vscComplianceStatus = car.vscComplianceStatus;
+    let vscViolationCount = car.vscViolationCount;
+    const yellowInstruction = localYellowInstructionFor(car.currentSector, incidentUpdate.raceControl, incidentUpdate.yellowSector);
+    const safetyQueueEntry = incidentUpdate.safetyCarFormation?.queue.find((entry) => entry.carId === car.carId);
+    let controlledTarget = unconstrainedTarget;
+    if (pitStatus === "TRACK") {
+      if (yellowInstruction.applies) {
+        controlledTarget = Math.min(unconstrainedTarget * yellowInstruction.speedFactor, yellowInstruction.maximumSpeedKph ?? Infinity);
+      } else if (incidentUpdate.raceControl === "VSC") {
+        const correction = vscComplianceStatus === "VIOLATION" ? 0.88
+          : vscComplianceStatus === "WARNING" ? 0.94
+            : vscDeltaSeconds > 0.8 ? 1.025 : 1;
+        controlledTarget = unconstrainedTarget * VSC_SPEED_FACTOR * correction;
+      } else if (incidentUpdate.raceControl === "SAFETY_CAR" && safetyQueueEntry) {
+        const catchUpKph = Math.max(-105, Math.min(82, safetyQueueEntry.distanceToTargetMeters * 1.05));
+        controlledTarget = Math.max(45, Math.min(235, incidentUpdate.safetyCarSpeed + catchUpKph));
+      }
+    }
+    const racingTarget = released ? controlledTarget : 0;
     const targetKph = pitStatus === "PIT_ENTRY" || pitStatus === "PIT_LANE" || pitStatus === "PIT_EXIT" ? Math.min(80, racingTarget) : racingTarget;
     const currentSpeed = stoppedInBox ? 0 : released ? car.currentSpeed + (targetKph - car.currentSpeed) * 0.16 : 0;
-    if (incidentUpdate.raceControl === "VSC") {
-      const deltaRate = (currentSpeed - unconstrainedTarget * 0.62) / Math.max(80, unconstrainedTarget);
-      vscDeltaSeconds = Math.max(-0.8, Math.min(0.8, vscDeltaSeconds + deltaRate * FIXED_STEP_SECONDS * 3));
-    } else {
-      vscDeltaSeconds *= 0.92;
-    }
     const distanceDelta = (currentSpeed / 3.6) * FIXED_STEP_SECONDS;
+    if (incidentUpdate.raceControl === "VSC" && pitStatus === "TRACK") {
+      const representativeGreenSeconds = distanceDelta / Math.max(1, unconstrainedTarget / 3.6);
+      const targetStepSeconds = vscTargetElapsedSeconds(representativeGreenSeconds);
+      const nextDelta = Math.max(-9.999, Math.min(9.999, vscDeltaSeconds + FIXED_STEP_SECONDS - targetStepSeconds));
+      const compliance = updateVscCompliance({
+        actualElapsedSeconds: nextDelta,
+        targetElapsedSeconds: 0,
+        previousViolationSeconds: vscViolationSeconds,
+        stepSeconds: FIXED_STEP_SECONDS,
+      });
+      const inDeploymentGrace = incidentUpdate.raceControlTimer > 32.5;
+      vscDeltaSeconds = compliance.deltaSeconds;
+      vscViolationSeconds = inDeploymentGrace ? 0 : compliance.violationSeconds;
+      vscComplianceStatus = inDeploymentGrace ? "COMPLIANT" : compliance.status;
+      if (vscComplianceStatus === "VIOLATION" && car.vscComplianceStatus !== "VIOLATION") {
+        vscViolationCount += 1;
+        const driver = DRIVER_BY_ID.get(car.driverId)?.shortName ?? car.carId;
+        const message = `${driver} VSC DELTA VIOLATION · ${vscDeltaSeconds.toFixed(3)}s`;
+        vscEvents.push({ id: `${tick}-${car.carId}-vsc`, elapsedTime, type: "RACE_CONTROL", message });
+        vscRadio.push({ id: `${tick}-${car.carId}-vsc-radio`, elapsedTime, carId: null, source: "RACE CONTROL", message, priority: "URGENT" });
+      }
+    } else {
+      vscDeltaSeconds = 0;
+      vscViolationSeconds = 0;
+      vscComplianceStatus = "COMPLIANT";
+    }
     const totalDistance = car.totalDistance + distanceDelta;
     const lapDistanceAfter = normalizeLapDistance(totalDistance);
     if (pitStatus === "PIT_EXIT" && lapDistanceAfter >= PIT_EXIT_END && lapDistanceAfter < PIT_ENTRY_START) pitStatus = "TRACK";
@@ -704,15 +847,37 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
       incidentStatus,
       incidentTimer,
       vscDeltaSeconds,
+      vscViolationSeconds,
+      vscComplianceStatus,
+      vscViolationCount,
+      safetyCarQueuePosition: safetyQueueEntry?.queuePosition ?? null,
+      safetyCarGapToTargetMeters: safetyQueueEntry ? safetyQueueEntry.targetTotalDistance - totalDistance : null,
       fuelRemainingKg,
       finished,
       finishTime: finished ? elapsedTime : null,
     });
-    return withTimingData(car, positioned, elapsedTime);
+    return positioned;
   });
 
-  const controlledCars = enforceRaceControlOrder(advancedCars, snapshot.cars, incidentUpdate.raceControl, incidentUpdate.yellowSector);
-  const rankedCars = rankCars(controlledCars, incidentUpdate.raceControl);
+  const controlledCars = enforceRaceControlOrder(
+    advancedCars,
+    snapshot.cars,
+    incidentUpdate.raceControl,
+    incidentUpdate.yellowSector,
+    incidentUpdate.safetyCarFormation,
+  );
+  const timedCars = controlledCars.map((car) => {
+    const previous = snapshot.cars.find((candidate) => candidate.carId === car.carId);
+    if (!previous || previous.finished) return car;
+    const finished = car.totalDistance >= raceDistance;
+    const corrected = {
+      ...car,
+      finished,
+      finishTime: finished ? elapsedTime : null,
+    };
+    return withTimingData(previous, corrected, elapsedTime);
+  });
+  const rankedCars = rankCars(timedCars, incidentUpdate.raceControl);
   const battleEvents: RaceEvent[] = [];
   const battleRadio: RadioMessage[] = [];
   const cars = rankedCars.map((car) => {
@@ -743,12 +908,25 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
     raceControlTimer: incidentUpdate.raceControlTimer,
     yellowSector: incidentUpdate.yellowSector,
     safetyCarPhase: incidentUpdate.safetyCarPhase,
+    safetyCarPhaseElapsedSeconds: incidentUpdate.safetyCarPhaseElapsedSeconds,
+    safetyCarDistance: incidentUpdate.safetyCarDistance,
+    safetyCarSpeed: incidentUpdate.safetyCarSpeed,
+    safetyCarFieldBunched: incidentUpdate.safetyCarFieldBunched,
+    safetyCarInPitLane: incidentUpdate.safetyCarInPitLane,
+    safetyCarRestartLineDistance: incidentUpdate.safetyCarRestartLineDistance,
     pitLaneOpen: incidentUpdate.pitLaneOpen,
+    pitLaneStatus: incidentUpdate.pitLaneStatus,
     activeIncident: incidentUpdate.activeIncident,
-    events: [...battleEvents, ...incidentUpdate.events].slice(0, 24),
-    radioMessages: [...battleRadio, ...incidentUpdate.radioMessages].slice(0, 30),
+    events: [...battleEvents, ...vscEvents, ...incidentUpdate.events].slice(0, 24),
+    radioMessages: [...battleRadio, ...vscRadio, ...incidentUpdate.radioMessages].slice(0, 30),
     cars,
-    checksum: checksumFor(tick, cars, weather),
+    checksum: checksumFor(tick, cars, weather, {
+      raceControl: incidentUpdate.raceControl,
+      safetyCarPhase: incidentUpdate.safetyCarPhase,
+      safetyCarPhaseElapsedSeconds: incidentUpdate.safetyCarPhaseElapsedSeconds,
+      safetyCarDistance: incidentUpdate.safetyCarDistance,
+      pitLaneOpen: incidentUpdate.pitLaneOpen,
+    }),
   };
 }
 
@@ -856,11 +1034,18 @@ function appendRadio(snapshot: RaceSnapshot, carId: string, message: string, pri
   return [driver, engineer, ...snapshot.radioMessages].slice(0, 30);
 }
 
-export function checksumFor(tick: number, cars: readonly RaceCarState[], weather?: WeatherState): string {
+export function checksumFor(
+  tick: number,
+  cars: readonly RaceCarState[],
+  weather?: WeatherState,
+  control?: Pick<RaceSnapshot, "raceControl" | "safetyCarPhase" | "safetyCarPhaseElapsedSeconds" | "safetyCarDistance" | "pitLaneOpen">,
+): string {
   let hash = 2_166_136_261 ^ tick;
   for (const car of cars) {
     const value = Math.round(car.totalDistance * 1_000) ^ Math.round(car.currentSpeed * 100)
-      ^ Math.round(car.tyreLife * 100) ^ Math.round(car.fuelRemainingKg * 100) ^ Math.round(car.batteryPercent * 100);
+      ^ Math.round(car.tyreLife * 100) ^ Math.round(car.fuelRemainingKg * 100) ^ Math.round(car.batteryPercent * 100)
+      ^ Math.round(car.vscDeltaSeconds * 1_000) ^ Math.round(car.vscViolationSeconds * 100)
+      ^ ((car.safetyCarQueuePosition ?? 0) << 8);
     hash ^= value;
     hash = Math.imul(hash, 16_777_619);
   }
@@ -868,6 +1053,21 @@ export function checksumFor(tick: number, cars: readonly RaceCarState[], weather
     const weatherValues = weather.surfaceZones?.map((zone) => Math.round((zone.wetness + zone.standingWater + zone.dryingLine) * 10_000))
       ?? [Math.round(weather.rainIntensity * 10_000), Math.round(weather.trackWetness * 10_000)];
     for (const value of weatherValues) {
+      hash ^= value;
+      hash = Math.imul(hash, 16_777_619);
+    }
+  }
+  if (control) {
+    const controlCode = control.raceControl === "GREEN" ? 1 : control.raceControl === "YELLOW" ? 2 : control.raceControl === "VSC" ? 3 : 4;
+    const phaseCode = control.safetyCarPhase === "NONE" ? 0 : control.safetyCarPhase === "DEPLOYED" ? 1 : control.safetyCarPhase === "BUNCHING" ? 2 : 3;
+    const values = [
+      controlCode,
+      phaseCode,
+      Math.round(control.safetyCarPhaseElapsedSeconds * 10),
+      Math.round((control.safetyCarDistance ?? 0) * 10),
+      control.pitLaneOpen ? 1 : 0,
+    ];
+    for (const value of values) {
       hash ^= value;
       hash = Math.imul(hash, 16_777_619);
     }
