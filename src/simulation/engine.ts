@@ -1,4 +1,4 @@
-import type { ActiveAeroMode, ActiveIncident, BattleStatus, EnergyMode, EnergyState, PaceMode, RaceCarState, RaceControlStatus, RaceEvent, RaceSnapshot, RaceStatus, RacingLineMode, RadioMessage, SafetyCarPhase, TyreCompound, TyreMode, WeatherState } from "@/domain/race";
+import type { ActiveAeroMode, ActiveIncident, BattleStatus, EnergyMode, EnergyState, PaceMode, PitStopIssue, RaceCarState, RaceControlStatus, RaceEvent, RaceSnapshot, RaceStatus, RacingLineMode, RadioMessage, SafetyCarPhase, TyreCompound, TyreMode, TyreSetState, WeatherState } from "@/domain/race";
 import { DRIVER_BY_ID, DRIVERS, TEAM_BY_ID } from "@/fixtures/grid";
 import { signedNoise } from "@/simulation/random";
 import { telemetrySpeedAtDistance } from "@/simulation/silverstone-telemetry";
@@ -27,6 +27,48 @@ export const PIT_EXIT_END = 300;
 export const PIT_STOP_DURATION = 2.5;
 export const ESTIMATED_PIT_LOSS_SECONDS = 23;
 
+const TYRE_SET_ALLOCATION: Readonly<Record<TyreCompound, number>> = {
+  SOFT: 4,
+  MEDIUM: 3,
+  HARD: 2,
+  INTERMEDIATE: 2,
+  WET: 1,
+};
+
+function createTyreSets(carId: string, fittedCompound: TyreCompound): TyreSetState[] {
+  let fitted = false;
+  return (Object.keys(TYRE_SET_ALLOCATION) as TyreCompound[]).flatMap((compound) =>
+    Array.from({ length: TYRE_SET_ALLOCATION[compound] }, (_, index) => {
+      const isFitted = !fitted && compound === fittedCompound;
+      if (isFitted) fitted = true;
+      return { id: `${carId}-${compound.toLowerCase()}-${index + 1}`, compound, status: isFitted ? "FITTED" : "AVAILABLE", condition: 100, lapsUsed: 0 } satisfies TyreSetState;
+    }),
+  );
+}
+
+function reserveTyreSet(car: RaceCarState, compound: TyreCompound): RaceCarState {
+  const released = car.tyreSets.map((set) => set.status === "RESERVED" ? { ...set, status: "AVAILABLE" as const } : set);
+  const candidate = released
+    .filter((set) => set.compound === compound && set.status === "AVAILABLE")
+    .sort((a, b) => b.condition - a.condition)[0];
+  if (!candidate) return { ...car, tyreSets: released, scheduledPitCompound: null, scheduledPitTyreSetId: null };
+  return {
+    ...car,
+    tyreSets: released.map((set) => set.id === candidate.id ? { ...set, status: "RESERVED" as const } : set),
+    scheduledPitCompound: compound,
+    scheduledPitTyreSetId: candidate.id,
+  };
+}
+
+function releaseReservedTyreSet(car: RaceCarState): RaceCarState {
+  return {
+    ...car,
+    tyreSets: car.tyreSets.map((set) => set.status === "RESERVED" ? { ...set, status: "AVAILABLE" as const } : set),
+    scheduledPitCompound: null,
+    scheduledPitTyreSetId: null,
+  };
+}
+
 function createCar(driverId: string, index: number): RaceCarState {
   const driver = DRIVER_BY_ID.get(driverId);
   if (!driver) throw new Error(`Unknown driver: ${driverId}`);
@@ -37,6 +79,10 @@ function createCar(driverId: string, index: number): RaceCarState {
   const segmentIndex = segmentIndexAtDistance(startingDistance);
   const segment = SILVERSTONE_CIRCUIT.segments[segmentIndex];
   const lapDistance = normalizeLapDistance(startingDistance);
+
+  const tyreCompound = TEAM_BY_ID.get(driver.teamId)?.isPlayer ? "MEDIUM" : DRY_COMPOUNDS[Math.floor(index / 2) % DRY_COMPOUNDS.length];
+  const tyreSets = createTyreSets(driver.id, tyreCompound);
+  const activeTyreSetId = tyreSets.find((set) => set.status === "FITTED")!.id;
 
   return {
     carId: driver.id,
@@ -57,10 +103,13 @@ function createCar(driverId: string, index: number): RaceCarState {
     gapToLeader: index * 0.18,
     gapToCarAhead: index === 0 ? 0 : 0.18,
     gapToCarBehind: index === DRIVERS.length - 1 ? 0 : 0.18,
-    tyreCompound: TEAM_BY_ID.get(driver.teamId)?.isPlayer ? "MEDIUM" : DRY_COMPOUNDS[Math.floor(index / 2) % DRY_COMPOUNDS.length],
+    tyreCompound,
     tyreAgeLaps: 0,
     tyreLife: 100,
     tyreTemperature: 88,
+    tyreSets,
+    activeTyreSetId,
+    scheduledPitTyreSetId: null,
     brakeTemperature: 480,
     fuelRemainingKg: 105,
     paceMode: "STANDARD",
@@ -78,8 +127,12 @@ function createCar(driverId: string, index: number): RaceCarState {
     overtakes: 0,
     pitStatus: "TRACK",
     pitTimer: 0,
+    pitStopTargetSeconds: PIT_STOP_DURATION,
+    lastPitStopTime: null,
+    pitStopIssue: "NONE",
     pitStops: 0,
     scheduledPitCompound: null,
+    usedTyreCompounds: [tyreCompound],
     incidentStatus: "RUNNING",
     incidentTimer: 0,
     damageLevel: 0,
@@ -500,7 +553,7 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
     if (!wetWeatherCompound && car.tyreLife > pitThreshold) return car;
     const nextCompound: TyreCompound = wetWeatherCompound ?? (car.currentLap < 34 ? "HARD" : "SOFT");
     if (nextCompound === car.tyreCompound && car.tyreLife > pitThreshold) return car;
-    return { ...car, scheduledPitCompound: nextCompound };
+    return reserveTyreSet(car, nextCompound);
   });
 
   const tacticalCars = strategicCars.map((car) => {
@@ -526,8 +579,15 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
     let tyreAgeLaps = car.tyreAgeLaps;
     let tyreLife = car.tyreLife;
     let tyreTemperature = car.tyreTemperature;
+    let tyreSets = car.tyreSets;
+    let activeTyreSetId = car.activeTyreSetId;
+    let scheduledPitTyreSetId = car.scheduledPitTyreSetId;
     let brakeTemperature = car.brakeTemperature;
     let scheduledPitCompound = car.scheduledPitCompound;
+    let pitStopTargetSeconds = car.pitStopTargetSeconds;
+    let lastPitStopTime = car.lastPitStopTime;
+    let pitStopIssue: PitStopIssue = car.pitStopIssue;
+    let usedTyreCompounds = car.usedTyreCompounds;
     const energyTactics = energyTacticsFor(car, incidentUpdate.raceControl, weather.trackWetness);
     const batteryPercent = updateBattery(car, energyTactics);
     const tacticalCar: RaceCarState = { ...car, ...energyTactics, batteryPercent };
@@ -540,17 +600,43 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
         || (other.pitStatus === "PIT_LANE" && normalizeLapDistance(other.totalDistance) >= PIT_BOX_DISTANCE && other.gridPosition < car.gridPosition)
       ));
       pitStatus = "PIT_STOP";
-      pitTimer = doubleStacked ? -1.8 : 0;
+      pitTimer = 0;
+      const stopNoise = signedNoise(snapshot.seed, 7_000 + index, tick);
+      const baseDuration = 2.2 + Math.abs(stopNoise) * 0.65;
+      if (doubleStacked) {
+        pitStopIssue = "DOUBLE_STACK";
+        pitStopTargetSeconds = baseDuration + 1.6 + Math.abs(signedNoise(snapshot.seed, 7_100 + index, tick)) * 1.2;
+      } else if (stopNoise > 0.88) {
+        pitStopIssue = "WHEEL_GUN";
+        pitStopTargetSeconds = baseDuration + 2.1 + Math.abs(signedNoise(snapshot.seed, 7_200 + index, tick)) * 1.8;
+      } else if (stopNoise > 0.68) {
+        pitStopIssue = "SLOW_RELEASE";
+        pitStopTargetSeconds = baseDuration + 0.8 + Math.abs(signedNoise(snapshot.seed, 7_300 + index, tick)) * 0.8;
+      } else {
+        pitStopIssue = "NONE";
+        pitStopTargetSeconds = baseDuration;
+      }
     }
 
     if (pitStatus === "PIT_STOP") {
       pitTimer += FIXED_STEP_SECONDS;
-      if (pitTimer >= PIT_STOP_DURATION) {
+      if (pitTimer >= pitStopTargetSeconds) {
         pitStatus = "PIT_EXIT";
+        lastPitStopTime = pitTimer;
         pitTimer = 0;
         pitStops += 1;
         tyreCompound = scheduledPitCompound ?? tyreCompound;
+        if (scheduledPitTyreSetId) {
+          tyreSets = tyreSets.map((set) => set.id === activeTyreSetId
+            ? { ...set, status: "USED" as const, condition: tyreLife, lapsUsed: tyreAgeLaps }
+            : set.id === scheduledPitTyreSetId
+              ? { ...set, status: "FITTED" as const }
+              : set);
+          activeTyreSetId = scheduledPitTyreSetId;
+        }
+        if (!usedTyreCompounds.includes(tyreCompound)) usedTyreCompounds = [...usedTyreCompounds, tyreCompound];
         scheduledPitCompound = null;
+        scheduledPitTyreSetId = null;
         tyreAgeLaps = 0;
         tyreLife = 100;
         tyreTemperature = 82;
@@ -589,6 +675,7 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
     const wetTyreDryPenalty = tyreCompound === "INTERMEDIATE" || tyreCompound === "WET" ? 1 + (1 - weather.trackWetness) * 1.5 : 1;
     tyreLife = Math.max(0, tyreLife - distanceDelta * 0.00054 * PACE_WEAR[car.paceMode] * TYRE_WEAR[car.tyreMode] * COMPOUND_WEAR[tyreCompound] * wetTyreDryPenalty);
     tyreAgeLaps += distanceDelta / SILVERSTONE_CIRCUIT.lengthMeters;
+    tyreSets = tyreSets.map((set) => set.id === activeTyreSetId ? { ...set, condition: tyreLife, lapsUsed: tyreAgeLaps } : set);
     const fuelRemainingKg = Math.max(0, car.fuelRemainingKg - distanceDelta * 0.00032 * PACE_FUEL[car.paceMode]);
     const finished = totalDistance >= raceDistance;
     let incidentStatus = car.incidentStatus;
@@ -606,11 +693,18 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
       tyreAgeLaps,
       tyreCompound,
       tyreTemperature,
+      tyreSets,
+      activeTyreSetId,
+      scheduledPitTyreSetId,
       brakeTemperature,
       pitStatus,
       pitTimer,
+      pitStopTargetSeconds,
+      lastPitStopTime,
+      pitStopIssue,
       pitStops,
       scheduledPitCompound,
+      usedTyreCompounds,
       incidentStatus,
       incidentTimer,
       vscDeltaSeconds,
@@ -687,17 +781,19 @@ export function setCarEnergyMode(snapshot: RaceSnapshot, carId: string, mode: En
 }
 
 export function setCarPit(snapshot: RaceSnapshot, carId: string, compound: TyreCompound): RaceSnapshot {
+  const cars = snapshot.cars.map((car) => car.carId === carId && car.pitStatus === "TRACK" ? reserveTyreSet(car, compound) : car);
+  const scheduled = cars.find((car) => car.carId === carId)?.scheduledPitCompound === compound;
   return {
     ...snapshot,
-    cars: snapshot.cars.map((car) => car.carId === carId && car.pitStatus === "TRACK" ? { ...car, scheduledPitCompound: compound } : car),
-    radioMessages: appendRadio(snapshot, carId, `Box this lap. Fit ${compound}.`, "WARNING", "box"),
+    cars,
+    radioMessages: appendRadio(snapshot, carId, scheduled ? `Box this lap. Fit ${compound}.` : `No fresh ${compound} set available. Stay out.`, scheduled ? "WARNING" : "URGENT", scheduled ? "box" : "no-tyres"),
   };
 }
 
 export function cancelCarPit(snapshot: RaceSnapshot, carId: string): RaceSnapshot {
   return {
     ...snapshot,
-    cars: snapshot.cars.map((car) => car.carId === carId && car.pitStatus === "TRACK" ? { ...car, scheduledPitCompound: null } : car),
+    cars: snapshot.cars.map((car) => car.carId === carId && car.pitStatus === "TRACK" ? releaseReservedTyreSet(car) : car),
     radioMessages: appendRadio(snapshot, carId, "Stay out. Stay out.", "NORMAL", "stay-out"),
   };
 }
@@ -706,7 +802,21 @@ export function setCarStartingTyre(snapshot: RaceSnapshot, carId: string, compou
   if (snapshot.elapsedTime > 0 || snapshot.status === "RUNNING") return snapshot;
   return {
     ...snapshot,
-    cars: snapshot.cars.map((car) => car.carId === carId ? { ...car, tyreCompound: compound, tyreLife: 100, tyreAgeLaps: 0 } : car),
+    cars: snapshot.cars.map((car) => {
+      if (car.carId !== carId || car.tyreCompound === compound) return car;
+      const released = car.tyreSets.map((set) => set.id === car.activeTyreSetId ? { ...set, status: "AVAILABLE" as const } : set);
+      const nextSet = released.find((set) => set.compound === compound && set.status === "AVAILABLE");
+      if (!nextSet) return car;
+      return {
+        ...car,
+        tyreCompound: compound,
+        tyreLife: nextSet.condition,
+        tyreAgeLaps: nextSet.lapsUsed,
+        tyreSets: released.map((set) => set.id === nextSet.id ? { ...set, status: "FITTED" as const } : set),
+        activeTyreSetId: nextSet.id,
+        usedTyreCompounds: [compound],
+      };
+    }),
   };
 }
 

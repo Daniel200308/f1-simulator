@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { RaceSnapshot } from "@/domain/race";
-import { cancelCarPit, createInitialSnapshot, estimatePitOutPosition, PIT_ENTRY_START, setCarEnergyMode, setCarPace, setCarPit, setCarStartingTyre, setCarTyreMode, stepSnapshot } from "@/simulation/engine";
+import { cancelCarPit, createInitialSnapshot, estimatePitOutPosition, PIT_BOX_DISTANCE, PIT_ENTRY_START, setCarEnergyMode, setCarPace, setCarPit, setCarStartingTyre, setCarTyreMode, stepSnapshot } from "@/simulation/engine";
 import { SILVERSTONE_REFERENCE_LAP_SECONDS, telemetryReferenceLapTime, telemetrySpeedAtDistance } from "@/simulation/silverstone-telemetry";
 import { strategyRecommendation } from "@/simulation/strategy";
 import { SILVERSTONE_CIRCUIT } from "@/simulation/track";
@@ -23,6 +23,9 @@ describe("race simulation", () => {
     expect(state.events).toEqual([]);
     expect(state.cars.every((car) => car.incidentStatus === "RUNNING" && car.damageLevel === 0)).toBe(true);
     expect(state.cars.every((car) => car.batteryPercent >= 70 && car.energyMode === "BALANCED" && car.battleStatus === "CLEAR")).toBe(true);
+    expect(state.cars.every((car) => car.tyreSets.length === 12 && new Set(car.tyreSets.map((set) => set.id)).size === 12)).toBe(true);
+    expect(state.cars.every((car) => car.tyreSets.filter((set) => set.status === "FITTED").length === 1)).toBe(true);
+    expect(state.cars.every((car) => car.tyreSets.find((set) => set.id === car.activeTyreSetId)?.status === "FITTED")).toBe(true);
   });
 
   it("deploys race control and records a deterministic incident", () => {
@@ -71,9 +74,28 @@ describe("race simulation", () => {
     expect(recommendation.pitWindowEnd).toBeGreaterThanOrEqual(recommendation.pitWindowStart);
     const boxed = setCarPit(initial, carId, "HARD");
     expect(boxed.radioMessages.some((message) => message.message.includes("Box this lap") || message.message.includes("Boxing this lap"))).toBe(true);
+    const boxedCar = boxed.cars.find((candidate) => candidate.carId === carId)!;
+    expect(boxedCar.tyreSets.find((set) => set.id === boxedCar.scheduledPitTyreSetId)?.status).toBe("RESERVED");
     const stayingOut = cancelCarPit(boxed, carId);
-    expect(stayingOut.cars.find((candidate) => candidate.carId === carId)?.scheduledPitCompound).toBeNull();
+    const stayingOutCar = stayingOut.cars.find((candidate) => candidate.carId === carId)!;
+    expect(stayingOutCar.scheduledPitCompound).toBeNull();
+    expect(stayingOutCar.scheduledPitTyreSetId).toBeNull();
+    expect(stayingOutCar.tyreSets.some((set) => set.status === "RESERVED")).toBe(false);
     expect(stayingOut.radioMessages.some((message) => message.message.includes("Stay out") || message.message.includes("Staying out"))).toBe(true);
+  });
+
+  it("rejects a pit call when no fresh set of the requested compound remains", () => {
+    const carId = "mercedes-1";
+    const initial = createInitialSnapshot(92);
+    const exhausted: RaceSnapshot = {
+      ...initial,
+      cars: initial.cars.map((car) => car.carId === carId ? { ...car, tyreSets: car.tyreSets.map((set) => set.compound === "SOFT" ? { ...set, status: "USED" as const } : set) } : car),
+    };
+    const result = setCarPit(exhausted, carId, "SOFT");
+    const car = result.cars.find((candidate) => candidate.carId === carId)!;
+    expect(car.scheduledPitCompound).toBeNull();
+    expect(car.scheduledPitTyreSetId).toBeNull();
+    expect(result.radioMessages.some((message) => message.message.includes("No fresh SOFT set"))).toBe(true);
   });
 
   it("holds every car until its launch reaction time", () => {
@@ -90,7 +112,10 @@ describe("race simulation", () => {
   it("allows all five starting compounds before the race only", () => {
     const carId = "mercedes-1";
     const wetStart = setCarStartingTyre(createInitialSnapshot(), carId, "WET");
-    expect(wetStart.cars.find((car) => car.carId === carId)?.tyreCompound).toBe("WET");
+    const wetCar = wetStart.cars.find((car) => car.carId === carId)!;
+    expect(wetCar.tyreCompound).toBe("WET");
+    expect(wetCar.tyreSets.find((set) => set.id === wetCar.activeTyreSetId)?.compound).toBe("WET");
+    expect(wetCar.tyreSets.filter((set) => set.status === "FITTED")).toHaveLength(1);
     const running: RaceSnapshot = { ...wetStart, status: "RUNNING", elapsedTime: 1 };
     expect(setCarStartingTyre(running, carId, "SOFT")).toBe(running);
   });
@@ -243,9 +268,35 @@ describe("race simulation", () => {
     expect(car.pitStops).toBe(1);
     expect(car.tyreCompound).toBe("SOFT");
     expect(car.scheduledPitCompound).toBeNull();
+    expect(car.scheduledPitTyreSetId).toBeNull();
     expect(car.pitStatus).toBe("TRACK");
     expect(car.tyreLife).toBeGreaterThan(90);
+    expect(car.lastPitStopTime).toBeGreaterThanOrEqual(2.2);
+    expect(car.lastPitStopTime).toBeLessThan(7);
+    expect(car.tyreSets.filter((set) => set.status === "FITTED")).toHaveLength(1);
+    expect(car.tyreSets.find((set) => set.id === car.activeTyreSetId)?.compound).toBe("SOFT");
+    expect(car.tyreSets.some((set) => set.status === "USED" && set.compound === "MEDIUM")).toBe(true);
+    expect(car.usedTyreCompounds).toContain("SOFT");
     expect(estimatePitOutPosition(state, carId)).toBeGreaterThanOrEqual(1);
+  });
+
+  it("adds a deterministic delay for a double-stacked teammate", () => {
+    const firstId = "mercedes-1";
+    const secondId = "mercedes-2";
+    let scheduled = setCarPit(createInitialSnapshot(1_212), firstId, "HARD");
+    scheduled = setCarPit(scheduled, secondId, "SOFT");
+    const boxed: RaceSnapshot = {
+      ...scheduled,
+      status: "RUNNING",
+      cars: scheduled.cars.map((car) => car.carId === firstId || car.carId === secondId ? { ...car, pitStatus: "PIT_LANE", totalDistance: PIT_BOX_DISTANCE, lapDistance: PIT_BOX_DISTANCE, currentSpeed: 80, reactionTime: 0 } : car),
+    };
+    const next = stepSnapshot(boxed);
+    const first = next.cars.find((car) => car.carId === firstId)!;
+    const second = next.cars.find((car) => car.carId === secondId)!;
+    expect(first.pitStatus).toBe("PIT_STOP");
+    expect(second.pitStatus).toBe("PIT_STOP");
+    expect(second.pitStopIssue).toBe("DOUBLE_STACK");
+    expect(second.pitStopTargetSeconds).toBeGreaterThan(first.pitStopTargetSeconds);
   });
 
   it("completes a full 52-lap race without invalid car state", () => {

@@ -41,6 +41,8 @@ export function CommandDock({ car, controls, pitLaneOpen }: { car?: RaceCarState
   const driver = car ? DRIVER_BY_ID.get(car.driverId) : undefined;
   const team = car ? TEAM_BY_ID.get(car.teamId) : undefined;
   const enabled = Boolean(car && team?.isPlayer);
+  const tyreSetsFor = (compound: TyreCompound) => car?.tyreSets?.filter((set) => set.compound === compound) ?? [];
+  const availableSetsFor = (compound: TyreCompound) => tyreSetsFor(compound).filter((set) => set.status === "AVAILABLE").length;
 
   return (
     <div className="command-console">
@@ -67,7 +69,12 @@ export function CommandDock({ car, controls, pitLaneOpen }: { car?: RaceCarState
 
       <section className="pit-tyre-control">
         <header><span>NEXT TYRE</span><b>{pitLaneOpen ? "PIT OPEN" : "PIT CLOSED"}</b></header>
-        <div>{PIT_COMPOUNDS.map((compound) => <button aria-label={`Box for ${compound}`} className={car?.scheduledPitCompound === compound ? "is-active" : ""} disabled={!enabled || car?.pitStatus !== "TRACK" || !pitLaneOpen} key={compound} onClick={() => car && controls.box(car.carId, compound)} type="button"><TyreBadge compound={compound} size="medium" /><span>BOX</span></button>)}<button className="stay-out-control" disabled={!enabled || !car?.scheduledPitCompound} onClick={() => car && controls.stayOut(car.carId)} type="button"><b>×</b><span>STAY OUT</span></button></div>
+        <div className="pit-tyre-control__buttons">{PIT_COMPOUNDS.map((compound) => {
+          const available = availableSetsFor(compound);
+          const isScheduled = car?.scheduledPitCompound === compound;
+          return <button aria-label={`Box for ${compound}, ${available} sets available`} className={isScheduled ? "is-active" : ""} disabled={!enabled || car?.pitStatus !== "TRACK" || !pitLaneOpen || (available === 0 && !isScheduled)} key={compound} onClick={() => car && controls.box(car.carId, compound)} type="button"><TyreBadge compound={compound} size="medium" /><span>BOX</span><em>{available}</em></button>;
+        })}<button className="stay-out-control" disabled={!enabled || !car?.scheduledPitCompound} onClick={() => car && controls.stayOut(car.carId)} type="button"><b>×</b><span>STAY OUT</span></button></div>
+        <div className="tyre-set-strip" aria-label="Tyre set inventory">{PIT_COMPOUNDS.map((compound) => <span key={compound} title={`${compound} tyre sets`}><TyreBadge compound={compound} size="small" />{tyreSetsFor(compound).map((set) => <i className={`tyre-set-dot tyre-set-dot--${set.status.toLowerCase()}`} key={set.id} title={`${set.status} · ${set.condition.toFixed(0)}%`} />)}</span>)}</div>
       </section>
     </div>
   );
