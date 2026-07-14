@@ -128,6 +128,11 @@ const SILVERSTONE_CORNER_ANCHORS = [
 ] as const;
 
 const CURVE_SUBDIVISIONS = 6;
+// The source centreline begins at the Club exit. The official start line sits
+// farther along Hamilton Straight, with a 239 m run to Abbey. Rotating the
+// sampled loop here gives negative starting-grid distances enough straight-line
+// room instead of wrapping the back rows around Turn 18.
+const SILVERSTONE_START_POINT_INDEX = 3;
 
 const SPEED_BY_KIND: Record<SegmentKind, number> = {
   STRAIGHT: 325,
@@ -185,6 +190,11 @@ function smoothClosedCurve(anchors: readonly TrackPoint[], subdivisions = CURVE_
   return points;
 }
 
+function rotateClosedCurve(points: readonly TrackPoint[], startIndex: number): TrackPoint[] {
+  const normalizedIndex = ((startIndex % points.length) + points.length) % points.length;
+  return [...points.slice(normalizedIndex), ...points.slice(0, normalizedIndex)];
+}
+
 function segmentKind(points: readonly TrackPoint[], index: number): SegmentKind {
   const count = points.length;
   const lookAhead = 4;
@@ -208,7 +218,7 @@ function isActiveAeroDistance(ratio: number): boolean {
 }
 
 function buildCircuit(): CircuitDefinition {
-  const points = smoothClosedCurve(SILVERSTONE_ANCHORS);
+  const points = rotateClosedCurve(smoothClosedCurve(SILVERSTONE_ANCHORS), SILVERSTONE_START_POINT_INDEX);
   const normalizedLengths = points.map((point, index) => distance(point, points[(index + 1) % points.length]));
   const totalNormalized = normalizedLengths.reduce((sum, length) => sum + length, 0);
   const lengthMeters = 5_891;
@@ -252,7 +262,10 @@ export const SILVERSTONE_CIRCUIT = buildCircuit();
 export const SILVERSTONE_CORNERS = SILVERSTONE_CORNER_ANCHORS.map(({ number, name, anchorIndex }) => ({
   number,
   name,
-  distanceMeters: SILVERSTONE_CIRCUIT.cumulativeDistances[anchorIndex * CURVE_SUBDIVISIONS],
+  distanceMeters: SILVERSTONE_CIRCUIT.cumulativeDistances[
+    (anchorIndex * CURVE_SUBDIVISIONS - SILVERSTONE_START_POINT_INDEX + SILVERSTONE_CIRCUIT.points.length)
+      % SILVERSTONE_CIRCUIT.points.length
+  ],
 }));
 
 export const SILVERSTONE_SECTOR_ENDS = [

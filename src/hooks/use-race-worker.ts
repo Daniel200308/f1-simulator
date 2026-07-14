@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useRef } from "react";
 
-import type { CoolingMode, EnergyMode, PaceMode, SimulationSpeed, TyreCompound, TyreMode } from "@/domain/race";
+import type { CoolingMode, EnergyMode, PaceMode, SimulationSpeed, TyreCompound, TyreMode, WeekendTyreUsage } from "@/domain/race";
+import { DEFAULT_PLAYER_TEAM_ID } from "@/fixtures/grid";
 import { DEFAULT_SEED } from "@/simulation/engine";
 import type { WorkerCommand, WorkerEvent } from "@/simulation/protocol";
 import { useRaceStore } from "@/store/race-store";
@@ -27,7 +28,7 @@ export function useRaceWorker() {
       }
     };
     worker.onerror = (event) => useRaceStore.getState().setError(event.message || "Simulation worker crashed");
-    worker.postMessage({ type: "INIT", seed: DEFAULT_SEED } satisfies WorkerCommand);
+    worker.postMessage({ type: "INIT", seed: DEFAULT_SEED, playerTeamId: DEFAULT_PLAYER_TEAM_ID } satisfies WorkerCommand);
     return () => {
       worker.terminate();
       workerRef.current = null;
@@ -49,6 +50,6 @@ export function useRaceWorker() {
     box: (carId: string, compound: TyreCompound) => send({ type: "BOX", carId, compound }),
     stayOut: (carId: string) => send({ type: "CANCEL_PIT", carId }),
     setStartingTyre: (carId: string, compound: TyreCompound) => send({ type: "SET_START_TYRE", carId, compound }),
-    reset: (seed = DEFAULT_SEED) => send({ type: "RESET", seed }),
+    reset: (seed = DEFAULT_SEED, gridOrder?: readonly string[], weekendTyreUsage?: WeekendTyreUsage, setupPerformanceByCar?: Readonly<Record<string, number>>, playerTeamId = DEFAULT_PLAYER_TEAM_ID) => send({ type: "RESET", seed, playerTeamId, gridOrder, weekendTyreUsage, setupPerformanceByCar }),
   };
 }

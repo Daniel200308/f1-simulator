@@ -62,7 +62,7 @@ context.onmessage = (message: MessageEvent<WorkerCommand>) => {
     switch (message.data.type) {
       case "INIT":
       case "RESET":
-        snapshot = createInitialSnapshot(message.data.seed);
+        snapshot = createInitialSnapshot(message.data.seed, "PAUSED", message.data.gridOrder, message.data.weekendTyreUsage, message.data.setupPerformanceByCar, message.data.playerTeamId);
         paused = true;
         autoPauseReason = null;
         accumulator = 0;

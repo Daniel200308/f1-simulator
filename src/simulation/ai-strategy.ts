@@ -4,6 +4,15 @@ import { estimateTyreCrossover } from "@/simulation/tyre-crossover";
 
 const DRY_COMPOUNDS: readonly TyreCompound[] = ["SOFT", "MEDIUM", "HARD"];
 
+interface WeatherSurfaceSignal {
+  strategicWetness: number;
+  wetCoverage: number;
+  heavyCoverage: number;
+  standingWater: number;
+  dryingLine: number;
+  sustainedForecastRain: boolean;
+}
+
 export interface AiStrategyContext {
   trackWetness: number;
   weather?: WeatherState;
@@ -30,6 +39,36 @@ function availableCompounds(car: RaceCarState): TyreCompound[] {
   return [...new Set(car.tyreSets.filter((set) => set.status === "AVAILABLE").map((set) => set.compound))];
 }
 
+function weatherSurfaceSignal(context: AiStrategyContext): WeatherSurfaceSignal {
+  const zones = context.weather?.surfaceZones ?? [];
+  const forecastWindow = context.weather?.forecast?.filter((point) => point.minutesAhead <= 5) ?? [];
+  const sustainedForecastRain = forecastWindow.length >= 2
+    && forecastWindow.reduce((total, point) => total + point.rainIntensity * point.rainProbability, 0) / forecastWindow.length >= 0.2;
+  if (zones.length === 0) {
+    return {
+      strategicWetness: context.trackWetness,
+      wetCoverage: context.trackWetness >= 0.12 ? 1 : 0,
+      heavyCoverage: context.trackWetness >= 0.55 ? 1 : 0,
+      standingWater: 0,
+      dryingLine: Math.max(0, 1 - context.trackWetness),
+      sustainedForecastRain,
+    };
+  }
+
+  const water = zones.map((zone) => Math.max(0, Math.min(1,
+    zone.wetness * (1 - zone.dryingLine * 0.28) + zone.standingWater * 0.55 + zone.rainIntensity * 0.08,
+  )));
+  const average = water.reduce((total, value) => total + value, 0) / water.length;
+  return {
+    strategicWetness: Math.max(context.trackWetness * 0.35 + average * 0.65, average),
+    wetCoverage: water.filter((value) => value >= 0.12).length / water.length,
+    heavyCoverage: water.filter((value) => value >= 0.52).length / water.length,
+    standingWater: zones.reduce((total, zone) => total + zone.standingWater, 0) / zones.length,
+    dryingLine: zones.reduce((total, zone) => total + zone.dryingLine, 0) / zones.length,
+    sustainedForecastRain,
+  };
+}
+
 function compoundScore(compound: TyreCompound, remainingLaps: number, wetness: number, aggression: number): number {
   if (wetness >= 0.58) return compound === "WET" ? 40 : compound === "INTERMEDIATE" ? 12 : -45;
   if (wetness >= 0.16) return compound === "INTERMEDIATE" ? 38 : compound === "WET" ? 18 : -32;
@@ -47,6 +86,8 @@ export function buildAiStrategyDecision(context: AiStrategyContext, car: RaceCar
   const doubleStackRisk = Boolean(teammate?.scheduledPitCompound || teammate?.pitStatus === "PIT_LANE" || teammate?.pitStatus === "PIT_STOP");
   const cheapStop = context.raceControl === "SAFETY_CAR" || context.raceControl === "VSC";
   const undercut = car.gapToCarAhead > 0.3 && car.gapToCarAhead < 2.4;
+  const surface = weatherSurfaceSignal(context);
+  const wetTyreFitted = car.tyreCompound === "INTERMEDIATE" || car.tyreCompound === "WET";
   const crossover = context.weather ? estimateTyreCrossover({
     weather: context.weather,
     currentCompound: car.tyreCompound,
@@ -54,13 +95,23 @@ export function buildAiStrategyDecision(context: AiStrategyContext, car: RaceCar
     remainingLaps,
     pitLossSeconds: context.raceControl === "SAFETY_CAR" ? 11.8 : context.raceControl === "VSC" ? 15.6 : 23,
   }) : null;
-  const wetTarget: TyreCompound | null = crossover
-    ? crossover.shouldPit ? crossover.recommendedCompound : null
-    : context.trackWetness >= 0.58
-      ? "WET"
-      : context.trackWetness >= 0.16
-        ? "INTERMEDIATE"
-        : car.tyreCompound === "WET" || car.tyreCompound === "INTERMEDIATE" ? "MEDIUM" : null;
+  const stableDrySurface = surface.strategicWetness <= 0.075
+    && surface.wetCoverage < 0.16
+    && surface.dryingLine >= 0.68
+    && !surface.sustainedForecastRain
+    && (context.weather?.rainIntensity ?? 0) < 0.035;
+  const reactiveWetTarget: TyreCompound | null = surface.heavyCoverage >= 0.38
+      && (surface.strategicWetness >= 0.46 || surface.standingWater >= 0.16)
+    ? "WET"
+    : surface.wetCoverage >= 0.4
+        && (surface.strategicWetness >= 0.12 || surface.sustainedForecastRain)
+      ? "INTERMEDIATE"
+      : wetTyreFitted && stableDrySurface
+        ? "MEDIUM"
+        : null;
+  const crossoverTarget = crossover?.shouldPit ? crossover.recommendedCompound : null;
+  const crossoverIsSafe = crossoverTarget === null || !DRY_COMPOUNDS.includes(crossoverTarget) || stableDrySurface;
+  const wetTarget: TyreCompound | null = reactiveWetTarget ?? (crossoverIsSafe ? crossoverTarget : null);
   const weatherMismatch = wetTarget !== null && wetTarget !== car.tyreCompound;
   const weatherTransition = weatherMismatch && (
     wetTarget === "INTERMEDIATE"
@@ -68,6 +119,11 @@ export function buildAiStrategyDecision(context: AiStrategyContext, car: RaceCar
       || car.tyreCompound === "INTERMEDIATE"
       || car.tyreCompound === "WET"
   );
+  const weatherEmergency = !wetTyreFitted
+    && (surface.heavyCoverage >= 0.48 || surface.wetCoverage >= 0.72)
+    && surface.strategicWetness >= 0.24;
+  const weatherTransitionReady = weatherTransition
+    && (weatherEmergency || car.pitStops === 0 || car.tyreAgeLaps >= 1.5);
   const threshold = 43 + aggression * 4 + (undercut ? 8 : 0) + (cheapStop ? 20 : 0) - (doubleStackRisk ? 9 : 0);
   const tyreCritical = car.tyreLife <= 35;
   const prematureDryStop = context.trackWetness < 0.16
@@ -81,14 +137,14 @@ export function buildAiStrategyDecision(context: AiStrategyContext, car: RaceCar
     && compounds.length > 0
     && car.currentLap < SILVERSTONE_CIRCUIT.totalLaps
     && !prematureDryStop
-    && (weatherTransition || tyreCritical || car.tyreLife <= threshold);
+    && (weatherTransitionReady || !weatherTransition && (tyreCritical || car.tyreLife <= threshold));
 
   const ranked = compounds
     .map((compound) => {
       const freshest = Math.max(...car.tyreSets.filter((set) => set.status === "AVAILABLE" && set.compound === compound).map((set) => set.condition));
       const switchingBonus = wetTarget === compound ? (crossover ? 90 : 18) : 0;
       const repeatPenalty = compound === car.tyreCompound && car.tyreLife > 45 ? 3 : 0;
-      return { compound, score: compoundScore(compound, remainingLaps, context.trackWetness, aggression) + freshest * 0.08 + switchingBonus - repeatPenalty };
+      return { compound, score: compoundScore(compound, remainingLaps, surface.strategicWetness, aggression) + freshest * 0.08 + switchingBonus - repeatPenalty };
     })
     .sort((a, b) => b.score - a.score || a.compound.localeCompare(b.compound));
   const best = ranked[0] ?? null;
@@ -104,5 +160,6 @@ export function buildAiStrategyDecision(context: AiStrategyContext, car: RaceCar
   const margin = best && ranked[1] ? best.score - ranked[1].score : best ? 12 : 0;
   const modelConfidence = crossover && weatherTransition ? crossover.confidence : 0;
   const confidence = Math.max(0.35, Math.min(0.96, 0.52 + margin * 0.018 + (weatherTransition ? 0.16 : 0) + modelConfidence * 0.08 - (doubleStackRisk ? 0.12 : 0)));
-  return { pitNow: shouldPit && Boolean(best), compound: shouldPit ? best?.compound ?? null : null, intent, confidence, score: best?.score ?? 0 };
+  const pitNow = shouldPit && Boolean(best) && (best?.compound !== car.tyreCompound || tyreCritical);
+  return { pitNow, compound: pitNow ? best?.compound ?? null : null, intent, confidence, score: best?.score ?? 0 };
 }

@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import type { Application, Container, Graphics, Text } from "pixi.js";
 
-import { DRIVERS, TEAM_BY_ID } from "@/fixtures/grid";
+import { DEFAULT_PLAYER_TEAM_ID, DRIVERS, TEAM_BY_ID } from "@/fixtures/grid";
 import { createTrackViewport, distanceToCenterline, projectTrackPoint } from "@/components/race/track-viewport";
 import { PIT_ENTRY_START, PIT_EXIT_END } from "@/simulation/engine";
 import { pointAtDistance, sectorAtDistance, SILVERSTONE_CIRCUIT, SILVERSTONE_CORNERS } from "@/simulation/track";
@@ -29,7 +29,7 @@ export function RaceMap({ startPhase, lightsOn }: { startPhase: "MENU" | "LIGHTS
   const hostRef = useRef<HTMLDivElement>(null);
   const snapshot = useRaceStore((state) => state.snapshot);
   const selectedCarId = useRaceStore((state) => state.selectedCarId);
-  const autoPauseReason = useRaceStore((state) => state.autoPauseReason);
+  const playerTeamId = snapshot?.playerTeamId ?? DEFAULT_PLAYER_TEAM_ID;
   const selectedCar = snapshot?.cars.find((car) => car.carId === selectedCarId);
   const sectorSurface = ([1, 2, 3] as const).map((sector) => {
     const state = snapshot?.weather.sectors?.find((candidate) => candidate.sector === sector);
@@ -38,14 +38,6 @@ export function RaceMap({ startPhase, lightsOn }: { startPhase: "MENU" | "LIGHTS
   });
   const surfaceConditions = new Set(sectorSurface.map((sector) => sector.condition));
   const surfaceSummary = surfaceConditions.size > 1 ? "MIXED" : sectorSurface[0].condition.replace("_", " ");
-  const safetyQueueSize = snapshot?.cars.filter((car) => car.safetyCarQueuePosition !== null).length ?? 0;
-  const controlTitle = snapshot?.raceControl === "YELLOW"
-    ? `LOCAL YELLOW · SECTOR ${snapshot.yellowSector ?? "—"}`
-    : snapshot?.raceControl === "VSC"
-      ? "VIRTUAL SAFETY CAR"
-      : snapshot?.raceControl === "SAFETY_CAR"
-        ? snapshot.safetyCarPhase === "RESTART" ? "SAFETY CAR IN THIS LAP" : snapshot.safetyCarPhase === "BUNCHING" ? "FIELD BUNCHING" : "SAFETY CAR DEPLOYED"
-        : "GREEN FLAG";
 
   useEffect(() => {
     const host = hostRef.current;
@@ -156,6 +148,7 @@ export function RaceMap({ startPhase, lightsOn }: { startPhase: "MENU" | "LIGHTS
       DRIVERS.forEach((driver) => {
         const team = TEAM_BY_ID.get(driver.teamId);
         if (!team) return;
+        const isPlayer = driver.teamId === playerTeamId;
 
         const container = new PIXI.Container();
         container.eventMode = "static";
@@ -164,25 +157,25 @@ export function RaceMap({ startPhase, lightsOn }: { startPhase: "MENU" | "LIGHTS
 
         const ring = new PIXI.Graphics();
         const dot = new PIXI.Graphics()
-          .circle(0, 0, team.isPlayer ? 7 : 5.5)
+          .circle(0, 0, isPlayer ? 7 : 5.5)
           .fill({ color: team.primaryColor })
           .stroke({ width: 1.2, color: 0xdbe7ea, alpha: 0.72 });
-        dot.circle(0, 0, team.isPlayer ? 3 : 2.2).fill({ color: 0x061017, alpha: 0.76 });
+        dot.circle(0, 0, isPlayer ? 3 : 2.2).fill({ color: 0x061017, alpha: 0.76 });
         const label = new PIXI.Text({
           text: driver.shortName,
           style: {
             fontFamily: "Arial, sans-serif",
-            fontSize: team.isPlayer ? 11 : 9,
+            fontSize: isPlayer ? 11 : 9,
             fontWeight: "800",
             fill: 0xf2f7f8,
           },
         }) as Text;
         label.anchor.set(0.5, 1);
-        label.position.set(0, team.isPlayer ? -10 : -8);
+        label.position.set(0, isPlayer ? -10 : -8);
         container.addChild(ring, dot, label);
         container.on("pointertap", () => useRaceStore.getState().setSelectedCarId(driver.id));
         markerLayer.addChild(container);
-        markers.set(driver.id, { container, ring, label, isPlayer: team.isPlayer, displayDistance: 0 });
+        markers.set(driver.id, { container, ring, label, isPlayer, displayDistance: 0 });
       });
 
       function drawTrack() {
@@ -374,39 +367,21 @@ export function RaceMap({ startPhase, lightsOn }: { startPhase: "MENU" | "LIGHTS
       if (app) app.destroy(true, { children: true });
       host.replaceChildren();
     };
-  }, []);
+  }, [playerTeamId]);
 
   return (
     <div className="track-map" ref={hostRef}>
       <div className="track-map__hud track-map__hud--top">
         <span>LIVE CIRCUIT</span>
-        <span className="muted">18 TURNS</span>
-        <span className="muted">AERO ZONES</span>
       </div>
-      {snapshot && snapshot.raceControl !== "GREEN" && (
-        <div aria-atomic="true" aria-live="assertive" className={`race-control-banner race-control-banner--${snapshot.raceControl.toLowerCase()}`} role="status">
-          <header>
-            <i className="race-control-flag" />
-            <div><strong>{controlTitle}</strong><span>{snapshot.activeIncident ? `T${snapshot.activeIncident.cornerNumber} ${snapshot.activeIncident.cornerName} · ${snapshot.activeIncident.status}` : "RACE CONTROL"}</span></div>
-            <b className={snapshot.pitLaneOpen ? "is-open" : "is-closed"}>PIT {snapshot.pitLaneOpen ? "OPEN" : "CLOSED"}</b>
-          </header>
-          {snapshot.raceControl === "SAFETY_CAR" && (
-            <div className="race-control-procedure" aria-label={`Safety car phase ${snapshot.safetyCarPhase}`}>
-              {(["DEPLOYED", "BUNCHING", "RESTART"] as const).map((phase, index) => {
-                const activeIndex = ["DEPLOYED", "BUNCHING", "RESTART"].indexOf(snapshot.safetyCarPhase);
-                return <span className={index < activeIndex ? "is-complete" : index === activeIndex ? "is-active" : ""} key={phase}><i />{phase}</span>;
-              })}
-            </div>
-          )}
-          <div className="race-control-metrics">
-            {snapshot.raceControl === "YELLOW" && <><span><small>ZONE</small><strong>S{snapshot.yellowSector ?? "—"}</strong></span><span><small>SPEED</small><strong>≤160</strong></span><span><small>RULE</small><strong>NO OVERTAKE</strong></span></>}
-            {snapshot.raceControl === "VSC" && <><span><small>YOUR DELTA</small><strong className={selectedCar?.vscDeltaSeconds != null && selectedCar.vscDeltaSeconds < 0 ? "is-negative" : "is-positive"}>{selectedCar ? `${selectedCar.vscDeltaSeconds >= 0 ? "+" : ""}${selectedCar.vscDeltaSeconds.toFixed(3)}` : "—"}</strong></span><span><small>COMPLIANCE</small><strong>{selectedCar?.vscComplianceStatus ?? "—"}</strong></span><span><small>TARGET</small><strong>62%</strong></span></>}
-            {snapshot.raceControl === "SAFETY_CAR" && <><span><small>QUEUE</small><strong>{selectedCar?.safetyCarQueuePosition ? `Q${selectedCar.safetyCarQueuePosition}/${safetyQueueSize}` : "PIT / OUT"}</strong></span><span><small>TARGET GAP</small><strong>{selectedCar?.safetyCarGapToTargetMeters != null ? `${selectedCar.safetyCarGapToTargetMeters >= 0 ? "+" : ""}${selectedCar.safetyCarGapToTargetMeters.toFixed(0)}m` : "—"}</strong></span><span><small>SC SPEED</small><strong>{Math.round(snapshot.safetyCarSpeed)} km/h</strong></span></>}
-          </div>
-          {autoPauseReason && <div className="race-control-auto-hold"><i /> EVENT HOLD · {autoPauseReason}</div>}
+      {(startPhase === "LIGHTS" || startPhase === "GO") && <div className={`track-start-sequence ${startPhase === "GO" ? "is-go" : ""}`} data-track-start-phase={startPhase}><div>{Array.from({ length: 5 }, (_, index) => <i className={index < lightsOn ? "is-on" : ""} key={index} />)}</div><span>{startPhase === "GO" ? "LIGHTS OUT" : "START"}</span></div>}
+      {selectedCar && selectedCar.pitStatus !== "TRACK" && (
+        <div className="pit-timing-live" data-pit-status={selectedCar.pitStatus} role="status">
+          <header><span>LIVE PIT STOP</span><strong>{selectedCar.pitStatus.replace("PIT_", "")}</strong></header>
+          <div><span><small>TOTAL PIT</small><strong>{selectedCar.pitLaneTimer.toFixed(1)}<em>s</em></strong></span><i /><span><small>TYRE CHANGE</small><strong>{selectedCar.pitTimer.toFixed(2)}<em>s</em></strong></span></div>
+          <footer><span>STOP TARGET {selectedCar.pitStopTargetSeconds.toFixed(2)}s</span><b>{selectedCar.pitStopIssue.replace("_", " ")}</b></footer>
         </div>
       )}
-      {(startPhase === "LIGHTS" || startPhase === "GO") && <div className={`track-start-sequence ${startPhase === "GO" ? "is-go" : ""}`} data-track-start-phase={startPhase}><div>{Array.from({ length: 5 }, (_, index) => <i className={index < lightsOn ? "is-on" : ""} key={index} />)}</div><span>{startPhase === "GO" ? "LIGHTS OUT" : "START"}</span></div>}
       <div className="track-weather">
         <div className="track-weather__title"><span>LOCAL SURFACE</span><strong>{surfaceSummary}</strong></div>
         <div className="track-weather__sectors">{sectorSurface.map((sector) => <span className={`is-${sector.condition.toLowerCase().replace("_", "-")}`} key={sector.sector} title={`Sector ${sector.sector}: ${Math.round(sector.wetness * 100)}% wet`}><i /><b>S{sector.sector}</b><em>{sector.condition.replace("_", " ")}</em></span>)}</div>
@@ -416,7 +391,6 @@ export function RaceMap({ startPhase, lightsOn }: { startPhase: "MENU" | "LIGHTS
         <span><i className="legend-dot legend-dot--player" />PLAYER</span>
         <span><i className="legend-line" />ACTIVE AERO</span>
         <span><i className="legend-line legend-line--pit" />PIT LANE</span>
-        <span>OSM LAYOUT</span>
       </div>
     </div>
   );

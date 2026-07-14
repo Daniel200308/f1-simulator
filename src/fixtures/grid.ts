@@ -2,17 +2,17 @@ import type { DriverDefinition, TeamDefinition } from "@/domain/race";
 
 // 2026 grid verified against Formula 1's official driver and results pages on 2026-07-12.
 export const TEAMS: readonly TeamDefinition[] = [
-  { id: "mercedes", name: "Mercedes", shortName: "MER", primaryColor: 0x27f4d2, accentColor: 0xb6fff3, performance: 1.012, isPlayer: true },
-  { id: "ferrari", name: "Ferrari", shortName: "FER", primaryColor: 0xff2238, accentColor: 0xffa1aa, performance: 1.008, isPlayer: false },
-  { id: "mclaren", name: "McLaren", shortName: "MCL", primaryColor: 0xff8700, accentColor: 0xffc47a, performance: 1.005, isPlayer: false },
-  { id: "red-bull", name: "Red Bull Racing", shortName: "RBR", primaryColor: 0x4c6fff, accentColor: 0xa8b6ff, performance: 1.002, isPlayer: false },
-  { id: "alpine", name: "Alpine", shortName: "ALP", primaryColor: 0x32a8ff, accentColor: 0x9dd5ff, performance: 0.994, isPlayer: false },
-  { id: "racing-bulls", name: "Racing Bulls", shortName: "RB", primaryColor: 0xdde6ff, accentColor: 0xffffff, performance: 0.992, isPlayer: false },
-  { id: "haas", name: "Haas F1 Team", shortName: "HAS", primaryColor: 0xc8cbd0, accentColor: 0xffffff, performance: 0.988, isPlayer: false },
-  { id: "williams", name: "Williams", shortName: "WIL", primaryColor: 0x1688ff, accentColor: 0x9dccff, performance: 0.985, isPlayer: false },
-  { id: "audi", name: "Audi", shortName: "AUD", primaryColor: 0xe8ff35, accentColor: 0xf5ff9c, performance: 0.981, isPlayer: false },
-  { id: "aston-martin", name: "Aston Martin", shortName: "AMR", primaryColor: 0x229971, accentColor: 0x8ce1c4, performance: 0.978, isPlayer: false },
-  { id: "cadillac", name: "Cadillac", shortName: "CAD", primaryColor: 0xd7b56d, accentColor: 0xf4ddb0, performance: 0.973, isPlayer: false },
+  { id: "mercedes", name: "Mercedes", shortName: "MER", primaryColor: 0x27f4d2, accentColor: 0xb6fff3, performance: 1.012 },
+  { id: "ferrari", name: "Ferrari", shortName: "FER", primaryColor: 0xff2238, accentColor: 0xffa1aa, performance: 1.008 },
+  { id: "mclaren", name: "McLaren", shortName: "MCL", primaryColor: 0xff8700, accentColor: 0xffc47a, performance: 1.005 },
+  { id: "red-bull", name: "Red Bull Racing", shortName: "RBR", primaryColor: 0x4c6fff, accentColor: 0xa8b6ff, performance: 1.002 },
+  { id: "alpine", name: "Alpine", shortName: "ALP", primaryColor: 0x32a8ff, accentColor: 0x9dd5ff, performance: 0.994 },
+  { id: "racing-bulls", name: "Racing Bulls", shortName: "RB", primaryColor: 0xdde6ff, accentColor: 0xffffff, performance: 0.992 },
+  { id: "haas", name: "Haas F1 Team", shortName: "HAS", primaryColor: 0xc8cbd0, accentColor: 0xffffff, performance: 0.988 },
+  { id: "williams", name: "Williams", shortName: "WIL", primaryColor: 0x1688ff, accentColor: 0x9dccff, performance: 0.985 },
+  { id: "audi", name: "Audi", shortName: "AUD", primaryColor: 0xe8ff35, accentColor: 0xf5ff9c, performance: 0.981 },
+  { id: "aston-martin", name: "Aston Martin", shortName: "AMR", primaryColor: 0x229971, accentColor: 0x8ce1c4, performance: 0.978 },
+  { id: "cadillac", name: "Cadillac", shortName: "CAD", primaryColor: 0xd7b56d, accentColor: 0xf4ddb0, performance: 0.973 },
 ] as const;
 
 const DRIVER_DATA = [
@@ -44,4 +44,8 @@ export const DRIVERS: readonly DriverDefinition[] = DRIVER_DATA.map((driver, ind
 
 export const TEAM_BY_ID = new Map(TEAMS.map((team) => [team.id, team]));
 export const DRIVER_BY_ID = new Map(DRIVERS.map((driver) => [driver.id, driver]));
-export const PLAYER_CAR_IDS = DRIVERS.filter((driver) => driver.teamId === "mercedes").map((driver) => driver.id);
+export const DEFAULT_PLAYER_TEAM_ID = "ferrari";
+export function playerCarIdsFor(teamId: string): string[] {
+  return DRIVERS.filter((driver) => driver.teamId === teamId).map((driver) => driver.id);
+}
+export const PLAYER_CAR_IDS = playerCarIdsFor(DEFAULT_PLAYER_TEAM_ID);

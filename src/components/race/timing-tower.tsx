@@ -9,6 +9,13 @@ function gapLabel(position: number, gap: number): string {
   return `+${gap.toFixed(3)}`;
 }
 
+function sessionTime(seconds: number): string {
+  const hours = Math.floor(seconds / 3_600);
+  const minutes = Math.floor((seconds % 3_600) / 60);
+  const secs = Math.floor(seconds % 60);
+  return [hours, minutes, secs].map((value) => value.toString().padStart(2, "0")).join(":");
+}
+
 export function TimingTower() {
   const snapshot = useRaceStore((state) => state.snapshot);
   const selectedCarId = useRaceStore((state) => state.selectedCarId);
@@ -16,13 +23,15 @@ export function TimingTower() {
   const timingGaps = useRaceStore((state) => state.timingGaps);
   const timingGapRevision = useRaceStore((state) => state.timingGapRevision);
   const cars = snapshot ? [...snapshot.cars].sort((a, b) => a.racePosition - b.racePosition) : [];
+  const currentLap = cars[0]?.currentLap ?? 1;
 
   return (
     <aside className="panel timing-panel" data-gap-revision={timingGapRevision}>
-      <header className="panel__header">
-        <div><span className="eyebrow">FIELD</span><h2>Leader Board</h2></div>
-        <span className="panel__counter">22 CARS</span>
-      </header>
+      <header className="panel__header panel__header--leader"><h2>Leader Board</h2></header>
+      <div className="timing-session-summary">
+        <span><small>LAP</small><strong>{currentLap}<em>/ 52</em></strong></span>
+        <span><small>RACE TIME</small><strong>{sessionTime(snapshot?.elapsedTime ?? 0)}</strong></span>
+      </div>
       <div className="timing-head"><span>P</span><span>DRIVER</span><span>TYRE</span><span>GAP</span><span>STATE</span></div>
       <div className="timing-list">
         {cars.map((car) => {
@@ -33,7 +42,7 @@ export function TimingTower() {
           const statusLabel = car.incidentStatus === "RETIRED" ? "OUT" : car.incidentStatus === "SPUN" ? "SPIN" : car.incidentStatus === "DAMAGED" ? "DMG" : snapshot?.raceControl === "VSC" ? `${car.vscDeltaSeconds >= 0 ? "+" : ""}${car.vscDeltaSeconds.toFixed(2)}` : car.pitStatus !== "TRACK" ? "PIT" : battleLabel ?? "RUN";
           return (
             <button
-              className={`timing-row ${selectedCarId === car.carId ? "is-selected" : ""} ${team.isPlayer ? "is-player" : ""}`}
+              className={`timing-row ${selectedCarId === car.carId ? "is-selected" : ""} ${car.teamId === snapshot?.playerTeamId ? "is-player" : ""}`}
               key={car.carId}
               onClick={() => select(car.carId)}
               type="button"

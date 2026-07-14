@@ -19,6 +19,7 @@ export type VscComplianceStatus = "COMPLIANT" | "WARNING" | "VIOLATION";
 export type PitLaneProcedureStatus = "OPEN" | "CLOSED";
 export type IncidentStatus = "RUNNING" | "SPUN" | "DAMAGED" | "RETIRED";
 export type WeatherSector = 1 | 2 | 3;
+export type WeekendTyreUsage = Readonly<Record<string, Partial<Record<TyreCompound, number>>>>;
 
 export interface WeatherRadarCell {
   id: string;
@@ -108,7 +109,6 @@ export interface TeamDefinition {
   primaryColor: number;
   accentColor: number;
   performance: number;
-  isPlayer: boolean;
 }
 
 export interface DriverDefinition {
@@ -223,6 +223,8 @@ export interface RaceCarState {
   /** Estimated short-term retirement risk caused by heat stress. */
   thermalRiskPercent: number;
   fuelRemainingKg: number;
+  /** Setup-derived whole-lap performance multiplier carried in from practice. */
+  setupPerformanceFactor: number;
   paceMode: PaceMode;
   tyreMode: TyreMode;
   energyMode: EnergyMode;
@@ -241,9 +243,14 @@ export interface RaceCarState {
   overtakeOpponentTimes: Readonly<Record<string, number>>;
   pendingOvertake: PendingOvertake | null;
   pitStatus: PitStatus;
+  /** Total elapsed time from pit entry to pit exit for the active stop. */
+  pitLaneTimer: number;
   pitTimer: number;
   pitStopTargetSeconds: number;
+  /** Stationary tyre-change time from the most recently completed stop. */
   lastPitStopTime: number | null;
+  /** Full pit-lane time from entry line to exit line for the most recently completed stop. */
+  lastPitLaneTime: number | null;
   pitStopIssue: PitStopIssue;
   pitStops: number;
   scheduledPitCompound: TyreCompound | null;
@@ -275,6 +282,8 @@ export interface RaceCarState {
 
 export interface RaceSnapshot {
   seed: number;
+  /** Team currently controlled by the human player. */
+  playerTeamId: string;
   tick: number;
   elapsedTime: number;
   status: RaceStatus;

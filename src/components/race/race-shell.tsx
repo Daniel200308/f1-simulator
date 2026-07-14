@@ -13,28 +13,32 @@ import { RaceTopbar, type RaceStartPhase } from "@/components/race/race-topbar";
 import { TimingTower } from "@/components/race/timing-tower";
 import { StrategyTimeline } from "@/components/race/strategy-timeline";
 import { StrategyIntelligencePanel } from "@/components/race/strategy-intelligence-panel";
-import { PLAYER_CAR_IDS, TEAM_BY_ID } from "@/fixtures/grid";
+import { TeamSelection } from "@/components/race/team-selection";
+import { WeekendHub } from "@/components/race/weekend-hub";
+import { DEFAULT_PLAYER_TEAM_ID, playerCarIdsFor } from "@/fixtures/grid";
 import { useRaceWorker } from "@/hooks/use-race-worker";
 import { DEFAULT_SEED, FIXED_STEP_SECONDS } from "@/simulation/engine";
 import { RaceReplayRecorder, type RaceReplayRecording, type ReplayEventValue } from "@/simulation/race-replay";
 import { buildRaceReport } from "@/simulation/race-report";
 import { SILVERSTONE_CIRCUIT } from "@/simulation/track";
+import { createWeekendState, latestWeekendReport, raceSetupPerformanceFactor, runWeekendSession, setWeekendCarSetup, type WeekendSessionReport } from "@/simulation/weekend";
 import { useRaceStore } from "@/store/race-store";
-
-const PIT_COMPOUNDS: readonly TyreCompound[] = ["SOFT", "MEDIUM", "HARD", "INTERMEDIATE", "WET"];
-const TYRE_SHORT: Record<TyreCompound, string> = { SOFT: "S", MEDIUM: "M", HARD: "H", INTERMEDIATE: "I", WET: "W" };
 
 export function RaceShell() {
   const controls = useRaceWorker();
+  const [selectedTeamId, setSelectedTeamId] = useState(DEFAULT_PLAYER_TEAM_ID);
+  const [teamConfirmed, setTeamConfirmed] = useState(false);
   const [startPhase, setStartPhase] = useState<RaceStartPhase>("MENU");
   const [lightsOn, setLightsOn] = useState(0);
-  const [startingTyres, setStartingTyres] = useState<Record<string, TyreCompound>>({ [PLAYER_CAR_IDS[0]]: "MEDIUM", [PLAYER_CAR_IDS[1]]: "MEDIUM" });
+  const [weekend, setWeekend] = useState(() => createWeekendState(DEFAULT_SEED, DEFAULT_PLAYER_TEAM_ID));
+  const [startingTyres, setStartingTyres] = useState<Record<string, TyreCompound>>(() => Object.fromEntries(playerCarIdsFor(DEFAULT_PLAYER_TEAM_ID).map((carId) => [carId, "MEDIUM"])));
+  const [activeWeekendReport, setActiveWeekendReport] = useState<WeekendSessionReport | null>(null);
   const [replayRecording, setReplayRecording] = useState<RaceReplayRecording | null>(null);
   const [strategyCarId, setStrategyCarId] = useState<string | null>(null);
   const [raceOperationsCarId, setRaceOperationsCarId] = useState<string | null>(null);
   const [reviewView, setReviewView] = useState<ReplayReportView | null>(null);
   const startTimers = useRef<number[]>([]);
-  const replayRecorder = useRef(new RaceReplayRecorder({ captureIntervalSeconds: 1, maxFrames: 1_800, watchedCarIds: PLAYER_CAR_IDS }));
+  const replayRecorder = useRef(new RaceReplayRecorder({ captureIntervalSeconds: 1, maxFrames: 1_800, watchedCarIds: playerCarIdsFor(DEFAULT_PLAYER_TEAM_ID) }));
   const pendingReplayReset = useRef<{ expectedStartingTyres: Readonly<Record<string, TyreCompound>> | null } | null>(null);
   const snapshot = useRaceStore((state) => state.snapshot);
   const speed = useRaceStore((state) => state.speed);
@@ -44,9 +48,11 @@ export function RaceShell() {
   const error = useRaceStore((state) => state.error);
   const snapshotCount = useRaceStore((state) => state.snapshotCount);
   const selectedCarId = useRaceStore((state) => state.selectedCarId);
+  const setSelectedCarId = useRaceStore((state) => state.setSelectedCarId);
+  const playerCarIds = playerCarIdsFor(selectedTeamId);
   const selectedCar = snapshot?.cars.find((car) => car.carId === selectedCarId);
   const selectedCarActive = Boolean(selectedCar
-    && TEAM_BY_ID.get(selectedCar.teamId)?.isPlayer
+    && selectedCar.teamId === snapshot?.playerTeamId
     && !selectedCar.finished
     && selectedCar.incidentStatus !== "RETIRED");
   const raceControlLabel = snapshot?.raceControl === "YELLOW"
@@ -64,7 +70,7 @@ export function RaceShell() {
     const pendingReset = pendingReplayReset.current;
     if (pendingReset) {
       const resetSnapshotArrived = snapshot.tick === 0 && snapshot.elapsedTime === 0;
-      const expectedTyresReady = !pendingReset.expectedStartingTyres || PLAYER_CAR_IDS.every((carId) => (
+      const expectedTyresReady = !pendingReset.expectedStartingTyres || playerCarIdsFor(selectedTeamId).every((carId) => (
         snapshot.cars.find((car) => car.carId === carId)?.tyreCompound === pendingReset.expectedStartingTyres?.[carId]
       ));
       if (!resetSnapshotArrived || !expectedTyresReady) return;
@@ -73,7 +79,7 @@ export function RaceShell() {
     }
     const recording = replayRecorder.current.record(snapshot);
     setReplayRecording((current) => current?.endedAt === recording.endedAt && current.events.length === recording.events.length && current.frames.length === recording.frames.length ? current : recording);
-  }, [snapshot]);
+  }, [snapshot, selectedTeamId]);
 
   function annotateCommand(carId: string, message: string, data?: Readonly<Record<string, ReplayEventValue>>) {
     const recording = replayRecorder.current.annotate({ kind: "STRATEGY", message, carId, severity: "INFO", data }, snapshot?.elapsedTime ?? 0);
@@ -83,7 +89,7 @@ export function RaceShell() {
   function commandableCar(carId: string) {
     const car = snapshot?.cars.find((candidate) => candidate.carId === carId);
     return car
-      && TEAM_BY_ID.get(car.teamId)?.isPlayer
+      && car.teamId === snapshot?.playerTeamId
       && snapshot?.status !== "FINISHED"
       && !car.finished
       && car.incidentStatus !== "RETIRED"
@@ -111,8 +117,9 @@ export function RaceShell() {
     pendingReplayReset.current = { expectedStartingTyres: { ...startingTyres } };
     replayRecorder.current.reset();
     setReplayRecording(null);
-    controls.reset(DEFAULT_SEED);
-    PLAYER_CAR_IDS.forEach((carId) => controls.setStartingTyre(carId, startingTyres[carId]));
+    const setupPerformanceByCar = Object.fromEntries(Object.entries(weekend.setups).map(([carId, setup]) => [carId, raceSetupPerformanceFactor(setup, weekend.seed, carId)]));
+    controls.reset(DEFAULT_SEED, weekend.gridOrder, weekend.tyreUsage, setupPerformanceByCar, selectedTeamId);
+    playerCarIds.forEach((carId) => controls.setStartingTyre(carId, startingTyres[carId]));
     setStartPhase("LIGHTS");
     setLightsOn(1);
     for (let count = 2; count <= 5; count += 1) {
@@ -136,7 +143,30 @@ export function RaceShell() {
     setStrategyCarId(null);
     setRaceOperationsCarId(null);
     setReviewView(null);
-    controls.reset(DEFAULT_SEED);
+    setActiveWeekendReport(null);
+    setTeamConfirmed(false);
+    setStartingTyres(Object.fromEntries(playerCarIds.map((carId) => [carId, "MEDIUM"])));
+    controls.reset(DEFAULT_SEED, undefined, undefined, undefined, selectedTeamId);
+    setWeekend(createWeekendState(DEFAULT_SEED, selectedTeamId));
+  }
+
+  function runCurrentWeekendSession() {
+    const next = runWeekendSession(weekend);
+    setWeekend(next);
+    setActiveWeekendReport(latestWeekendReport(next));
+  }
+
+  function confirmTeamSelection() {
+    const carIds = playerCarIdsFor(selectedTeamId);
+    const tyres = Object.fromEntries(carIds.map((carId) => [carId, "MEDIUM" as TyreCompound]));
+    setWeekend(createWeekendState(DEFAULT_SEED, selectedTeamId));
+    setStartingTyres(tyres);
+    setActiveWeekendReport(null);
+    setSelectedCarId(carIds[0]);
+    replayRecorder.current = new RaceReplayRecorder({ captureIntervalSeconds: 1, maxFrames: 1_800, watchedCarIds: carIds });
+    pendingReplayReset.current = { expectedStartingTyres: null };
+    controls.reset(DEFAULT_SEED, undefined, undefined, undefined, selectedTeamId);
+    setTeamConfirmed(true);
   }
 
   if (error) {
@@ -145,19 +175,20 @@ export function RaceShell() {
 
   return (
     <main className="pitwall-shell">
-      {startPhase === "MENU" && (
-        <div className={`start-overlay start-overlay--${startPhase.toLowerCase()}`} data-start-phase={startPhase}>
-          <div className="start-card">
-            <span className="eyebrow">ROUND 09 · GREAT BRITAIN</span>
-            <h1>Silverstone Grand Prix</h1>
-            <p>52 LAPS · 5.891 KM · 18 TURNS</p>
-            <div className="start-grid-summary"><span>22 DRIVERS</span><span>RAIN IN ~{snapshot?.weather.forecastRainInMinutes ?? 0} MIN</span><span>RACE</span></div>
-            <div className="pre-race-tyres">
-              {PLAYER_CAR_IDS.map((carId, index) => <div key={carId}><span>CAR {index + 1} START TYRE</span><div>{PIT_COMPOUNDS.map((compound) => <button aria-label={`Car ${index + 1} ${compound}`} className={`tyre-choice tyre-${compound.toLowerCase()} ${startingTyres[carId] === compound ? "is-active" : ""}`} key={compound} onClick={() => setStartingTyres((current) => ({ ...current, [carId]: compound }))} type="button">{TYRE_SHORT[compound]}</button>)}</div></div>)}
-            </div>
-            <button className="start-race-button" onClick={startRace} type="button">START RACE</button>
-          </div>
-        </div>
+      {startPhase === "MENU" && !teamConfirmed && (
+        <TeamSelection onConfirm={confirmTeamSelection} onSelect={setSelectedTeamId} selectedTeamId={selectedTeamId} />
+      )}
+      {startPhase === "MENU" && teamConfirmed && (
+        <WeekendHub
+          activeReport={activeWeekendReport}
+          onCloseReport={() => setActiveWeekendReport(null)}
+          onRunSession={runCurrentWeekendSession}
+          onSetupChange={(carId, setup) => setWeekend((current) => setWeekendCarSetup(current, carId, setup))}
+          onStartRace={startRace}
+          onStartingTyreChange={(carId, compound) => setStartingTyres((current) => ({ ...current, [carId]: compound }))}
+          startingTyres={startingTyres}
+          state={weekend}
+        />
       )}
       <RaceTopbar
         snapshot={snapshot}

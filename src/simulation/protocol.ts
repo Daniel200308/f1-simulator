@@ -1,7 +1,7 @@
-import type { CoolingMode, EnergyMode, PaceMode, RaceSnapshot, SimulationSpeed, TyreCompound, TyreMode } from "@/domain/race";
+import type { CoolingMode, EnergyMode, PaceMode, RaceSnapshot, SimulationSpeed, TyreCompound, TyreMode, WeekendTyreUsage } from "@/domain/race";
 
 export type WorkerCommand =
-  | { type: "INIT"; seed: number }
+  | { type: "INIT"; seed: number; playerTeamId?: string; gridOrder?: readonly string[]; weekendTyreUsage?: WeekendTyreUsage; setupPerformanceByCar?: Readonly<Record<string, number>> }
   | { type: "PLAY" }
   | { type: "PAUSE" }
   | { type: "SET_AUTO_PAUSE"; enabled: boolean }
@@ -14,7 +14,7 @@ export type WorkerCommand =
   | { type: "BOX"; carId: string; compound: TyreCompound }
   | { type: "CANCEL_PIT"; carId: string }
   | { type: "SET_START_TYRE"; carId: string; compound: TyreCompound }
-  | { type: "RESET"; seed: number };
+  | { type: "RESET"; seed: number; playerTeamId?: string; gridOrder?: readonly string[]; weekendTyreUsage?: WeekendTyreUsage; setupPerformanceByCar?: Readonly<Record<string, number>> };
 
 export type WorkerEvent =
   | { type: "SNAPSHOT"; snapshot: RaceSnapshot; speed: SimulationSpeed; paused: boolean; autoPauseEnabled: boolean; autoPauseReason: string | null }

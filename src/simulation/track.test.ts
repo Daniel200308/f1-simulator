@@ -31,5 +31,7 @@ describe("track geometry", () => {
     );
     expect(SILVERSTONE_CORNERS[0].name).toBe("Abbey");
     expect(SILVERSTONE_CORNERS[17].name).toBe("Club");
+    expect(SILVERSTONE_CORNERS[0].distanceMeters).toBeGreaterThan(190);
+    expect(SILVERSTONE_CORNERS[0].distanceMeters).toBeLessThan(280);
   });
 });

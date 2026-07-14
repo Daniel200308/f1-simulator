@@ -1,22 +1,20 @@
 "use client";
 
-import type { CSSProperties } from "react";
+import { useEffect, useRef, useState } from "react";
+
 import {
   CloudSun,
-  Flag,
-  Gauge,
   Pause,
   Play,
   RadioTower,
   RotateCcw,
   ShieldCheck,
   Thermometer,
-  Timer,
   Zap,
 } from "lucide-react";
 
 import type { RaceSnapshot, SimulationSpeed } from "@/domain/race";
-import { SILVERSTONE_CIRCUIT } from "@/simulation/track";
+import { latestRaceControlNotice } from "@/simulation/race-control-feed";
 
 const SPEEDS: readonly SimulationSpeed[] = [1, 2, 4, 8, 16];
 
@@ -34,13 +32,6 @@ interface RaceTopbarProps {
   onSetAutoPause: (enabled: boolean) => void;
   onSetSpeed: (speed: SimulationSpeed) => void;
   onReset: () => void;
-}
-
-function formatTime(seconds: number): string {
-  const hours = Math.floor(seconds / 3_600);
-  const minutes = Math.floor((seconds % 3_600) / 60);
-  const secs = Math.floor(seconds % 60);
-  return [hours, minutes, secs].map((value) => value.toString().padStart(2, "0")).join(":");
 }
 
 function getWeatherLabel(snapshot: RaceSnapshot | null): string {
@@ -69,14 +60,25 @@ export function RaceTopbar({
   onSetSpeed,
   onReset,
 }: RaceTopbarProps) {
-  const currentLap = snapshot?.cars.find((car) => car.racePosition === 1)?.currentLap ?? 1;
-  const totalLaps = SILVERSTONE_CIRCUIT.totalLaps;
-  const lapProgress = Math.min(100, Math.max(0, (currentLap / totalLaps) * 100));
   const raceControlLabel = getRaceControlLabel(snapshot);
   const weatherLabel = getWeatherLabel(snapshot);
-  const controlStatus = startPhase === "RACING" ? raceControlLabel : "GRID";
+  const controlStatus = raceControlLabel;
   const playLabel = paused ? "Resume race" : "Pause race";
-  const lapStyle = { "--lap-progress": `${lapProgress * 3.6}deg` } as CSSProperties;
+  const notice = snapshot ? latestRaceControlNotice(snapshot) : null;
+  const controlMessage = notice?.message ?? "TRACK CLEAR · RACE CONTROL MONITORING";
+  const controlMessageTime = notice?.elapsedTime ?? 0;
+  const controlMessageClock = `${Math.floor(controlMessageTime / 60).toString().padStart(2, "0")}:${Math.floor(controlMessageTime % 60).toString().padStart(2, "0")}`;
+  const flagState = snapshot?.raceControl ?? "GREEN";
+  const previousFlagState = useRef(flagState);
+  const [flagFlashing, setFlagFlashing] = useState(false);
+
+  useEffect(() => {
+    if (previousFlagState.current === flagState) return;
+    previousFlagState.current = flagState;
+    setFlagFlashing(true);
+    const timer = window.setTimeout(() => setFlagFlashing(false), 1_650);
+    return () => window.clearTimeout(timer);
+  }, [flagState]);
 
   return (
     <header className="topbar topbar--telemetry" aria-label="Live race header">
@@ -90,40 +92,32 @@ export function RaceTopbar({
       </div>
 
       <div className="broadcast-strip broadcast-strip--iconic">
-        <section className="broadcast-session status-cluster" aria-label="Round 9, Great Britain, race session">
-          <span className="cluster-icon" aria-hidden="true"><Flag size={16} /></span>
-          <div>
+        <section className="broadcast-session session-copy-panel" aria-label="Round 9, Great Britain, race session">
+          <div className="hud-stat-copy">
             <span>ROUND 09</span>
             <strong>RACE</strong>
-            <em>GBR</em>
+            <small>GBR</small>
           </div>
-        </section>
-
-        <section className="broadcast-lap lap-cluster" aria-label={`Lap ${currentLap} of ${totalLaps}`}>
-          <span className="lap-dial" style={lapStyle} aria-hidden="true">
-            <Gauge size={16} />
-            <strong>{currentLap}</strong>
-          </span>
-          <span className="lap-copy"><small>LAP</small><em>/ {totalLaps}</em></span>
-          <i className="lap-progress" aria-hidden="true"><b style={{ width: `${lapProgress}%` }} /></i>
-        </section>
-
-        <section className="broadcast-clock status-cluster" aria-label={`Race time ${formatTime(snapshot?.elapsedTime ?? 0)}`}>
-          <span className="cluster-icon" aria-hidden="true"><Timer size={16} /></span>
-          <div><span>RACE TIME</span><strong>{formatTime(snapshot?.elapsedTime ?? 0)}</strong></div>
         </section>
 
         <section
-          className={`broadcast-status status-cluster condition--${(snapshot?.raceControl ?? "GREEN").toLowerCase()}`}
+          className={`broadcast-status track-flag-panel condition--${flagState.toLowerCase()} ${flagFlashing ? "is-flashing" : ""}`}
           aria-label={`Race control ${controlStatus}, ${snapshot?.pitLaneOpen === false ? "pit lane closed" : "pit lane open"}`}
           aria-live="polite"
         >
-          <span className="cluster-icon race-control-icon" aria-hidden="true"><Flag size={17} /></span>
-          <div>
-            <span>RACE CONTROL</span>
+          <div className="hud-stat-copy">
+            <span>TRACK FLAG</span>
             <strong>{controlStatus}</strong>
             <small className="pit-lane-state">{snapshot?.pitLaneOpen === false ? "PIT CLOSED" : "PIT OPEN"}</small>
           </div>
+        </section>
+
+        <section aria-live="polite" className={`broadcast-control-message priority--${(notice?.priority ?? "NORMAL").toLowerCase()}`}>
+          <div className="control-message-meta">
+            <span>FIA RACE CONTROL · {controlMessageClock}</span>
+            <span>{notice?.category ?? "Other"} · {notice?.scope ?? "Track"}{notice?.sector ? ` S${notice.sector}` : ""} · LAP {notice?.lapNumber ?? 1}{notice?.driverNumber ? ` · CAR ${notice.driverNumber}` : ""}</span>
+          </div>
+          <strong>{controlMessage}</strong>
         </section>
 
         <section className="broadcast-conditions conditions-cluster" aria-label={`Track ${Math.round(snapshot?.weather.trackTemperature ?? 31)} degrees, weather ${weatherLabel}`}>

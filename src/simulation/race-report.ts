@@ -1,5 +1,5 @@
 import type { IncidentStatus, PitStopIssue, RaceSnapshot, TyreCompound } from "@/domain/race";
-import { DRIVER_BY_ID, DRIVERS, TEAM_BY_ID, TEAMS } from "@/fixtures/grid";
+import { DRIVER_BY_ID, DRIVERS, TEAM_BY_ID } from "@/fixtures/grid";
 import type { RaceReplayRecording, ReplayEventSeverity, ReplayKeyEvent } from "@/simulation/race-replay";
 
 export type ClassificationStatus = "FINISHED" | "RETIRED" | "RUNNING";
@@ -128,9 +128,8 @@ function dataNumber(event: ReplayKeyEvent, key: string): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-function defaultPlayerCarIds(): string[] {
-  const playerTeamIds = new Set(TEAMS.filter((team) => team.isPlayer).map((team) => team.id));
-  return DRIVERS.filter((driver) => playerTeamIds.has(driver.teamId)).map((driver) => driver.id);
+function defaultPlayerCarIds(snapshot: RaceSnapshot): string[] {
+  return DRIVERS.filter((driver) => driver.teamId === snapshot.playerTeamId).map((driver) => driver.id);
 }
 
 function fallbackEventCarId(snapshot: RaceSnapshot, event: RaceSnapshot["events"][number]): string | null {
@@ -306,7 +305,7 @@ export function buildRaceReport(snapshot: RaceSnapshot, options: BuildRaceReport
     derived.carId === event.carId && Math.abs(derived.elapsedTime - event.elapsedTime) < 0.5
   )));
   const thermalWarnings = [...derivedThermalWarnings, ...nativeThermalWarnings].sort((left, right) => left.elapsedTime - right.elapsedTime);
-  const playerIds = new Set(options.playerCarIds ?? defaultPlayerCarIds());
+  const playerIds = new Set(options.playerCarIds ?? defaultPlayerCarIds(snapshot));
   const playerReports: PlayerRaceReport[] = orderedCars.filter((car) => playerIds.has(car.carId)).map((car) => {
     const identity = carIdentity(car);
     const tyreStrategy = tyreStrategies.find((strategy) => strategy.carId === car.carId)?.compounds ?? [car.tyreCompound];

@@ -2,7 +2,7 @@
 
 import type { CoolingMode, EnergyMode, PaceMode, RaceCarState, TyreCompound, TyreMode } from "@/domain/race";
 import { TyreBadge } from "@/components/race/tyre-badge";
-import { DRIVER_BY_ID, PLAYER_CAR_IDS, TEAM_BY_ID } from "@/fixtures/grid";
+import { DEFAULT_PLAYER_TEAM_ID, DRIVER_BY_ID, playerCarIdsFor, TEAM_BY_ID } from "@/fixtures/grid";
 import { useRaceStore } from "@/store/race-store";
 
 const PACE_OPTIONS: readonly { mode: PaceMode; label: string; hint: string; level: number }[] = [
@@ -46,7 +46,8 @@ export function CommandDock({ car, controls, pitLaneOpen }: { car?: RaceCarState
   const setSelectedCarId = useRaceStore((state) => state.setSelectedCarId);
   const driver = car ? DRIVER_BY_ID.get(car.driverId) : undefined;
   const team = car ? TEAM_BY_ID.get(car.teamId) : undefined;
-  const enabled = Boolean(car && team?.isPlayer && !car.finished && car.incidentStatus !== "RETIRED");
+  const playerCarIds = playerCarIdsFor(snapshot?.playerTeamId ?? DEFAULT_PLAYER_TEAM_ID);
+  const enabled = Boolean(car && car.teamId === snapshot?.playerTeamId && !car.finished && car.incidentStatus !== "RETIRED");
   const tyreSetsFor = (compound: TyreCompound) => car?.tyreSets?.filter((set) => set.compound === compound) ?? [];
   const availableSetsFor = (compound: TyreCompound) => tyreSetsFor(compound).filter((set) => set.status === "AVAILABLE").length;
 
@@ -55,7 +56,7 @@ export function CommandDock({ car, controls, pitLaneOpen }: { car?: RaceCarState
       <div className="command-console__target">
         <span className="eyebrow">DRIVER CONTROL</span>
         <div aria-label="Select driver to control" className="command-driver-selector" role="group">
-          {PLAYER_CAR_IDS.map((carId) => {
+          {playerCarIds.map((carId) => {
             const playerDriver = DRIVER_BY_ID.get(carId);
             const playerCar = snapshot?.cars.find((candidate) => candidate.carId === carId);
             if (!playerDriver) return null;

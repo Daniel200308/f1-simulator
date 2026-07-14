@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import type { RaceCarState } from "@/domain/race";
-import { TEAM_BY_ID } from "@/fixtures/grid";
 import { buildAiStrategyDecision } from "@/simulation/ai-strategy";
 import { createInitialSnapshot } from "@/simulation/engine";
 
 function aiCars(): RaceCarState[] {
-  return createInitialSnapshot(4_242).cars.filter((car) => !TEAM_BY_ID.get(car.teamId)?.isPlayer);
+  const snapshot = createInitialSnapshot(4_242);
+  return snapshot.cars.filter((car) => car.teamId !== snapshot.playerTeamId);
 }
 
 describe("AI strategy model", () => {
@@ -43,7 +43,7 @@ describe("AI strategy model", () => {
 
   it("keeps fresh dry tyres on track during the opening laps", () => {
     const snapshot = createInitialSnapshot(4_242);
-    const cars = snapshot.cars.filter((car) => !TEAM_BY_ID.get(car.teamId)?.isPlayer);
+    const cars = snapshot.cars.filter((car) => car.teamId !== snapshot.playerTeamId);
     const softCar = cars.find((car) => car.tyreCompound === "SOFT")!;
     const decision = buildAiStrategyDecision({
       trackWetness: 0,
@@ -72,5 +72,55 @@ describe("AI strategy model", () => {
     const baseline = buildAiStrategyDecision({ trackWetness: 0, raceControl: "GREEN", pitLaneOpen: true, cars: baselineCars }, car);
     const changed = buildAiStrategyDecision({ trackWetness: 0, raceControl: "GREEN", pitLaneOpen: true, cars: hiddenRivalChanges }, car);
     expect(changed).toEqual(baseline);
+  });
+
+  it("uses track-wide wet coverage when the car is still on a dry local patch", () => {
+    const snapshot = createInitialSnapshot(4_243);
+    const cars = snapshot.cars.filter((car) => car.teamId !== snapshot.playerTeamId);
+    const car = cars[0];
+    const weather = {
+      ...snapshot.weather,
+      condition: "LIGHT_RAIN" as const,
+      rainIntensity: 0.34,
+      trackWetness: 0.27,
+      forecast: [0, 2, 5, 10].map((minutesAhead) => ({
+        minutesAhead,
+        condition: "LIGHT_RAIN" as const,
+        rainProbability: 0.92,
+        rainIntensity: 0.34,
+      })),
+      surfaceZones: snapshot.weather.surfaceZones!.map((zone, index) => index < 32
+        ? { ...zone, rainIntensity: 0.38, wetness: 0.36, standingWater: 0.05, dryingLine: 0.08 }
+        : { ...zone, rainIntensity: 0, wetness: 0.01, standingWater: 0, dryingLine: 0.95 }),
+    };
+    const decision = buildAiStrategyDecision({ trackWetness: 0.02, weather, raceControl: "GREEN", pitLaneOpen: true, cars }, car);
+
+    expect(decision.pitNow).toBe(true);
+    expect(decision.compound).toBe("INTERMEDIATE");
+    expect(decision.intent).toBe("WEATHER");
+  });
+
+  it("stays on slicks for a short isolated shower covering only one sector fragment", () => {
+    const snapshot = createInitialSnapshot(4_244);
+    const cars = snapshot.cars.filter((car) => car.teamId !== snapshot.playerTeamId);
+    const car = cars[0];
+    const weather = {
+      ...snapshot.weather,
+      condition: "LIGHT_RAIN" as const,
+      rainIntensity: 0.08,
+      trackWetness: 0.03,
+      forecast: [
+        { minutesAhead: 0, condition: "LIGHT_RAIN" as const, rainProbability: 0.5, rainIntensity: 0.12 },
+        { minutesAhead: 2, condition: "DRY" as const, rainProbability: 0.1, rainIntensity: 0 },
+        { minutesAhead: 5, condition: "DRY" as const, rainProbability: 0, rainIntensity: 0 },
+      ],
+      surfaceZones: snapshot.weather.surfaceZones!.map((zone, index) => index < 5
+        ? { ...zone, rainIntensity: 0.2, wetness: 0.28, standingWater: 0.02, dryingLine: 0.22 }
+        : zone),
+    };
+    const decision = buildAiStrategyDecision({ trackWetness: 0.02, weather, raceControl: "GREEN", pitLaneOpen: true, cars }, car);
+
+    expect(decision.pitNow).toBe(false);
+    expect(decision.compound).toBeNull();
   });
 });
