@@ -1,0 +1,189 @@
+[
+  {
+    "name": "1600x900",
+    "layout": {
+      "viewportName": "1600x900",
+      "viewport": {
+        "width": 1600,
+        "height": 900
+      },
+      "document": {
+        "width": 1600,
+        "height": 900
+      },
+      "map": {
+        "left": 249,
+        "top": 147,
+        "right": 1247,
+        "bottom": 765,
+        "width": 998,
+        "height": 618
+      },
+      "rail": {
+        "left": 957.59375,
+        "top": 147,
+        "right": 1247,
+        "bottom": 765,
+        "width": 289.40625,
+        "height": 618
+      },
+      "selectedMarker": {
+        "x": 422.31,
+        "y": 443.24,
+        "centerlineError": 0
+      },
+      "canvasLabel": "Silverstone Circuit live track map. Four wing-open Straight Mode sections, Overtake detection after Turn 17 and activation before Turn 18.",
+      "legend": "PLAYERSTRAIGHT MODE · WING OPENOVERTAKE DET.PIT LANE",
+      "energyRects": [
+        {
+          "label": "Set energy HARVEST",
+          "x": 619,
+          "y": 820.5,
+          "width": 27.5,
+          "height": 34
+        },
+        {
+          "label": "Set energy CONSERVE",
+          "x": 650.5,
+          "y": 820.5,
+          "width": 27.5,
+          "height": 34
+        },
+        {
+          "label": "Set energy BALANCED",
+          "x": 682,
+          "y": 818.5,
+          "width": 27.5,
+          "height": 34
+        },
+        {
+          "label": "Set energy ATTACK",
+          "x": 713.5,
+          "y": 820.5,
+          "width": 27.5,
+          "height": 34
+        },
+        {
+          "label": "Set energy BOOST",
+          "x": 745,
+          "y": 820.5,
+          "width": 27.5,
+          "height": 34
+        },
+        {
+          "label": "Set energy OVERTAKE, unavailable",
+          "x": 776.5,
+          "y": 820.5,
+          "width": 27.5,
+          "height": 34
+        }
+      ],
+      "radio": null,
+      "bottomDebugBar": false
+    },
+    "pit": {
+      "status": "TYRE_COMPLETE",
+      "text": "TYRE CHANGE COMPLETERELEASEDTOTAL PIT7.9sTYRE CHANGE2.20s2025 BENCH 2.08s · TARGET 2.19sWHEELS ON",
+      "animationName": "pit-stop-complete",
+      "overlay": {
+        "left": 711.59375,
+        "right": 943.59375,
+        "top": 159,
+        "bottom": 258
+      },
+      "rail": {
+        "left": 957.59375,
+        "right": 1247,
+        "top": 147,
+        "bottom": 765
+      },
+      "tyreTime": 2.2
+    },
+    "errors": []
+  },
+  {
+    "name": "1280x720",
+    "layout": {
+      "viewportName": "1280x720",
+      "viewport": {
+        "width": 1280,
+        "height": 720
+      },
+      "document": {
+        "width": 1280,
+        "height": 720
+      },
+      "map": {
+        "left": 249,
+        "top": 147,
+        "right": 943,
+        "bottom": 541,
+        "width": 694,
+        "height": 394
+      },
+      "rail": {
+        "left": 713,
+        "top": 147,
+        "right": 943,
+        "bottom": 541,
+        "width": 230,
+        "height": 394
+      },
+      "selectedMarker": {
+        "x": 272.16,
+        "y": 279.33,
+        "centerlineError": 0
+      },
+      "canvasLabel": "Silverstone Circuit live track map. Four wing-open Straight Mode sections, Overtake detection after Turn 17 and activation before Turn 18.",
+      "legend": "PLAYERSTRAIGHT MODE · WING OPENOVERTAKE DET.PIT LANE",
+      "energyRects": [
+        {
+          "label": "Set energy HARVEST",
+          "x": 710.46875,
+          "y": 577.5,
+          "width": 31.921875,
+          "height": 34
+        },
+        {
+          "label": "Set energy CONSERVE",
+          "x": 746.390625,
+          "y": 577.5,
+          "width": 31.921875,
+          "height": 34
+        },
+        {
+          "label": "Set energy BALANCED",
+          "x": 782.3125,
+          "y": 575.5,
+          "width": 31.921875,
+          "height": 34
+        },
+        {
+          "label": "Set energy ATTACK",
+          "x": 818.234375,
+          "y": 577.5,
+          "width": 31.921875,
+          "height": 34
+        },
+        {
+          "label": "Set energy BOOST",
+          "x": 854.15625,
+          "y": 577.5,
+          "width": 31.921875,
+          "height": 34
+        },
+        {
+          "label": "Set energy OVERTAKE, unavailable",
+          "x": 890.078125,
+          "y": 577.5,
+          "width": 31.921875,
+          "height": 34
+        }
+      ],
+      "radio": null,
+      "bottomDebugBar": false
+    },
+    "pit": null,
+    "errors": []
+  }
+]

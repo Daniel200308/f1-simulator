@@ -78,6 +78,39 @@ describe("buildRaceReport", () => {
     expect(report.classification.find((entry) => entry.position === 2)?.gapToWinnerSeconds).toBe(2);
   });
 
+  it("applies unserved time penalties and reorders the official classification", () => {
+    const snapshot = completedSnapshot();
+    const onTrackWinner = snapshot.cars.find((car) => car.racePosition === 1)!;
+    const report = buildRaceReport({
+      ...snapshot,
+      penalties: [{
+        id: "penalty-1",
+        incidentId: "incident-1",
+        carId: onTrackWinner.carId,
+        teamId: onTrackWinner.teamId,
+        driverId: onTrackWinner.driverId,
+        infringement: "SC_VSC_DELTA",
+        type: "TIME_5",
+        status: "PENDING",
+        seconds: 5,
+        classificationSeconds: 5,
+        reason: "VSC MINIMUM TIME BREACH",
+        evidence: "Delta -0.420s",
+        issuedAt: 5_000,
+        lapNumber: 48,
+        serviceDeadlineCrossings: null,
+        lineCrossingsAfterIssue: 0,
+        servedAt: null,
+        serviceStartedAt: null,
+      }],
+    });
+
+    expect(report.classification[0]).toMatchObject({ onTrackPosition: 2, position: 1, penaltySeconds: 0 });
+    expect(report.classification[1]).toMatchObject({ carId: onTrackWinner.carId, onTrackPosition: 1, position: 2, penaltySeconds: 5 });
+    expect(report.winnerCarId).toBe(snapshot.cars[0].carId);
+    expect(report.totals.penalties).toBe(1);
+  });
+
   it("summarises pit issues and complete tyre sequences", () => {
     const snapshot = completedSnapshot();
     const report = buildRaceReport(snapshot);

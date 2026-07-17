@@ -3,10 +3,9 @@ import { describe, expect, it } from "vitest";
 import type { SafetyCarCandidate } from "@/simulation/race-control";
 import {
   SAFETY_CAR_DEPLOYMENT_SECONDS,
-  SAFETY_CAR_MINIMUM_BUNCHING_SECONDS,
-  SAFETY_CAR_RESTART_SECONDS,
   advanceSafetyCarPosition,
   advanceSafetyCarProcedure,
+  buildSafetyCarSchedule,
   buildSafetyCarFormation,
   createSafetyCarProcedureState,
   isOvertakePermitted,
@@ -45,6 +44,13 @@ describe("local yellow procedures", () => {
     expect(clear).toMatchObject({ applies: false, noOvertaking: false, speedFactor: 1, maximumSpeedKph: null });
     expect(isOvertakePermitted({ raceControl: "YELLOW", currentSector: 2, yellowSector: 2 })).toBe(false);
     expect(isOvertakePermitted({ raceControl: "YELLOW", currentSector: 3, yellowSector: 2 })).toBe(true);
+  });
+
+  it("gives a red flag highest priority and closes the pit exit", () => {
+    expect(selectHigherPriorityRaceControl("SAFETY_CAR", "RED_FLAG")).toBe("RED_FLAG");
+    expect(isOvertakePermitted({ raceControl: "RED_FLAG", currentSector: 1, yellowSector: null })).toBe(false);
+    expect(pitLaneProcedureFor("RED_FLAG", "NONE", 0)).toMatchObject({ open: false, status: "CLOSED", reason: "RED_FLAG_SUSPENSION" });
+    expect(raceControlPhaseMessage({ raceControl: "RED_FLAG" }).headline).toBe("RED FLAG");
   });
 });
 
@@ -98,22 +104,23 @@ describe("safety car procedure", () => {
     expect(bunching).toMatchObject({ phase: "BUNCHING", phaseElapsedSeconds: 0, changed: true });
     expect(bunching.message?.headline).toBe("FIELD BUNCHING");
 
-    const waitingForField = advanceSafetyCarProcedure({
-      state: { phase: "BUNCHING", phaseElapsedSeconds: SAFETY_CAR_MINIMUM_BUNCHING_SECONDS },
+    const waitingForEndingSector = advanceSafetyCarProcedure({
+      state: { phase: "BUNCHING", phaseElapsedSeconds: 120 },
       stepSeconds: 4,
       fieldBunched: false,
     });
-    expect(waitingForField.phase).toBe("BUNCHING");
+    expect(waitingForEndingSector.phase).toBe("BUNCHING");
 
     const restart = advanceSafetyCarProcedure({
-      state: waitingForField,
+      state: waitingForEndingSector,
       stepSeconds: 0,
-      fieldBunched: true,
+      fieldBunched: false,
+      endingSectorReached: true,
     });
     expect(restart).toMatchObject({ phase: "RESTART", phaseElapsedSeconds: 0, changed: true });
 
     const heldAtLine = advanceSafetyCarProcedure({
-      state: { phase: "RESTART", phaseElapsedSeconds: SAFETY_CAR_RESTART_SECONDS },
+      state: { phase: "RESTART", phaseElapsedSeconds: 0 },
       stepSeconds: 1,
       fieldBunched: true,
       safetyCarInPitLane: true,
@@ -135,11 +142,40 @@ describe("safety car procedure", () => {
   it("keeps overtaking prohibited until the restart line", () => {
     expect(isOvertakePermitted({ raceControl: "VSC", currentSector: 1, yellowSector: null })).toBe(false);
     expect(isOvertakePermitted({ raceControl: "SAFETY_CAR", currentSector: 1, yellowSector: null, safetyCarPhase: "RESTART", crossedRestartLine: false })).toBe(false);
+    expect(isOvertakePermitted({ raceControl: "SAFETY_CAR", currentSector: 3, yellowSector: null, safetyCarPhase: "BUNCHING", lappedCarMayOvertakeSafetyCar: true })).toBe(true);
     expect(isOvertakePermitted({ raceControl: "SAFETY_CAR", currentSector: 1, yellowSector: null, safetyCarPhase: "RESTART", crossedRestartLine: true })).toBe(true);
   });
 });
 
 describe("safety car position and queue", () => {
+  it("schedules a late-sector-three withdrawal on the first or second tour only", () => {
+    const oneLap = buildSafetyCarSchedule({
+      deploymentDistance: 1_500,
+      targetLaps: 1,
+      circuitLengthMeters: 5_891,
+      sectorThreeStartDistance: 3_900,
+      pitEntryLapDistance: 5_706,
+    });
+    const twoLaps = buildSafetyCarSchedule({
+      deploymentDistance: 1_500,
+      targetLaps: 2,
+      circuitLengthMeters: 5_891,
+      sectorThreeStartDistance: 3_900,
+      pitEntryLapDistance: 5_706,
+    });
+
+    expect(oneLap.endingStartDistance).toBeGreaterThanOrEqual(1_500 + 5_891);
+    expect(oneLap.endingStartDistance).toBeLessThan(1_500 + 5_891 * 2);
+    expect(oneLap.endingStartDistance % 5_891).toBe(3_900);
+    expect(oneLap.pitEntryDistance - oneLap.endingStartDistance).toBe(1_806);
+    expect(oneLap.restartLineDistance).toBe(oneLap.pitEntryDistance + 185);
+    expect(twoLaps.endingStartDistance).toBeGreaterThanOrEqual(1_500 + 5_891 * 2);
+    expect(twoLaps.endingStartDistance).toBeLessThan(1_500 + 5_891 * 3);
+    expect(twoLaps.endingStartDistance).toBe(oneLap.endingStartDistance + 5_891);
+    expect(twoLaps.unlappingStartDistance).toBe(oneLap.endingStartDistance);
+    expect(twoLaps.pitEntryDistance).toBe(oneLap.pitEntryDistance + 5_891);
+  });
+
   it("advances a physical safety car and wraps its lap position", () => {
     const initial = advanceSafetyCarPosition({
       previousTotalDistance: null,
@@ -211,6 +247,7 @@ describe("pit-lane and phase messaging", () => {
   it("provides direct operational messages for each phase", () => {
     expect(raceControlPhaseMessage({ raceControl: "YELLOW", yellowSector: 2 }).headline).toContain("SECTOR 2");
     expect(raceControlPhaseMessage({ raceControl: "VSC" }).detail).toContain("positive delta");
-    expect(raceControlPhaseMessage({ raceControl: "SAFETY_CAR", safetyCarPhase: "RESTART" }).headline).toContain("THIS LAP");
+    expect(raceControlPhaseMessage({ raceControl: "SAFETY_CAR", safetyCarPhase: "RESTART" }).headline).toBe("SC ENDING");
+    expect(raceControlPhaseMessage({ raceControl: "SAFETY_CAR", safetyCarPhase: "BUNCHING", lappedCarsMayOvertake: true, waveByCarCount: 2 }).headline).toContain("MAY NOW OVERTAKE");
   });
 });

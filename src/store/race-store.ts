@@ -16,6 +16,7 @@ interface RaceStore {
   timingGaps: Record<string, { leader: number; ahead: number; behind: number }>;
   timingGapUpdatedAt: number;
   timingGapRevision: number;
+  classificationSignature: string;
   setSnapshot: (snapshot: RaceSnapshot, speed: SimulationSpeed, paused: boolean, autoPauseEnabled?: boolean, autoPauseReason?: string | null) => void;
   setSelectedCarId: (carId: string) => void;
   setError: (message: string) => void;
@@ -34,9 +35,18 @@ export const useRaceStore = create<RaceStore>((set) => ({
   timingGaps: {},
   timingGapUpdatedAt: 0,
   timingGapRevision: 0,
+  classificationSignature: "",
   setSnapshot: (snapshot, speed, paused, autoPauseEnabled, autoPauseReason) => set((state) => {
     const now = Date.now();
-    const updateTiming = state.timingGapUpdatedAt === 0 || now - state.timingGapUpdatedAt >= 1_000;
+    const classificationSignature = snapshot.cars
+      .map((car) => `${car.carId}:${car.racePosition}:${car.pitStatus}`)
+      .join("|");
+    // Keep normal timing intervals at the broadcast-style one-second cadence,
+    // but publish position and gap changes immediately when a pit stop reshuffles
+    // the field (including while the Safety Car order is frozen on track).
+    const updateTiming = state.timingGapUpdatedAt === 0
+      || now - state.timingGapUpdatedAt >= 1_000
+      || classificationSignature !== state.classificationSignature;
     return {
       snapshot,
       speed,
@@ -55,6 +65,7 @@ export const useRaceStore = create<RaceStore>((set) => ({
         : state.timingGaps,
       timingGapUpdatedAt: updateTiming ? now : state.timingGapUpdatedAt,
       timingGapRevision: updateTiming ? state.timingGapRevision + 1 : state.timingGapRevision,
+      classificationSignature,
     };
   }),
   setSelectedCarId: (selectedCarId) => set({ selectedCarId }),

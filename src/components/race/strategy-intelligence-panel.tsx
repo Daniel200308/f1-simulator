@@ -1,7 +1,7 @@
 "use client";
 
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent } from "react";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   BrainCircuit,
   CircleAlert,
@@ -28,6 +28,7 @@ import {
   type StrategyScenario,
   type StrategyScenarioKind,
 } from "@/simulation/strategy-intelligence";
+import { buildRaceStrategyPlans, type RaceStrategyPlan } from "@/simulation/race-strategy-plans";
 import { SILVERSTONE_CIRCUIT } from "@/simulation/track";
 
 import styles from "./strategy-intelligence-panel.module.css";
@@ -194,6 +195,54 @@ function OpportunityPill({
   );
 }
 
+function PlanTimeline({ plans, currentLap, totalLaps }: { plans: readonly RaceStrategyPlan[]; currentLap: number; totalLaps: number }) {
+  const [selectedPlanId, setSelectedPlanId] = useState<RaceStrategyPlan["id"]>("A");
+  const selectedPlan = plans.find((plan) => plan.id === selectedPlanId) ?? plans[0];
+  const remainingLaps = Math.max(1, totalLaps - currentLap + 1);
+  return (
+    <section className={styles.planBoard} aria-label="Full race tyre strategy plans">
+      <header>
+        <div><Route aria-hidden="true" size={16} /><span><b>FULL RACE TYRE PLAN</b><small>LIVE FROM LAP {currentLap} TO LAP {totalLaps}</small></span></div>
+        <p>AI-ranked one-stop, two-stop and contingency routes</p>
+      </header>
+      <div className={styles.planRows}>
+        {plans.map((plan) => (
+          <button
+            aria-label={`Plan ${plan.id}, ${plan.name}, ${plan.stopCount} stops`}
+            aria-pressed={selectedPlan?.id === plan.id}
+            className={`${styles.planRow} ${selectedPlan?.id === plan.id ? styles.planRowActive : ""}`}
+            key={plan.id}
+            onClick={() => setSelectedPlanId(plan.id)}
+            type="button"
+          >
+            <span className={styles.planIdentity}><strong>PLAN {plan.id}</strong><small>{plan.name}</small></span>
+            <span className={styles.planTrack}>
+              {plan.stints.map((stint) => {
+                const width = ((stint.endLap - stint.startLap + 1) / remainingLaps) * 100;
+                return (
+                  <span
+                    className={styles.planStint}
+                    data-compound={stint.compound}
+                    key={`${plan.id}-${stint.startLap}-${stint.compound}`}
+                    style={{ "--stint-width": `${width}%` } as CSSProperties}
+                    title={`${stint.compound} · laps ${stint.startLap}–${stint.endLap} · projected life ${stint.projectedLifeAtEnd}%`}
+                  >
+                    <b>{stint.compound[0]}</b>
+                    <small>L{stint.startLap}–{stint.endLap}</small>
+                    {stint.pitAtEnd ? <i>BOX L{stint.endLap}</i> : null}
+                  </span>
+                );
+              })}
+            </span>
+            <span className={styles.planOutcome}><strong>{plan.stopCount} STOP{plan.stopCount === 1 ? "" : "S"}</strong><small>{plan.projectedDeltaSeconds === 0 ? "OPTIMAL" : `+${plan.projectedDeltaSeconds.toFixed(1)}s`} · {plan.risk}</small></span>
+          </button>
+        ))}
+      </div>
+      {selectedPlan ? <footer><strong>PLAN {selectedPlan.id}</strong><span>{selectedPlan.rationale}</span></footer> : null}
+    </section>
+  );
+}
+
 export function StrategyIntelligencePanel({
   snapshot,
   car,
@@ -214,6 +263,16 @@ export function StrategyIntelligencePanel({
     totalLaps: SILVERSTONE_CIRCUIT.totalLaps,
   }, car.carId), [car.carId, snapshot.cars, snapshot.elapsedTime, snapshot.pitLaneOpen, snapshot.raceControl, snapshot.weather]);
   const recommended = assessment.scenarios.find((scenario) => scenario.recommended)!;
+  const racePlans = useMemo(() => buildRaceStrategyPlans({
+    currentLap: car.currentLap,
+    totalLaps: SILVERSTONE_CIRCUIT.totalLaps,
+    tyreCompound: car.tyreCompound,
+    tyreLife: car.tyreLife,
+    tyreAgeLaps: car.tyreAgeLaps,
+    tyreSets: car.tyreSets,
+    weather: snapshot.weather,
+    raceControl: snapshot.raceControl,
+  }), [car.currentLap, car.tyreAgeLaps, car.tyreCompound, car.tyreLife, car.tyreSets, snapshot.raceControl, snapshot.weather]);
   const teamColor = team ? `#${team.primaryColor.toString(16).padStart(6, "0")}` : "#20d7e7";
 
   useEffect(() => {
@@ -267,9 +326,9 @@ export function StrategyIntelligencePanel({
         <header className={styles.dialogHeader}>
           <span className={styles.brandIcon} aria-hidden="true"><BrainCircuit size={24} /></span>
           <div className={styles.titleBlock}>
-            <span>STRATEGY INTELLIGENCE 3.0 · LIVE DECISION MATRIX</span>
+            <span>STRATEGY · LIVE RACE PLAN</span>
             <h2 id="strategy-intelligence-title">{driver?.shortName ?? car.carId.toUpperCase()} Race Strategy</h2>
-            <p id="strategy-intelligence-summary">Four deterministic scenarios calculated from live traffic, tyre, thermal, weather and Race Control data.</p>
+            <p id="strategy-intelligence-summary">Three full-race tyre plans plus live tactical calls from traffic, weather and Race Control data.</p>
           </div>
           <div className={styles.sessionMeta}>
             <span>LAP <b>{car.currentLap}/{SILVERSTONE_CIRCUIT.totalLaps}</b></span>
@@ -294,6 +353,8 @@ export function StrategyIntelligencePanel({
           </div>
           <button className={styles.primaryAction} onClick={() => executeScenario(recommended)} type="button">EXECUTE CALL</button>
         </div>
+
+        <PlanTimeline currentLap={car.currentLap} plans={racePlans} totalLaps={SILVERSTONE_CIRCUIT.totalLaps} />
 
         <div className={styles.scenarioGrid}>
           {assessment.scenarios.map((scenario) => (

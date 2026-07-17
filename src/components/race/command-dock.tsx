@@ -1,6 +1,6 @@
 "use client";
 
-import type { CoolingMode, EnergyMode, PaceMode, RaceCarState, TyreCompound, TyreMode } from "@/domain/race";
+import type { EnergyMode, PaceMode, RaceCarState, TeamOrderType, TyreCompound, TyreMode } from "@/domain/race";
 import { TyreBadge } from "@/components/race/tyre-badge";
 import { DEFAULT_PLAYER_TEAM_ID, DRIVER_BY_ID, playerCarIdsFor, TEAM_BY_ID } from "@/fixtures/grid";
 import { useRaceStore } from "@/store/race-store";
@@ -12,11 +12,12 @@ const PACE_OPTIONS: readonly { mode: PaceMode; label: string; hint: string; leve
   { mode: "CONSERVE", label: "Conserve", hint: "Save fuel", level: 2 },
   { mode: "COOL", label: "Cool", hint: "Reduce temps", level: 1 },
 ];
-const ENERGY_OPTIONS: readonly { mode: EnergyMode; label: string; hint: string; level: number }[] = [
-  { mode: "ATTACK", label: "Attack", hint: "Deploy", level: 4 },
-  { mode: "BALANCED", label: "Balanced", hint: "Auto", level: 3 },
-  { mode: "DEFEND", label: "Defend", hint: "Hold position", level: 3 },
-  { mode: "RECHARGE", label: "Recharge", hint: "Harvest", level: 1 },
+const ENERGY_OPTIONS: readonly { mode: EnergyMode; label: string; shortLabel: string; hint: string; level: number }[] = [
+  { mode: "HARVEST", label: "Harvest", shortLabel: "HAR", hint: "Recovery-biased map · the driver still deploys automatically on straights", level: 1 },
+  { mode: "CONSERVE", label: "Conserve", shortLabel: "CON", hint: "Reserve-biased map · automatic deployment and braking recovery", level: 2 },
+  { mode: "BALANCED", label: "Balanced", shortLabel: "BAL", hint: "Neutral automatic deployment and braking recovery", level: 3 },
+  { mode: "ATTACK", label: "Attack", shortLabel: "ATK", hint: "Deployment-biased map · braking recovery remains automatic", level: 4 },
+  { mode: "BOOST", label: "Boost", shortLabel: "BST", hint: "Maximum deployment tendency · braking recovery remains automatic", level: 4 },
 ];
 const TYRE_OPTIONS: readonly { mode: TyreMode; label: string; hint: string; grip: number }[] = [
   { mode: "GRIP", label: "Grip", hint: "Use tyre", grip: 4 },
@@ -30,9 +31,9 @@ export interface CommandDockControls {
   setPace: (carId: string, mode: PaceMode) => void;
   setEnergyMode: (carId: string, mode: EnergyMode) => void;
   setTyreMode: (carId: string, mode: TyreMode) => void;
-  setCoolingMode: (carId: string, mode: CoolingMode) => void;
-  setBrakeBias: (carId: string, brakeBiasPercent: number) => void;
+  setTeamOrder: (order: TeamOrderType) => void;
   box: (carId: string, compound: TyreCompound) => void;
+  servePenalty: (carId: string) => void;
   stayOut: (carId: string) => void;
 }
 
@@ -75,29 +76,14 @@ export function CommandDock({ car, controls, pitLaneOpen }: { car?: RaceCarState
             );
           })}
         </div>
-        <small className={enabled ? "command-link-status is-live" : "command-link-status"}>{enabled ? `${driver?.shortName} · ${team?.shortName} LINKED` : "SELECT PLAYER CAR"}</small>
-        <div className="vehicle-command-mini">
-          <span>COOLING</span>
-          <div className="cooling-mode-selector" role="group" aria-label="Vehicle cooling mode">
-            {(["NORMAL", "LIFT_AND_COAST", "MAX_COOLING"] as const).map((mode) => (
-              <button
-                aria-label={`Set cooling ${mode.replaceAll("_", " ")}`}
-                aria-pressed={car?.coolingMode === mode}
-                disabled={!enabled}
-                key={mode}
-                onClick={() => car && controls.setCoolingMode(car.carId, mode)}
-                title={mode.replaceAll("_", " ")}
-                type="button"
-              >{mode === "NORMAL" ? "N" : mode === "LIFT_AND_COAST" ? "L+C" : "MAX"}</button>
-            ))}
-          </div>
-          <span>BRAKE BIAS</span>
-          <div className="brake-bias-control">
-            <button aria-label="Move brake bias rearward" disabled={!enabled || (car?.brakeBiasPercent ?? 50) <= 50} onClick={() => car && controls.setBrakeBias(car.carId, car.brakeBiasPercent - 0.5)} type="button">−</button>
-            <b>{(car?.brakeBiasPercent ?? 56.5).toFixed(1)}%</b>
-            <button aria-label="Move brake bias forward" disabled={!enabled || (car?.brakeBiasPercent ?? 64) >= 64} onClick={() => car && controls.setBrakeBias(car.carId, car.brakeBiasPercent + 0.5)} type="button">+</button>
-          </div>
+        <div aria-label="Team orders" className="team-order-rail" role="group">
+          {(["NONE", "HOLD_POSITION", "SWAP_CARS"] as const).map((order) => (
+            <button aria-pressed={(snapshot?.teamOrder?.type ?? "NONE") === order} disabled={!snapshot || snapshot.status === "FINISHED"} key={order} onClick={() => controls.setTeamOrder(order)} title={order === "NONE" ? "Let both drivers race" : order === "HOLD_POSITION" ? "Hold the current team order" : "Release the following car and swap positions"} type="button">
+              {order === "NONE" ? "FREE" : order === "HOLD_POSITION" ? "HOLD" : "SWAP"}
+            </button>
+          ))}
         </div>
+        <small className={enabled ? "command-link-status is-live" : "command-link-status"}>{enabled ? `${driver?.shortName} · ${team?.shortName} LINKED` : "SELECT PLAYER CAR"}</small>
       </div>
 
       <section className="visual-control visual-control--pace">
@@ -105,9 +91,11 @@ export function CommandDock({ car, controls, pitLaneOpen }: { car?: RaceCarState
         <div>{PACE_OPTIONS.map((option) => <button aria-label={`Set pace ${option.mode}`} aria-pressed={car?.paceMode === option.mode} className="command-node" disabled={!enabled} key={option.mode} onClick={() => car && controls.setPace(car.carId, option.mode)} title={option.hint} type="button"><LevelGlyph kind="pace" level={option.level} /><strong>{option.label}</strong></button>)}</div>
       </section>
 
-      <section className="visual-control visual-control--energy">
-        <header><span>ENERGY</span><b>{Math.round(car?.batteryPercent ?? 0)}% · {car?.energyState ?? "—"}</b></header>
-        <div>{ENERGY_OPTIONS.map((option) => <button aria-label={`Set energy ${option.mode}`} aria-pressed={car?.energyMode === option.mode} className={`command-node energy-node energy-node--${option.mode.toLowerCase()}`} disabled={!enabled} key={option.mode} onClick={() => car && controls.setEnergyMode(car.carId, option.mode)} title={option.hint} type="button"><LevelGlyph kind="energy" level={option.level} /><strong>{option.label}</strong></button>)}</div>
+      <section aria-label="Energy deployment tendency" className="visual-control visual-control--energy">
+        <header><span>ENERGY TENDENCY</span><b className={car?.overtakeActive ? "is-ovt-live" : ""}>{car?.overtakeActive ? "OVT LIVE" : car?.energySystem?.overtakeEligible ? "OVT READY" : "AUTO OVT"}</b></header>
+        <div className="energy-mode-rail">{ENERGY_OPTIONS.map((option) => {
+          return <button aria-label={`Set energy tendency ${option.mode}`} aria-pressed={car?.energyMode === option.mode} className={`command-node energy-node energy-node--${option.mode.toLowerCase()}`} disabled={!enabled} key={option.mode} onClick={() => car && controls.setEnergyMode(car.carId, option.mode)} title={`${option.label} · ${option.hint}`} type="button"><LevelGlyph kind="energy" level={option.level} /><strong>{option.shortLabel}</strong></button>;
+        })}</div>
       </section>
 
       <section className="visual-control visual-control--tyre">

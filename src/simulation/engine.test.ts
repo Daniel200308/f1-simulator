@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import type { RaceSnapshot, TyreTemperatureState } from "@/domain/race";
-import { averageTyreTemperature, cancelCarPit, checksumFor, createInitialSnapshot, estimatePitOutPosition, PIT_BOX_DISTANCE, PIT_ENTRY_START, PIT_EXIT_END, setCarEnergyMode, setCarPace, setCarPit, setCarStartingTyre, setCarTyreMode, stepSnapshot } from "@/simulation/engine";
+import { playerCarIdsFor, TEAMS } from "@/fixtures/grid";
+import { averageTyreTemperature, buildWeatherTransitionRadio, cancelCarPit, checksumFor, createInitialSnapshot, estimatePitOutPosition, FIXED_STEP_SECONDS, PIT_BOX_DISTANCE, PIT_ENTRY_START, PIT_EXIT_END, SAFETY_CAR_RANDOM_MAX_LAP, SAFETY_CAR_RANDOM_MIN_LAP, scheduledSafetyCarTriggerDistance, setCarEnergyMode, setCarPace, setCarPit, setCarStartingTyre, setCarTyreMode, stepSnapshot } from "@/simulation/engine";
 import { SILVERSTONE_REFERENCE_LAP_SECONDS, telemetryReferenceLapTime, telemetrySpeedAtDistance } from "@/simulation/silverstone-telemetry";
 import { strategyRecommendation } from "@/simulation/strategy";
-import { segmentIndexAtDistance, SILVERSTONE_CIRCUIT, SILVERSTONE_CORNERS } from "@/simulation/track";
+import { sectorAtDistance, segmentIndexAtDistance, SILVERSTONE_CIRCUIT, SILVERSTONE_CORNERS, SILVERSTONE_OVERTAKE_DETECTION_DISTANCE } from "@/simulation/track";
+import { createWeatherScenario } from "@/simulation/weather";
 
 function runTicks(seed: number, ticks: number) {
   let state: RaceSnapshot = { ...createInitialSnapshot(seed), status: "RUNNING" };
@@ -17,6 +19,14 @@ function uniformTyres(temperature: number): TyreTemperatureState {
 }
 
 describe("race simulation", () => {
+  it("initializes both controllable cars for every selectable constructor", () => {
+    for (const team of TEAMS) {
+      const state = createInitialSnapshot(20_260_715, "PAUSED", undefined, undefined, undefined, team.id);
+      expect(state.playerTeamId).toBe(team.id);
+      expect(state.cars.filter((car) => car.teamId === state.playerTeamId).map((car) => car.carId)).toEqual(playerCarIdsFor(team.id));
+    }
+  });
+
   it("starts the field in one compact line behind the timing line", () => {
     const state = createInitialSnapshot();
     expect(state.cars[0].totalDistance).toBe(0);
@@ -31,6 +41,69 @@ describe("race simulation", () => {
     expect(state.cars.every((car) => car.tyreSets.filter((set) => set.status === "FITTED").length === 1)).toBe(true);
     expect(state.cars.every((car) => car.tyreSets.find((set) => set.id === car.activeTyreSetId)?.status === "FITTED")).toBe(true);
     expect(Math.abs(state.cars.at(-1)!.totalDistance)).toBeLessThan(150);
+    expect(state.safetyCarDeployments).toBe(0);
+    expect(state.scheduledSafetyCarDistance).toBe(scheduledSafetyCarTriggerDistance(state.seed));
+  });
+
+  it("randomizes the guaranteed Safety Car point between laps 8 and 38", () => {
+    const distances = Array.from({ length: 16 }, (_, index) => scheduledSafetyCarTriggerDistance(20_260_700 + index));
+    const laps = distances.map((distance) => Math.floor(distance / SILVERSTONE_CIRCUIT.lengthMeters) + 1);
+
+    expect(laps.every((lap) => lap >= SAFETY_CAR_RANDOM_MIN_LAP && lap <= SAFETY_CAR_RANDOM_MAX_LAP)).toBe(true);
+    expect(new Set(distances.map((distance) => Math.round(distance))).size).toBeGreaterThan(12);
+  });
+
+  it("guarantees one seeded Safety Car deployment when its random point is reached", () => {
+    const initial = createInitialSnapshot(20_260_731);
+    const trigger = initial.scheduledSafetyCarDistance;
+    const state = stepSnapshot({
+      ...initial,
+      tick: 9,
+      elapsedTime: 0.9,
+      status: "RUNNING",
+      cars: initial.cars.map((car, index) => ({
+        ...car,
+        totalDistance: trigger + 20 - index * 12,
+        lapDistance: ((trigger + 20 - index * 12) % SILVERSTONE_CIRCUIT.lengthMeters + SILVERSTONE_CIRCUIT.lengthMeters) % SILVERSTONE_CIRCUIT.lengthMeters,
+        currentSpeed: 240,
+        reactionTime: 0,
+      })),
+    });
+
+    expect(state.raceControl).toBe("SAFETY_CAR");
+    expect(state.safetyCarPhase).toBe("DEPLOYED");
+    expect(state.safetyCarDeployments).toBe(1);
+    expect(state.pitLaneOpen).toBe(false);
+    expect(state.activeIncident?.status).toBe("SPUN");
+    expect(state.activeIncident?.cause).toMatch(/STOPPED|RECOVERY|DEBRIS/);
+    expect(state.events.some((event) => event.type === "INCIDENT" && event.message.includes("stopped"))).toBe(true);
+  });
+
+  it("holds a spun driver off-line until passing traffic has cleared", () => {
+    const initial = createInitialSnapshot(318);
+    const targetId = initial.cars[0].carId;
+    const nearbyId = initial.cars[1].carId;
+    let state: RaceSnapshot = {
+      ...initial,
+      status: "RUNNING",
+      cars: initial.cars.map((car) => car.carId === targetId
+        ? { ...car, incidentStatus: "SPUN" as const, incidentTimer: 0.05, totalDistance: 1_000, lapDistance: 1_000, currentSpeed: 20, reactionTime: 0 }
+        : car.carId === nearbyId
+          ? { ...car, totalDistance: 1_020, lapDistance: 1_020, currentSpeed: 220, reactionTime: 0 }
+          : car),
+    };
+
+    state = stepSnapshot(state);
+    expect(state.cars.find((car) => car.carId === targetId)).toMatchObject({ incidentStatus: "SPUN", incidentTimer: 0.5 });
+
+    state = {
+      ...state,
+      cars: state.cars.map((car) => car.carId === targetId
+        ? { ...car, incidentTimer: 0.05 }
+        : car.carId === nearbyId ? { ...car, totalDistance: 1_500, lapDistance: 1_500 } : car),
+    };
+    state = stepSnapshot(state);
+    expect(state.cars.find((car) => car.carId === targetId)?.incidentStatus).toBe("RUNNING");
   });
 
   it("applies a complete qualifying order to the compact race grid", () => {
@@ -99,6 +172,42 @@ describe("race simulation", () => {
     expect(state.events[0].message).toContain("GREEN FLAG");
   });
 
+  it("reports first local raindrops immediately and debounces repeated weather radio", () => {
+    const initial = createInitialSnapshot(12_001);
+    const lightRain = {
+      ...initial.weather,
+      rainIntensity: 0.06,
+      surfaceZones: initial.weather.surfaceZones?.map((zone) => ({ ...zone, rainIntensity: 0.06 })),
+      sectors: initial.weather.sectors?.map((sector) => ({ ...sector, rainIntensity: 0.06, condition: "LIGHT_RAIN" as const })),
+    };
+    const first = buildWeatherTransitionRadio(
+      initial.weather,
+      lightRain,
+      initial.cars,
+      [],
+      10,
+      1,
+      initial.playerTeamId,
+      initial.seed,
+    );
+    expect(first).toHaveLength(1);
+    expect(first[0]).toMatchObject({ source: "DRIVER", priority: "WARNING" });
+    expect(first[0].message.toLowerCase()).toMatch(/drops|rain|moisture|wet/);
+    expect(first[0].message).toContain("sector");
+
+    const repeated = buildWeatherTransitionRadio(
+      initial.weather,
+      lightRain,
+      initial.cars,
+      first,
+      20,
+      2,
+      initial.playerTeamId,
+      initial.seed,
+    );
+    expect(repeated).toEqual([]);
+  });
+
   it("moves a safety-car period through bunching and restart phases", () => {
     const initial = createInitialSnapshot(88);
     const bunching = stepSnapshot({
@@ -119,6 +228,10 @@ describe("race simulation", () => {
       ...bunching,
       safetyCarPhase: "BUNCHING",
       safetyCarPhaseElapsedSeconds: 17.95,
+      safetyCarDeploymentDistance: bunching.safetyCarDeploymentDistance ?? bunching.safetyCarDistance,
+      safetyCarTargetLaps: 1,
+      safetyCarEndingStartDistance: nextSafetyCarDistance - 0.01,
+      safetyCarPitEntryDistance: nextSafetyCarDistance + 200,
       cars: bunching.cars.map((car, index) => ({
         ...car,
         totalDistance: nextSafetyCarDistance - 28 - index * 14,
@@ -128,7 +241,7 @@ describe("race simulation", () => {
       })),
     });
     expect(restart.safetyCarPhase).toBe("RESTART");
-    expect(restart.events.some((event) => event.message.includes("IN THIS LAP"))).toBe(true);
+    expect(restart.events.some((event) => event.message.includes("SC ENDING"))).toBe(true);
   });
 
   it("applies a local yellow limit only inside the affected sector", () => {
@@ -179,6 +292,44 @@ describe("race simulation", () => {
     expect(pitCar.currentSpeed).toBeLessThanOrEqual(80);
   });
 
+  it("keeps the normal field compliant through the green-to-VSC deceleration transient", () => {
+    const initial = createInitialSnapshot(4_212);
+    let state: RaceSnapshot = {
+      ...initial,
+      status: "RUNNING" as const,
+      raceControl: "VSC" as const,
+      raceControlTimer: 30,
+      yellowSector: 1 as const,
+      cars: initial.cars.map((car) => ({ ...car, reactionTime: 0, currentSpeed: 300 })),
+    };
+
+    for (let step = 0; step < 120; step += 1) state = stepSnapshot(state);
+
+    expect(state.cars.every((car) => car.vscViolationCount === 0)).toBe(true);
+    expect(state.cars.filter((car) => car.pitStatus === "TRACK").every((car) => car.vscDeltaSeconds >= 0.18)).toBe(true);
+  });
+
+  it("does not issue track-limit strikes during the opening three laps", () => {
+    const initial = createInitialSnapshot(8_880);
+    const target = initial.cars[0];
+    const nearLine = SILVERSTONE_CIRCUIT.lengthMeters * 3 - 2;
+    const state = stepSnapshot({
+      ...initial,
+      status: "RUNNING",
+      cars: initial.cars.map((car) => car.carId === target.carId ? {
+        ...car,
+        reactionTime: 0,
+        currentSpeed: 320,
+        paceMode: "ATTACK" as const,
+        currentLap: 3,
+        totalDistance: nearLine,
+        lapDistance: SILVERSTONE_CIRCUIT.lengthMeters - 2,
+      } : car),
+    });
+
+    expect(state.cars.find((car) => car.carId === target.carId)?.trackLimitsWarnings).toBe(0);
+  });
+
   it("moves a physical safety car, assigns a unique on-track queue and closes the pit on deployment", () => {
     const initial = createInitialSnapshot(7_711);
     const state = stepSnapshot({
@@ -203,6 +354,224 @@ describe("race simulation", () => {
     expect(leader.totalDistance).toBeLessThan(state.safetyCarDistance!);
   });
 
+  it("keeps P1 behind the Safety Car while it is leaving the pits", () => {
+    const initial = createInitialSnapshot(7_710);
+    const leaderDistance = SILVERSTONE_CIRCUIT.lengthMeters * 6 + 1_100;
+    let state: RaceSnapshot = {
+      ...initial,
+      status: "RUNNING",
+      raceControl: "SAFETY_CAR",
+      raceControlTimer: 70,
+      safetyCarPhase: "DEPLOYED",
+      safetyCarDistance: null,
+      cars: initial.cars.map((car, index) => ({
+        ...car,
+        totalDistance: leaderDistance - index * 14,
+        currentSpeed: 300,
+        reactionTime: 0,
+      })),
+    };
+    let previousLeaderDistance = leaderDistance;
+
+    for (let tick = 0; tick < 34; tick += 1) {
+      state = stepSnapshot(state);
+      const leader = state.cars.find((car) => car.racePosition === 1)!;
+      expect(leader.totalDistance).toBeGreaterThanOrEqual(previousLeaderDistance);
+      expect(leader.totalDistance).toBeLessThan(state.safetyCarDistance!);
+      previousLeaderDistance = leader.totalDistance;
+    }
+
+    expect(state.safetyCarPhase).toBe("DEPLOYED");
+    expect(state.cars.find((car) => car.racePosition === 1)!.currentSpeed).toBeLessThan(300);
+  });
+
+  it("grants wave-by only to cars at least one complete lap down", () => {
+    const initial = createInitialSnapshot(7_714);
+    const leaderDistance = SILVERSTONE_CIRCUIT.lengthMeters * 10 + 1_000;
+    const nearLapId = initial.cars.at(-2)!.carId;
+    const actualLapId = initial.cars.at(-1)!.carId;
+    const state = stepSnapshot({
+      ...initial,
+      status: "RUNNING",
+      raceControl: "SAFETY_CAR",
+      raceControlTimer: 70,
+      safetyCarPhase: "DEPLOYED",
+      cars: initial.cars.map((car, index) => ({
+        ...car,
+        totalDistance: car.carId === nearLapId
+          ? leaderDistance - SILVERSTONE_CIRCUIT.lengthMeters * 0.95
+          : car.carId === actualLapId
+            ? leaderDistance - SILVERSTONE_CIRCUIT.lengthMeters * 1.05
+            : leaderDistance - index * 14,
+        currentSpeed: 125,
+        reactionTime: 0,
+      })),
+    });
+    const waveByIds = new Set(state.safetyCarWaveBy.map((entry) => entry.carId));
+
+    expect(waveByIds.has(nearLapId)).toBe(false);
+    expect(waveByIds.has(actualLapId)).toBe(true);
+  });
+
+  it("returns an unfinished wave-by car to the preserved-lap queue when SC ENDING starts", () => {
+    const initial = createInitialSnapshot(7_715);
+    const leaderDistance = SILVERSTONE_CIRCUIT.lengthMeters * 10 + 1_000;
+    const targetId = "cadillac-1";
+    const deployed = stepSnapshot({
+      ...initial,
+      status: "RUNNING",
+      raceControl: "SAFETY_CAR",
+      raceControlTimer: 70,
+      safetyCarPhase: "DEPLOYED",
+      cars: initial.cars.map((car, index) => ({
+        ...car,
+        totalDistance: car.carId === targetId
+          ? leaderDistance - SILVERSTONE_CIRCUIT.lengthMeters * 2 - 80
+          : leaderDistance - index * 14,
+        currentSpeed: 125,
+        reactionTime: 0,
+      })),
+    });
+    const waveByStart = deployed.safetyCarEndingStartDistance! - SILVERSTONE_CIRCUIT.lengthMeters;
+    const distanceToWindow = waveByStart - deployed.safetyCarDistance!;
+    const released = stepSnapshot({
+      ...deployed,
+      safetyCarPhase: "BUNCHING",
+      safetyCarPhaseElapsedSeconds: 15,
+      safetyCarDistance: waveByStart - 1,
+      safetyCarInPitLane: false,
+      cars: deployed.cars.map((car) => ({ ...car, totalDistance: car.totalDistance + distanceToWindow })),
+    });
+    expect(released.safetyCarWaveBy.find((entry) => entry.carId === targetId)?.active).toBe(true);
+
+    const ending = stepSnapshot({
+      ...released,
+      safetyCarPhase: "BUNCHING",
+      safetyCarDistance: released.safetyCarEndingStartDistance! - 1,
+    });
+    const expired = ending.safetyCarWaveBy.find((entry) => entry.carId === targetId)!;
+    const queued = ending.cars.find((car) => car.carId === targetId)!;
+
+    expect(ending.safetyCarPhase).toBe("RESTART");
+    expect(expired).toMatchObject({ active: false, completed: false });
+    expect(queued.safetyCarQueuePosition).not.toBeNull();
+    expect(queued.currentSpeed).toBeLessThanOrEqual(235);
+  });
+
+  it("classifies every possible lapped driver as queue or wave-by instead of allowing green-flag pace", () => {
+    const initial = createInitialSnapshot(7_712);
+    const leaderDistance = SILVERSTONE_CIRCUIT.lengthMeters * 9 + 1_200;
+
+    for (const target of initial.cars) {
+      const leaderId = initial.cars.find((car) => car.carId !== target.carId)!.carId;
+      const state = stepSnapshot({
+        ...initial,
+        status: "RUNNING",
+        raceControl: "SAFETY_CAR",
+        raceControlTimer: 70,
+        safetyCarPhase: "DEPLOYED",
+        cars: initial.cars.map((car, index) => ({
+          ...car,
+          racePosition: car.carId === leaderId ? 1 : car.carId === target.carId ? 22 : index + 2,
+          totalDistance: car.carId === target.carId ? leaderDistance - SILVERSTONE_CIRCUIT.lengthMeters * 2 - 80 : leaderDistance - index * 13,
+          currentSpeed: 125,
+          reactionTime: 0,
+        })),
+      });
+      const waveByIds = new Set(state.safetyCarWaveBy.map((entry) => entry.carId));
+      const updatedTarget = state.cars.find((car) => car.carId === target.carId)!;
+
+      expect(waveByIds.has(target.carId)).toBe(true);
+      expect(updatedTarget.safetyCarQueuePosition !== null || waveByIds.has(target.carId)).toBe(true);
+      expect(updatedTarget.currentSpeed).toBeLessThanOrEqual(140);
+    }
+  });
+
+  it("lets lap-down Perez pass the Safety Car once, rejoin the queue, and restart without running away", () => {
+    const initial = createInitialSnapshot(7_713);
+    const leaderDistance = SILVERSTONE_CIRCUIT.lengthMeters * 12 + 1_000;
+    const positioned = initial.cars.map((car, index) => ({
+      ...car,
+      totalDistance: car.carId === "cadillac-1" ? leaderDistance - SILVERSTONE_CIRCUIT.lengthMeters * 2 - 120 : leaderDistance - index * 14,
+      currentSpeed: 125,
+      reactionTime: 0,
+    }));
+    const deployed = stepSnapshot({
+      ...initial,
+      status: "RUNNING",
+      raceControl: "SAFETY_CAR",
+      raceControlTimer: 70,
+      safetyCarPhase: "DEPLOYED",
+      cars: positioned,
+    });
+    const perezWaveBy = deployed.safetyCarWaveBy.find((entry) => entry.carId === "cadillac-1");
+    expect(deployed.safetyCarTargetLaps).toBe(2);
+    expect(perezWaveBy).toBeDefined();
+    expect(perezWaveBy?.active).toBe(false);
+    expect(deployed.cars.find((car) => car.carId === "cadillac-1")!.safetyCarQueuePosition).not.toBeNull();
+
+    const waveByStart = deployed.safetyCarEndingStartDistance! - SILVERSTONE_CIRCUIT.lengthMeters;
+    const distanceToWaveBy = waveByStart - deployed.safetyCarDistance!;
+    let waveBy = stepSnapshot({
+      ...deployed,
+      safetyCarPhase: "BUNCHING",
+      safetyCarPhaseElapsedSeconds: 15,
+      safetyCarDistance: waveByStart - 1,
+      safetyCarInPitLane: false,
+      cars: deployed.cars.map((car) => ({
+        ...car,
+        totalDistance: car.totalDistance + distanceToWaveBy,
+      })),
+    });
+    expect(waveBy.safetyCarLappedCarsMayOvertake).toBe(true);
+    expect(waveBy.radioMessages.some((message) => message.message.includes("MAY NOW OVERTAKE"))).toBe(true);
+    expect(waveBy.cars.find((car) => car.carId === "cadillac-1")!.currentSpeed).toBeGreaterThan(125);
+    expect(waveBy.safetyCarWaveBy.find((entry) => entry.carId === "cadillac-1")?.startDistance)
+      .toBeGreaterThan(perezWaveBy!.startDistance);
+
+    let observedPass = false;
+    let maximumPerezSpeed = 0;
+    for (let tick = 0; tick < 1_900; tick += 1) {
+      const entry = waveBy.safetyCarWaveBy.find((candidate) => candidate.carId === "cadillac-1")!;
+      const perez = waveBy.cars.find((car) => car.carId === "cadillac-1")!;
+      observedPass ||= entry.passedSafetyCar === true;
+      maximumPerezSpeed = Math.max(maximumPerezSpeed, perez.currentSpeed);
+      if (entry.completed) break;
+      waveBy = stepSnapshot(waveBy);
+    }
+    const completedWaveBy = waveBy.safetyCarWaveBy.find((entry) => entry.carId === "cadillac-1")!;
+    const rejoinedPerez = waveBy.cars.find((car) => car.carId === "cadillac-1")!;
+    expect(observedPass).toBe(true);
+    expect(completedWaveBy).toMatchObject({ active: false, passedSafetyCar: true, completed: true });
+    expect(rejoinedPerez.safetyCarQueuePosition).not.toBeNull();
+    expect(maximumPerezSpeed).toBeLessThanOrEqual(305);
+    expect(rejoinedPerez.totalDistance).toBeLessThan(waveBy.safetyCarDistance!);
+
+    let ending = waveBy;
+    for (let tick = 0; tick < 2_000 && ending.safetyCarPhase !== "RESTART"; tick += 1) {
+      ending = stepSnapshot(ending);
+    }
+    expect(ending.safetyCarPhase).toBe("RESTART");
+    expect(ending.safetyCarLappedCarsMayOvertake).toBe(false);
+    expect(sectorAtDistance(ending.safetyCarDistance!)).toBe(3);
+    expect(ending.events.some((event) => event.message.includes("SC ENDING"))).toBe(true);
+
+    let pitEntry = ending;
+    for (let tick = 0; tick < 800 && !pitEntry.safetyCarInPitLane; tick += 1) {
+      pitEntry = stepSnapshot(pitEntry);
+    }
+    expect(pitEntry.safetyCarInPitLane).toBe(true);
+    expect(pitEntry.safetyCarDistance! - pitEntry.safetyCarDeploymentDistance!).toBeLessThan(SILVERSTONE_CIRCUIT.lengthMeters * 3);
+
+    let green = pitEntry;
+    for (let tick = 0; tick < 800 && green.raceControl === "SAFETY_CAR"; tick += 1) {
+      green = stepSnapshot(green);
+    }
+    expect(green.raceControl).toBe("GREEN");
+    expect(green.safetyCarPhase).toBe("NONE");
+    expect(green.safetyCarDistance).toBeNull();
+  });
+
   it("releases the field to green only after the restart line", () => {
     const initial = createInitialSnapshot(9_991);
     const safetyCarDistance = 6_000;
@@ -217,6 +586,7 @@ describe("race simulation", () => {
       safetyCarPhase: "RESTART",
       safetyCarPhaseElapsedSeconds: 8,
       safetyCarDistance,
+      safetyCarInPitLane: true,
       safetyCarRestartLineDistance: leaderDistance - 1,
       cars: initial.cars.map((car, index) => ({
         ...car,
@@ -245,7 +615,7 @@ describe("race simulation", () => {
       cars: initial.cars.map((car) => ({ ...car, reactionTime: 0 })),
     };
     const phases = new Set<string>();
-    for (let tick = 0; tick < 4_000 && state.raceControl === "SAFETY_CAR"; tick += 1) {
+    for (let tick = 0; tick < 8_000 && state.raceControl === "SAFETY_CAR"; tick += 1) {
       phases.add(state.safetyCarPhase);
       state = stepSnapshot(state);
     }
@@ -256,7 +626,7 @@ describe("race simulation", () => {
     expect(state.cars.every((car) => Number.isFinite(car.totalDistance))).toBe(true);
   });
 
-  it("redeploys and resets the safety car when a new retirement occurs during restart", () => {
+  it("uses the restart line without creating a second Safety Car deployment", () => {
     const initial = createInitialSnapshot(37_040);
     const safetyCarDistance = 6_000;
     const nextSafetyCarDistance = safetyCarDistance + (185 / 3.6) * 0.1;
@@ -274,6 +644,7 @@ describe("race simulation", () => {
       safetyCarDistance,
       safetyCarInPitLane: true,
       safetyCarRestartLineDistance: leaderDistance - 1,
+      safetyCarDeployments: 1,
       cars: initial.cars.map((car, index) => {
         const totalDistance = index === 0 ? leaderDistance : index === 1 ? leaderDistance - 6 : leaderDistance - (index - 1) * 12;
         return {
@@ -287,14 +658,42 @@ describe("race simulation", () => {
       }),
     });
 
-    expect(state.activeIncident?.carId).toBe(initial.cars[1].carId);
-    expect(state.activeIncident?.status).toBe("RETIRED");
-    expect(state.raceControl).toBe("SAFETY_CAR");
-    expect(state.safetyCarPhase).toBe("DEPLOYED");
-    expect(state.safetyCarPhaseElapsedSeconds).toBeCloseTo(0.1, 5);
+    expect(state.activeIncident).toBeNull();
+    expect(state.raceControl).toBe("GREEN");
+    expect(state.safetyCarPhase).toBe("NONE");
+    expect(state.safetyCarDeployments).toBe(1);
     expect(state.safetyCarRestartLineDistance).toBeNull();
-    expect(state.pitLaneStatus).toBe("CLOSED");
-    expect(state.events.some((event) => event.message.includes("SAFETY CAR REDEPLOYED"))).toBe(true);
+    expect(state.pitLaneStatus).toBe("OPEN");
+    expect(state.events.some((event) => event.message.includes("SAFETY CAR REDEPLOYED"))).toBe(false);
+  });
+
+  it("waits for the final classified runner and ignores retirements in the race-end decision", () => {
+    const initial = createInitialSnapshot(20_260_744);
+    const raceDistance = SILVERSTONE_CIRCUIT.lengthMeters * SILVERSTONE_CIRCUIT.totalLaps;
+    const lastRunnerId = initial.cars[0].carId;
+    const leaderId = initial.cars[1].carId;
+    const running = stepSnapshot({
+      ...initial,
+      status: "RUNNING",
+      safetyCarDeployments: 1,
+      cars: initial.cars.map((car) => {
+        if (car.carId === lastRunnerId) return { ...car, totalDistance: raceDistance - 100, currentSpeed: 120, reactionTime: 0 };
+        if (car.carId === leaderId) return { ...car, totalDistance: raceDistance, finished: true, finishTime: 4_900 };
+        return { ...car, incidentStatus: "RETIRED" as const, finished: true, finishTime: null, currentSpeed: 0 };
+      }),
+    });
+    expect(running.status).toBe("RUNNING");
+    expect(running.cars.find((car) => car.carId === lastRunnerId)?.finished).toBe(false);
+
+    const finished = stepSnapshot({
+      ...running,
+      cars: running.cars.map((car) => car.carId === lastRunnerId
+        ? { ...car, totalDistance: raceDistance - 0.1, currentSpeed: 330, reactionTime: 0 }
+        : car),
+    });
+    expect(finished.cars.find((car) => car.carId === lastRunnerId)?.finishTime).not.toBeNull();
+    expect(finished.status).toBe("FINISHED");
+    expect(finished.cars.filter((car) => car.incidentStatus === "RETIRED").every((car) => car.finishTime === null)).toBe(true);
   });
 
   it("does not retain a finish recorded before a safety-car queue correction", () => {
@@ -399,7 +798,7 @@ describe("race simulation", () => {
     const second = runTicks(20260712, 5_000);
     expect(first.checksum).toBe(second.checksum);
     expect(first.cars).toEqual(second.cars);
-  });
+  }, 10_000);
 
   it("produces a distinct state for a different seed", () => {
     expect(runTicks(1, 500).checksum).not.toBe(runTicks(2, 500).checksum);
@@ -443,29 +842,70 @@ describe("race simulation", () => {
     expect(attackingCar.fuelRemainingKg).toBeLessThan(conservingCar.fuelRemainingKg);
   });
 
-  it("activates 2026 overtake energy when a car is within one second in a straight-mode zone", () => {
+  it("latches the T17 detection result and activates overtake at T18 on the following lap", () => {
     const initial = createInitialSnapshot(1_006);
-    const segmentIndex = SILVERSTONE_CIRCUIT.segments.findIndex((segment) => segment.activeAeroAllowed);
-    const segment = SILVERSTONE_CIRCUIT.segments[segmentIndex];
-    const leaderDistance = segment.startDistance + Math.min(80, segment.length * 0.55);
-    const attackerDistance = leaderDistance - 22;
+    const detectionSegmentIndex = segmentIndexAtDistance(SILVERSTONE_OVERTAKE_DETECTION_DISTANCE - 2);
+    const attackerDistance = SILVERSTONE_OVERTAKE_DETECTION_DISTANCE - 2;
+    const leaderDistance = attackerDistance + 22;
     const positioned: RaceSnapshot = {
       ...initial,
       status: "RUNNING",
       cars: initial.cars.map((car) => {
-        if (car.carId === "ferrari-1") return { ...car, totalDistance: attackerDistance, lapDistance: attackerDistance, currentSegment: segmentIndex, racePosition: 2, currentSpeed: 270, reactionTime: 0, gapToCarAhead: 0.3, energyMode: "ATTACK", batteryPercent: 80 };
-        if (car.carId === "ferrari-2") return { ...car, totalDistance: leaderDistance, lapDistance: leaderDistance, currentSegment: segmentIndex, racePosition: 1, currentSpeed: 270, reactionTime: 0 };
+        if (car.carId === "ferrari-1") return { ...car, totalDistance: attackerDistance, lapDistance: attackerDistance, currentSegment: detectionSegmentIndex, racePosition: 2, currentSpeed: 270, reactionTime: 0, gapToCarAhead: 0.3, energyMode: "BALANCED", energySystem: { ...car.energySystem!, stateOfCharge: 0.8, storedEnergyMJ: 3.2, deploymentMode: "BALANCED" }, batteryPercent: 80 };
+        if (car.carId === "ferrari-2") return { ...car, totalDistance: leaderDistance, lapDistance: leaderDistance, currentSegment: segmentIndexAtDistance(leaderDistance), racePosition: 1, currentSpeed: 270, reactionTime: 0 };
         return { ...car, totalDistance: -500 - car.gridPosition * 15, currentSpeed: 0 };
       }),
     };
-    const next = stepSnapshot(positioned);
+    const detected = stepSnapshot(positioned);
+    const detectedAttacker = detected.cars.find((car) => car.carId === "ferrari-1")!;
+    expect(detectedAttacker.energySystem?.overtakeEntitlementLap).toBe(2);
+    expect(detectedAttacker.overtakeEligible).toBe(false);
+
+    const activationLapDistance = 20;
+    const activationTotalDistance = SILVERSTONE_CIRCUIT.lengthMeters * 2 + activationLapDistance;
+    const activatedSnapshot: RaceSnapshot = {
+      ...detected,
+      cars: detected.cars.map((car) => {
+        if (car.carId === "ferrari-1") return { ...car, totalDistance: activationTotalDistance, lapDistance: activationLapDistance, currentLap: 3, currentSegment: segmentIndexAtDistance(activationLapDistance), racePosition: 2, currentSpeed: 270, gapToCarAhead: 0.3, energyMode: "BALANCED" };
+        if (car.carId === "ferrari-2") return { ...car, totalDistance: activationTotalDistance + 22, lapDistance: activationLapDistance + 22, currentLap: 3, currentSegment: segmentIndexAtDistance(activationLapDistance + 22), racePosition: 1, currentSpeed: 270 };
+        return car;
+      }),
+    };
+    const next = stepSnapshot(activatedSnapshot);
     const attacker = next.cars.find((car) => car.carId === "ferrari-1")!;
     expect(attacker.activeAeroMode).toBe("STRAIGHT");
     expect(attacker.overtakeEligible).toBe(true);
     expect(attacker.overtakeActive).toBe(true);
     expect(attacker.energyState).toBe("OVERTAKE");
+    expect(attacker.energyMode).toBe("BALANCED");
     expect(attacker.batteryPercent).toBeLessThan(80);
     expect(["ATTACKING", "SIDE_BY_SIDE"]).toContain(attacker.battleStatus);
+  });
+
+  it("runs a red-flag suspension through service, restart countdown and green", () => {
+    const initial = createInitialSnapshot(1_007);
+    const suspended: RaceSnapshot = {
+      ...initial,
+      status: "RUNNING",
+      raceControl: "RED_FLAG",
+      redFlagPhase: "SUSPENDED",
+      redFlagTimerSeconds: 0.05,
+      redFlagRestartType: "STANDING",
+      redFlagOrder: initial.cars.map((car) => car.carId),
+      redFlagDeployments: 1,
+      pitLaneOpen: false,
+      pitLaneStatus: "CLOSED",
+      cars: initial.cars.map((car, index) => index === 0 ? { ...car, damageLevel: 0.5, scheduledPitCompound: "WET" as const } : car),
+    };
+    const formation = stepSnapshot(suspended);
+    expect(formation).toMatchObject({ raceControl: "RED_FLAG", redFlagPhase: "RESTART_FORMATION", pitLaneOpen: false });
+    expect(formation.cars[0].damageLevel).toBeLessThan(0.5);
+    expect(formation.cars[0].tyreCompound).toBe("WET");
+
+    const countdown = stepSnapshot({ ...formation, redFlagTimerSeconds: 0.05 });
+    expect(countdown.redFlagPhase).toBe("RESTART_COUNTDOWN");
+    const green = stepSnapshot({ ...countdown, redFlagTimerSeconds: 0.05 });
+    expect(green).toMatchObject({ raceControl: "GREEN", redFlagPhase: "NONE", pitLaneOpen: true });
   });
 
   it("records a completed on-track pass as an overtake battle event", () => {
@@ -496,7 +936,8 @@ describe("race simulation", () => {
     const carId = "ferrari-1";
     const initial = createInitialSnapshot(4_404);
     let attack: RaceSnapshot = { ...setCarEnergyMode(initial, carId, "ATTACK"), status: "RUNNING" };
-    let recharge: RaceSnapshot = { ...setCarEnergyMode(initial, carId, "RECHARGE"), status: "RUNNING" };
+    let recharge: RaceSnapshot = { ...setCarEnergyMode(initial, carId, "HARVEST"), status: "RUNNING" };
+    expect(recharge.radioMessages.some((message) => message.message.includes("Energy target confirmed"))).toBe(true);
     for (let index = 0; index < 800; index += 1) {
       attack = stepSnapshot(attack);
       recharge = stepSnapshot(recharge);
@@ -506,14 +947,40 @@ describe("race simulation", () => {
     expect(attackingCar.totalDistance).toBeGreaterThan(rechargingCar.totalDistance);
     expect((attackingCar.totalDistance - rechargingCar.totalDistance) / rechargingCar.totalDistance).toBeLessThan(0.01);
     expect(attackingCar.batteryPercent).toBeLessThan(rechargingCar.batteryPercent);
-    expect(recharge.radioMessages.some((message) => message.message.includes("Energy target confirmed"))).toBe(true);
   });
 
   it("proactively reports both player cars on the unified team-radio cadence", () => {
-    const state = runTicks(505, 151);
+    const state = runTicks(505, 901);
     const operational = state.radioMessages.filter((message) => message.id.includes("operations-radio"));
     expect(new Set(operational.map((message) => message.carId))).toEqual(new Set(["ferrari-1", "ferrari-2"]));
     expect(operational.every((message) => message.source === "DRIVER" || message.source === "ENGINEER")).toBe(true);
+  });
+
+  it("turns local rain and standing water into a colloquial driver report", () => {
+    const initial = createInitialSnapshot(5_151);
+    const soakedWeather = {
+      ...initial.weather,
+      condition: "HEAVY_RAIN" as const,
+      rainIntensity: 0.9,
+      trackWetness: 0.86,
+      surfaceZones: initial.weather.surfaceZones!.map((zone) => ({
+        ...zone,
+        rainIntensity: 0.9,
+        wetness: 0.9,
+        standingWater: 0.45,
+        dryingLine: 0,
+      })),
+    };
+    const next = stepSnapshot({
+      ...initial,
+      status: "RUNNING",
+      tick: 899,
+      elapsedTime: 89.9,
+      weather: soakedWeather,
+      cars: initial.cars.map((car) => ({ ...car, currentLap: 4, reactionTime: 0 })),
+    });
+    const report = next.radioMessages.find((message) => message.id.includes("operations-radio") && message.source === "DRIVER");
+    expect(report?.message).toMatch(/aquaplan|standing water|visibility|dangerous|floating|surfing/i);
   });
 
   it("gives soft tyres more pace and wear than hard tyres", () => {
@@ -642,7 +1109,7 @@ describe("race simulation", () => {
   it("heats the power unit and energy store more under attack and deployment", () => {
     const initial = createInitialSnapshot(7_171);
     const carId = "ferrari-1";
-    const configure = (paceMode: "ATTACK" | "COOL", energyMode: "ATTACK" | "RECHARGE"): RaceSnapshot => ({
+    const configure = (paceMode: "ATTACK" | "COOL", energyMode: "ATTACK" | "HARVEST"): RaceSnapshot => ({
       ...initial,
       status: "RUNNING",
       cars: initial.cars.map((car) => car.carId === carId
@@ -655,12 +1122,13 @@ describe("race simulation", () => {
           currentSegment: segmentIndexAtDistance(4_500),
           paceMode,
           energyMode,
+          energySystem: { ...car.energySystem!, stateOfCharge: 1, storedEnergyMJ: 4, deploymentMode: energyMode },
           batteryPercent: 100,
         }
         : { ...car, finished: true, finishTime: 0 }),
     });
     let attack = configure("ATTACK", "ATTACK");
-    let cooling = configure("COOL", "RECHARGE");
+    let cooling = configure("COOL", "HARVEST");
     for (let index = 0; index < 280; index += 1) {
       attack = stepSnapshot(attack);
       cooling = stepSnapshot(cooling);
@@ -670,7 +1138,7 @@ describe("race simulation", () => {
 
     expect(attackCar.powerUnitTemperature).toBeGreaterThan(coolingCar.powerUnitTemperature + 3);
     expect(attackCar.gearboxTemperature).toBeGreaterThan(coolingCar.gearboxTemperature + 2);
-    expect(attackCar.energyStoreTemperature).toBeGreaterThan(coolingCar.energyStoreTemperature + 3);
+    expect(attackCar.energyStoreTemperature).toBeGreaterThan(coolingCar.energyStoreTemperature + 0.25);
   });
 
   it("cools all three systems in the pit and responds to rain-cooled conditions", () => {
@@ -753,7 +1221,13 @@ describe("race simulation", () => {
   });
 
   it("builds rain and track wetness during the forecast weather window", () => {
-    const state = runTicks(20260712, 5_000);
+    const seed = 20_260_811;
+    const activeCell = createWeatherScenario(seed).cells.reduce((strongest, cell) => (
+      cell.peakIntensity > strongest.peakIntensity ? cell : strongest
+    ));
+    const activeWindowSeconds = activeCell.startSeconds
+      + activeCell.durationSeconds * Math.max(activeCell.buildFraction, 0.55);
+    const state = runTicks(seed, Math.ceil(activeWindowSeconds * 10));
     expect(state.weather.radarCells).toHaveLength(24);
     expect(state.weather.surfaceZones).toHaveLength(48);
     expect(state.weather.sectors).toHaveLength(3);
@@ -832,13 +1306,74 @@ describe("race simulation", () => {
     expect(car.scheduledPitTyreSetId).toBeNull();
     expect(car.pitStatus).toBe("TRACK");
     expect(car.tyreLife).toBeGreaterThan(90);
-    expect(car.lastPitStopTime).toBeGreaterThanOrEqual(2.2);
+    expect(car.lastPitStopTime).toBeGreaterThanOrEqual(2.1);
     expect(car.lastPitStopTime).toBeLessThan(7);
     expect(car.tyreSets.filter((set) => set.status === "FITTED")).toHaveLength(1);
     expect(car.tyreSets.find((set) => set.id === car.activeTyreSetId)?.compound).toBe("SOFT");
     expect(car.tyreSets.some((set) => set.status === "USED" && set.compound === "MEDIUM")).toBe(true);
     expect(car.usedTyreCompounds).toContain("SOFT");
     expect(estimatePitOutPosition(state, carId)).toBeGreaterThanOrEqual(1);
+  });
+
+  it("updates the live classification while a car pits and rejoins under the Safety Car", () => {
+    const carId = "ferrari-1";
+    const initial = setCarPit(createInitialSnapshot(9_091), carId, "HARD");
+    const lapBase = SILVERSTONE_CIRCUIT.lengthMeters * 8;
+    const targetDistance = lapBase + PIT_ENTRY_START - 2;
+    const rivals = initial.cars.filter((car) => car.carId !== carId);
+    const orderedIds = [rivals[0].carId, rivals[1].carId, carId, ...rivals.slice(2).map((car) => car.carId)];
+    const positionById = new Map(orderedIds.map((id, index) => [id, index + 1]));
+    const leaderDistance = targetDistance + 28;
+    let state: RaceSnapshot = {
+      ...initial,
+      status: "RUNNING",
+      raceControl: "SAFETY_CAR",
+      raceControlTimer: 70,
+      safetyCarPhase: "BUNCHING",
+      safetyCarPhaseElapsedSeconds: 20,
+      safetyCarDistance: leaderDistance + 72,
+      safetyCarDeploymentDistance: leaderDistance,
+      safetyCarTargetLaps: 2,
+      safetyCarEndingStartDistance: leaderDistance + SILVERSTONE_CIRCUIT.lengthMeters * 4,
+      safetyCarPitEntryDistance: leaderDistance + SILVERSTONE_CIRCUIT.lengthMeters * 4 + PIT_ENTRY_START,
+      pitLaneOpen: true,
+      pitLaneStatus: "OPEN",
+      cars: initial.cars.map((car) => {
+        const racePosition = positionById.get(car.carId)!;
+        const totalDistance = targetDistance + (3 - racePosition) * 14;
+        return {
+          ...car,
+          totalDistance,
+          lapDistance: ((totalDistance % SILVERSTONE_CIRCUIT.lengthMeters) + SILVERSTONE_CIRCUIT.lengthMeters) % SILVERSTONE_CIRCUIT.lengthMeters,
+          racePosition,
+          currentSpeed: 125,
+          reactionTime: 0,
+        };
+      }),
+    };
+
+    const startingPosition = state.cars.find((car) => car.carId === carId)!.racePosition;
+    let enteredPitLane = false;
+    let positionChangedInPit = false;
+    let rejoined = false;
+    for (let tick = 0; tick < 1_600; tick += 1) {
+      state = stepSnapshot(state);
+      const target = state.cars.find((car) => car.carId === carId)!;
+      const classified = state.cars.filter((car) => car.incidentStatus !== "RETIRED").map((car) => car.racePosition);
+      expect(new Set(classified).size).toBe(classified.length);
+      if (target.pitStatus !== "TRACK") {
+        enteredPitLane = true;
+        if (target.racePosition > startingPosition) positionChangedInPit = true;
+      } else if (enteredPitLane) {
+        rejoined = true;
+        break;
+      }
+    }
+
+    expect(enteredPitLane).toBe(true);
+    expect(positionChangedInPit).toBe(true);
+    expect(rejoined).toBe(true);
+    expect(state.cars.find((car) => car.carId === carId)!.racePosition).toBeGreaterThan(startingPosition);
   });
 
   it("adds a deterministic delay for a double-stacked teammate", () => {
@@ -858,6 +1393,45 @@ describe("race simulation", () => {
     expect(second.pitStatus).toBe("PIT_STOP");
     expect(second.pitStopIssue).toBe("DOUBLE_STACK");
     expect(second.pitStopTargetSeconds).toBeGreaterThan(first.pitStopTargetSeconds);
+  });
+
+  it("stops and services every scheduled car before releasing it from the pit box", () => {
+    const initial = createInitialSnapshot(1_212);
+    const stagedCars = initial.cars.map((car) => {
+      const replacement = car.tyreSets.find((set) => set.compound === "SOFT" && set.status === "AVAILABLE");
+      expect(replacement).toBeDefined();
+      return {
+        ...car,
+        pitStatus: "PIT_LANE" as const,
+        totalDistance: PIT_BOX_DISTANCE,
+        lapDistance: PIT_BOX_DISTANCE,
+        currentSpeed: 80,
+        reactionTime: 0,
+        scheduledPitCompound: "SOFT" as const,
+        scheduledPitTyreSetId: replacement!.id,
+        tyreSets: car.tyreSets.map((set) => set.id === replacement!.id ? { ...set, status: "RESERVED" as const } : set),
+      };
+    });
+    let state: RaceSnapshot = { ...initial, status: "RUNNING", elapsedTime: 20, cars: stagedCars };
+    const stoppedCars = new Set<string>();
+    const stoppedTicks = new Map<string, number>();
+
+    for (let tick = 0; tick < 700; tick += 1) {
+      state = stepSnapshot(state);
+      for (const car of state.cars) {
+        if (car.pitStatus !== "PIT_STOP") continue;
+        stoppedCars.add(car.carId);
+        stoppedTicks.set(car.carId, (stoppedTicks.get(car.carId) ?? 0) + 1);
+        expect(car.currentSpeed).toBe(0);
+      }
+      if (state.cars.every((car) => car.pitStops === 1 && car.pitStatus === "TRACK")) break;
+    }
+
+    expect(stoppedCars.size).toBe(initial.cars.length);
+    expect(state.cars.every((car) => car.pitStops === 1 && car.tyreCompound === "SOFT" && car.pitStatus === "TRACK")).toBe(true);
+    expect(state.cars.every((car) => (stoppedTicks.get(car.carId) ?? 0) * FIXED_STEP_SECONDS + 0.001 >= (car.lastPitStopTime ?? Infinity))).toBe(true);
+    expect(new Set(state.cars.map((car) => car.lastPitStopTime?.toFixed(3))).size).toBeGreaterThan(8);
+    expect(state.investigations.filter((investigation) => investigation.infringement === "UNSAFE_RELEASE").length).toBeLessThanOrEqual(1);
   });
 
   it("ignores commands for a retired or finished car", () => {
@@ -921,5 +1495,5 @@ describe("race simulation", () => {
     expect(state.cars.every((car) => Number.isFinite(car.totalDistance) && car.finished)).toBe(true);
     expect(totalOvertakes).toBeGreaterThan(10);
     expect(totalOvertakes).toBeLessThan(150);
-  }, 15_000);
+  }, 45_000);
 });

@@ -25,7 +25,7 @@ describe("racecraft AI 2.0", () => {
     const decision = calculateRacecraftDecision({ raceControl: "GREEN", weather: snapshot.weather, cars }, car.carId);
     expect(decision.intent).toBe("HARVEST");
     expect(decision.recommendedPaceMode).toBe("COOL");
-    expect(decision.recommendedEnergyMode).toBe("RECHARGE");
+    expect(decision.recommendedEnergyMode).toBe("HARVEST");
   });
 
   it("neutralises attack instructions under safety car", () => {

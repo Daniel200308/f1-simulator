@@ -10,6 +10,8 @@ describe("OpenF1-style race control feed", () => {
       category: "Other",
       flag: "GREEN",
       scope: "Track",
+      headline: "TRACK CLEAR",
+      detail: "RACE CONTROL MONITORING · PIT LANE OPEN",
       message: "TRACK CLEAR · RACE CONTROL MONITORING",
     });
   });
@@ -32,6 +34,8 @@ describe("OpenF1-style race control feed", () => {
       category: "Flag",
       driverNumber: 16,
       flag: "BLACK AND WHITE",
+      headline: "BLACK AND WHITE FLAG",
+      detail: "FOR CAR 16 (LEC) · TRACK LIMITS",
       lapNumber: car.currentLap,
       scope: "Driver",
       sector: null,
@@ -43,9 +47,88 @@ describe("OpenF1-style race control feed", () => {
     expect(latestRaceControlNotice(snapshot)).toMatchObject({
       category: "Flag",
       flag: "YELLOW",
+      headline: "YELLOW FLAG",
+      detail: "SECTOR 2 · REDUCE SPEED · OVERTAKING PROHIBITED",
       scope: "Sector",
       sector: 2,
       message: "YELLOW FLAG IN TRACK SECTOR 2",
+    });
+  });
+
+  it("formats VSC as a yellow-style headline with a separate instruction detail", () => {
+    const snapshot = { ...createInitialSnapshot(34), raceControl: "VSC" as const };
+    expect(latestRaceControlNotice(snapshot)).toMatchObject({
+      flag: "VSC",
+      headline: "VIRTUAL SAFETY CAR",
+      detail: "MAINTAIN POSITIVE DELTA · REDUCE SPEED · OVERTAKING PROHIBITED",
+    });
+  });
+
+  it("shows only the active safety-car directive and suppresses incident copy", () => {
+    const initial = createInitialSnapshot(35);
+    const incidentCar = initial.cars[5];
+    const snapshot = {
+      ...initial,
+      raceControl: "SAFETY_CAR" as const,
+      safetyCarPhase: "DEPLOYED" as const,
+      activeIncident: {
+        carId: incidentCar.carId,
+        distanceMeters: 2_840,
+        cornerNumber: 15,
+        cornerName: "Stowe",
+        sector: 2 as const,
+        status: "RETIRED" as const,
+      },
+      radioMessages: [{
+        id: "incident-under-investigation",
+        elapsedTime: 91,
+        carId: incidentCar.carId,
+        source: "RACE CONTROL" as const,
+        message: "CAR STOPPED · INCIDENT UNDER INVESTIGATION",
+        priority: "URGENT" as const,
+      }],
+    };
+    const notice = latestRaceControlNotice(snapshot);
+    expect(notice.headline).toBe("SAFETY CAR");
+    expect(notice.detail).toContain("FOLLOW SAFETY CAR DELTA");
+    expect(notice.detail).not.toContain("INCIDENT");
+    expect(notice.detail).not.toContain("STOPPED");
+    expect(notice.detail).not.toContain("STOWE");
+  });
+
+  it("announces the lap-down wave-by without contradicting it with a no-overtaking instruction", () => {
+    const initial = createInitialSnapshot(351);
+    const notice = latestRaceControlNotice({
+      ...initial,
+      raceControl: "SAFETY_CAR",
+      safetyCarPhase: "BUNCHING",
+      safetyCarLappedCarsMayOvertake: true,
+      safetyCarWaveBy: [{ carId: initial.cars.at(-1)!.carId, startDistance: 0, targetDistance: 5_891, completed: false }],
+    });
+
+    expect(notice.headline).toContain("MAY NOW OVERTAKE");
+    expect(notice.detail).toContain("MAY PASS THE SAFETY CAR");
+    expect(notice.detail).not.toContain("OVERTAKING PROHIBITED");
+  });
+
+  it("recognises future red-flag messages and preserves their cause", () => {
+    const initial = createInitialSnapshot(36);
+    const snapshot = {
+      ...initial,
+      radioMessages: [{
+        id: "red-flag-debris",
+        elapsedTime: 141,
+        carId: null,
+        source: "RACE CONTROL" as const,
+        message: "RED FLAG · BARRIER REPAIRS REQUIRED AT STOWE",
+        priority: "URGENT" as const,
+      }],
+    };
+    expect(latestRaceControlNotice(snapshot)).toMatchObject({
+      flag: "RED",
+      headline: "RED FLAG",
+      detail: "BARRIER REPAIRS REQUIRED AT STOWE",
+      priority: "URGENT",
     });
   });
 });

@@ -118,7 +118,10 @@ function calculateActiveRacecraftDecision(context: RacecraftContext, field: read
       ? "SIDE_BY_SIDE"
       : intent === "ATTACK" ? "ATTACKING" : intent === "DEFEND" ? "DEFENDING" : "CLEAR";
   const recommendedPaceMode: PaceMode = intent === "ATTACK" ? "ATTACK" : intent === "DEFEND" ? "PUSH" : intent === "HARVEST" ? (thermalProtection ? "COOL" : "CONSERVE") : "STANDARD";
-  const recommendedEnergyMode: EnergyMode = intent === "ATTACK" ? "ATTACK" : intent === "DEFEND" ? "DEFEND" : intent === "HARVEST" ? "RECHARGE" : "BALANCED";
+  const recommendedEnergyMode: EnergyMode = intent === "ATTACK"
+    ? car.energySystem?.overtakeEligible ? "OVERTAKE" : "ATTACK"
+    : intent === "DEFEND" ? "BOOST"
+      : intent === "HARVEST" ? "HARVEST" : car.batteryPercent < 38 ? "CONSERVE" : "BALANCED";
   const recommendedRacingLineMode: RacingLineMode = intent === "ATTACK" ? "ATTACK" : intent === "DEFEND" ? "DEFEND" : "RACING";
   const dirtyAirCostSecondsPerLap = clamp(car.dirtyAirLoss * 88 + (gapAhead < 1.2 && segment.kind !== "STRAIGHT" ? (1.2 - gapAhead) * 0.18 : 0), 0, 1.8);
   const reasons: string[] = [];

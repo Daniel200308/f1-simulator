@@ -166,6 +166,7 @@ Driver Control 제목 영역에서 드라이버를 바로 전환할 수 있으�
 - 플레이어 팀에는 자동 명령 대신 `WEATHER CROSSOVER · BOX THIS LAP` 엔지니어 무전을 보내 최종 판단 권한 유지
 - Yellow, VSC, Safety Car 단계와 피트레인 상태
 - 물리적인 Safety Car 위치, 대열 순서와 델타 관리
+- Safety Car 중 피트 진입·정차·재합류로 바뀌는 순위와 앞차 간격을 즉시 Leader Board에 반영
 - 사고, 중립화 발령·해제와 재시작 이벤트 기록
 - Safety Car 또는 VSC 상황의 줄어든 피트 손실을 전략 계산에 반영
 
@@ -177,10 +178,9 @@ Driver Control 제목 영역에서 드라이버를 바로 전환할 수 있으�
 - 가장 최근 세 개의 핵심 메시지를 큰 카드형 타임라인으로 표시하고 드라이버·엔지니어 출처와 시간을 분리
 - FIA Race Control 공지는 팀 라디오에서 분리해 최상단 중앙의 고정 공지 영역에 표시
 
-### Replay와 Race Report
+### Race Report
 
-- 메모리 사용을 제한하는 프레임 압축형 리플레이 기록
-- 0.5x, 1x, 2x, 4x 재생, 타임라인 탐색과 주요 이벤트 마커
+- 경기 리포트 계산에 필요한 프레임만 내부적으로 압축 기록하며 사용자용 Replay 화면은 제거
 - 경기 중에는 현재 선두 기준의 잠정 리포트, 완주 후에는 최종 우승자 기준 리포트 생성
 - 최종 순위, 패스티스트 랩, 추월, 피트스톱과 피트 이슈 집계
 - 사고, 열 경고, 타이어 전략과 플레이어 드라이버 디브리프
@@ -189,13 +189,14 @@ Driver Control 제목 영역에서 드라이버를 바로 전환할 수 있으�
 ## 주요 화면과 조작
 
 - **Leader Board**: 드라이버를 선택하고 순위, 앞차 간격, 상태와 타이어를 확인합니다.
-- **Race Operations**: 레이스 컨트롤, 차량 열 관리, 피트 운영과 타이어 재고를 확인합니다.
-- **Strategy**: 전략 시나리오를 비교하고 추천 피트 계획을 적용합니다.
-- **Replay / Report**: 레이스 타임라인을 되돌려 보고 경기 결과를 분석합니다.
+- **차량 상태**: 실시간 원형 배터리 잔량, 타이어·브레이크·PU·기어박스 온도와 피트 진행 상태를 확인합니다.
+- **Race Operations**: 배터리·타이어·열 상태 인포그래픽, 레이스크래프트, 피트 운영과 타이어 재고를 확인합니다.
+- **Strategy 3.0**: 큰 글씨로 전략 시나리오를 비교하고 추천 피트 계획을 적용합니다.
+- **Report**: 경기 중 잠정 결과와 완주 후 최종 결과를 분석합니다.
 - **상단 재생 컨트롤**: 레이스를 일시정지·재개하고 시뮬레이션 배속을 변경합니다.
 - **Escape**: 열린 운영 패널을 닫고 이전 포커스로 돌아갑니다.
 
-Race Operations, Strategy, Replay / Report 패널은 키보드 포커스 트랩과 포커스 복귀를 지원합니다.
+Race Operations, Strategy 3.0, Report 패널은 키보드 포커스 트랩과 포커스 복귀를 지원합니다.
 
 ## 프로젝트 구조
 
@@ -222,7 +223,19 @@ src/
 - `strategy-intelligence.ts`, `live-strategy.ts`: 전략 시나리오와 실시간 추천
 - `racecraft.ts`: 공격·방어와 추월 판정
 - `pit-operations.ts`: 피트 예상, 재고와 실제 피트 이벤트
+- `fia-2026-rules.ts`, `stewarding.ts`: 2026 FIA 위반 판정표, 조사 상태 머신, 패널티 수행·전환
 - `race-replay.ts`, `race-report.ts`: 리플레이 데이터와 경기 리포트
+
+### FIA 패널티 시스템
+
+- 사건을 `NOTED → UNDER INVESTIGATION → DECISION PENDING → PENALTY / NO FURTHER ACTION`으로 영구 추적
+- 피트 과속, Unsafe Release, 충돌 책임, 트랙 이탈 이득, 트랙 리밋, SC/VSC 델타, False Start, 타이어 규정과 Blue Flag 불이행 판정
+- 5초·10초 패널티는 다음 실제 타이어 피트스톱에서 먼저 수행하며, 홀드 중 차량 접촉과 타이어 작업을 금지
+- Drive-Through와 10초 Stop-and-Go는 타이어 교체와 결합하지 않고 최대 두 번의 컨트롤 라인 통과 안에 수행
+- SC/VSC 중에는 이미 피트 진입 절차에 있지 않은 DT/SG 수행을 막고, 수행 마감 라인 카운트를 정지
+- 마지막 랩 구간 또는 경기 종료 시 미수행 패널티를 5·10·20·30초 결과 패널티로 전환
+- Leader Board는 평상시 상태 문자를 제거하고, 심사 중에는 노란 느낌표, 미수행 패널티는 빨간 느낌표만 표시
+- 패널티 수행 완료 시 빨간 표시가 사라지며 Race Report의 공식 순위와 실격 판정에 반영
 
 ## 개발 명령어
 
@@ -243,7 +256,7 @@ npm run start        # 프로덕션 서버
 - TypeScript 타입 검사
 - ESLint 검사
 - Next.js 프로덕션 빌드
-- Vitest 20개 테스트 파일, 154개 테스트
+- Vitest 30개 통과 파일, 250개 테스트 통과(샘플링 전용 1개 파일·1개 테스트 제외)
 - 결정론적 52랩 완주 시뮬레이션
 - 시드 `20260712` 기준 52랩 종료, 추월량 상한과 모든 차량 상태 유효성 회귀 검증
 - 전 트랙 우천 분포, 국지성 소나기, AI 인터미디어트 전환과 플레이어 엔지니어 피트 콜 회귀 검증
@@ -279,6 +292,8 @@ npm run build
 - 1랩 텔레메트리 기준: [zvanjak/MML의 `f1_silverstone_lap.csv`](https://github.com/zvanjak/MML)
 - 트랙 길이, 랩 수와 코너 메타데이터: 공개 Silverstone 및 Formula 1 서킷 정보에 맞춰 구성
 - FP1·FP2·FP3와 Q1·Q2·Q3 세션 규칙: FIA 2026 Formula 1 Sporting Regulations Section B, Issue 07 기준
+- 패널티 종류·수행 절차: [FIA 2026 F1 Sporting Regulations Section B, Issue 07 (2026-06-25)](https://www.fia.com/system/files/documents/fia_2026_f1_regulations_-_section_b_sporting_-_iss_07_-_2026-06-25.pdf), 특히 B1.9.5–B1.9.7
+- 위반별 기준 제재: [2026 Formula 1 Penalty Guidelines v01](https://www.fia.com/sites/default/files/2026_f1_penalty_guidelines.pdf)
 - Race Control 메시지 스키마와 카테고리 의미: [OpenF1 `race_control` 구현 및 API 문서](https://github.com/br-g/openf1)
 - 랩별 컴파운드·스틴트·타이어 수명·피트 타이밍 분석 구조: [FastF1](https://github.com/theOehrly/Fast-F1)
 

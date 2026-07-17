@@ -1,7 +1,7 @@
 /// <reference lib="webworker" />
 
 import type { RaceSnapshot, SimulationSpeed } from "@/domain/race";
-import { cancelCarPit, createInitialSnapshot, FIXED_STEP_SECONDS, setCarBrakeBias, setCarCoolingMode, setCarEnergyMode, setCarPace, setCarPit, setCarStartingTyre, setCarTyreMode, stepSnapshot } from "@/simulation/engine";
+import { cancelCarPit, createInitialSnapshot, debugEnergyState, FIXED_STEP_SECONDS, requestPenaltyService, setCarBrakeBias, setCarCoolingMode, setCarEnergyMode, setCarPace, setCarPit, setCarStartingTyre, setCarTyreMode, setTeamOrder, stepSnapshot } from "@/simulation/engine";
 import type { WorkerCommand, WorkerEvent } from "@/simulation/protocol";
 import { criticalRaceControlTransition } from "@/simulation/race-control-transitions";
 
@@ -95,12 +95,20 @@ context.onmessage = (message: MessageEvent<WorkerCommand>) => {
         snapshot = setCarPace(snapshot, message.data.carId, message.data.mode);
         publish();
         break;
+      case "SET_TEAM_ORDER":
+        snapshot = setTeamOrder(snapshot, message.data.order);
+        publish();
+        break;
       case "SET_TYRE_MODE":
         snapshot = setCarTyreMode(snapshot, message.data.carId, message.data.mode);
         publish();
         break;
       case "SET_ENERGY_MODE":
         snapshot = setCarEnergyMode(snapshot, message.data.carId, message.data.mode);
+        publish();
+        break;
+      case "DEBUG_ENERGY":
+        snapshot = debugEnergyState(snapshot, message.data.carId, message.data.action);
         publish();
         break;
       case "SET_COOLING_MODE":
@@ -113,6 +121,10 @@ context.onmessage = (message: MessageEvent<WorkerCommand>) => {
         break;
       case "BOX":
         snapshot = setCarPit(snapshot, message.data.carId, message.data.compound);
+        publish();
+        break;
+      case "SERVE_PENALTY":
+        snapshot = requestPenaltyService(snapshot, message.data.carId);
         publish();
         break;
       case "CANCEL_PIT":

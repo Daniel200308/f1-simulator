@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { TrackSurfaceZone, WeatherState } from "@/domain/race";
 import {
   createSpatialWeather,
+  createWeatherScenario,
   effectiveWaterAtDistance,
   forecastAtMinutes,
   summarizeWeatherSectors,
@@ -30,8 +31,7 @@ describe("spatial weather", () => {
     expect(weather.sectors).toHaveLength(WEATHER_SECTOR_COUNT);
     expect(weather.forecast).toHaveLength(5);
     expect(weather.condition).toBe("DRY");
-    expect(weather.forecastRainInMinutes).toBeGreaterThanOrEqual(4);
-    expect(weather.forecastRainInMinutes).toBeLessThanOrEqual(6);
+    expect(weather.forecastRainInMinutes === null || weather.forecastRainInMinutes >= 0).toBe(true);
 
     weather.radarCells?.forEach((cell) => {
       expectUnitInterval(cell.x);
@@ -67,13 +67,34 @@ describe("spatial weather", () => {
   });
 
   it("moves a rain band across the circuit instead of wetting every zone equally", () => {
-    const weather = createSpatialWeather(20_260_712, 460);
+    const seed = Array.from({ length: 80 }, (_, index) => 20_260_700 + index).find((candidate) => (
+      createWeatherScenario(candidate).cells.some((cell) => cell.peakIntensity > 0.55)
+    ))!;
+    const cell = createWeatherScenario(seed).cells.reduce((strongest, candidate) => candidate.peakIntensity > strongest.peakIntensity ? candidate : strongest);
+    const weather = createSpatialWeather(seed, cell.startSeconds + cell.durationSeconds * cell.buildFraction);
     const localRain = weather.surfaceZones?.map((zone) => zone.rainIntensity) ?? [];
     const localWater = weather.surfaceZones?.map((zone) => zone.wetness) ?? [];
 
     expect(Math.max(...localRain) - Math.min(...localRain)).toBeGreaterThan(0.12);
     expect(Math.max(...localWater) - Math.min(...localWater)).toBeGreaterThan(0.08);
     expect(effectiveWaterAtDistance(weather, 250)).not.toBe(effectiveWaterAtDistance(weather, 3_200));
+  });
+
+  it("spreads weather timing, intensity, direction, and archetype across many race seeds", () => {
+    const scenarios = Array.from({ length: 256 }, (_, index) => createWeatherScenario(80_000 + index));
+    const starts = scenarios.flatMap((scenario) => scenario.cells.map((cell) => cell.startSeconds));
+    const peaks = scenarios.flatMap((scenario) => scenario.cells.map((cell) => cell.peakIntensity));
+    const directions = scenarios.flatMap((scenario) => scenario.cells.map((cell) => cell.directionRadians));
+    const startBuckets = new Set(starts.map((start) => Math.floor(start / 300)));
+    const directionQuadrants = new Set(directions.map((direction) => Math.floor(direction / (Math.PI / 2)) % 4));
+    const kinds = new Set(scenarios.map((scenario) => scenario.kind));
+
+    expect(startBuckets.size).toBeGreaterThanOrEqual(8);
+    expect(Math.min(...peaks)).toBeLessThan(0.2);
+    expect(Math.max(...peaks)).toBeGreaterThan(0.9);
+    expect(directionQuadrants).toEqual(new Set([0, 1, 2, 3]));
+    expect(kinds.size).toBe(6);
+    expect(scenarios.some((scenario) => scenario.kind === "SUDDEN_DOWNPOUR" && scenario.cells.some((cell) => cell.buildFraction < 0.16))).toBe(true);
   });
 
   it("dries in clear weather, with drainage and traffic accelerating water removal", () => {

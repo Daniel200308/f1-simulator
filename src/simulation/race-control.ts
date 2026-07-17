@@ -44,6 +44,7 @@ export interface SafetyCarProcedureInput {
   state: SafetyCarProcedureState;
   stepSeconds: number;
   fieldBunched?: boolean;
+  endingSectorReached?: boolean;
   safetyCarInPitLane?: boolean;
   leaderReachedRestartLine?: boolean;
 }
@@ -93,10 +94,19 @@ export interface SafetyCarFormation {
   maximumActualGapMeters: number;
 }
 
+export interface SafetyCarSchedule {
+  deploymentDistance: number;
+  targetLaps: 1 | 2;
+  unlappingStartDistance: number | null;
+  endingStartDistance: number;
+  pitEntryDistance: number;
+  restartLineDistance: number;
+}
+
 export interface PitLaneProcedure {
   status: PitLaneProcedureStatus;
   open: boolean;
-  reason: "NORMAL" | "INITIAL_SAFETY_CAR_DEPLOYMENT";
+  reason: "NORMAL" | "INITIAL_SAFETY_CAR_DEPLOYMENT" | "RED_FLAG_SUSPENSION";
   message: string;
 }
 
@@ -106,6 +116,7 @@ export interface OvertakePermissionInput {
   yellowSector: TrackSector | null;
   safetyCarPhase?: SafetyCarPhase;
   crossedRestartLine?: boolean;
+  lappedCarMayOvertakeSafetyCar?: boolean;
 }
 
 export interface RestartEligibilityInput {
@@ -126,6 +137,7 @@ const RACE_CONTROL_PRIORITY: Readonly<Record<RaceControlStatus, number>> = {
   YELLOW: 1,
   VSC: 2,
   SAFETY_CAR: 3,
+  RED_FLAG: 4,
 };
 
 /** Incident updates may escalate control, but can never silently downgrade it. */
@@ -208,18 +220,21 @@ export function createSafetyCarProcedureState(): SafetyCarProcedureState {
   return { phase: "DEPLOYED", phaseElapsedSeconds: 0 };
 }
 
-/** Deterministic count-up state machine; timers reset whenever the phase changes. */
+/**
+ * Deterministic Safety Car state machine. Deployment keeps a short pit-release
+ * phase, but withdrawal is distance based so a slow or lapped tail car can never
+ * hold the race neutralised indefinitely.
+ */
 export function advanceSafetyCarProcedure(input: SafetyCarProcedureInput): SafetyCarProcedureUpdate {
   const elapsed = Math.max(0, input.state.phaseElapsedSeconds) + Math.max(0, input.stepSeconds);
   let phase = input.state.phase;
 
   if (phase === "DEPLOYED" && elapsed >= SAFETY_CAR_DEPLOYMENT_SECONDS) {
     phase = "BUNCHING";
-  } else if (phase === "BUNCHING" && elapsed >= SAFETY_CAR_MINIMUM_BUNCHING_SECONDS && input.fieldBunched === true) {
+  } else if (phase === "BUNCHING" && input.endingSectorReached === true) {
     phase = "RESTART";
   } else if (
     phase === "RESTART"
-    && elapsed >= SAFETY_CAR_RESTART_SECONDS
     && isRestartEligible({
       phase,
       fieldBunched: input.fieldBunched === true,
@@ -244,6 +259,67 @@ export function advanceSafetyCarProcedure(input: SafetyCarProcedureInput): Safet
     changed,
     restartEligible,
     message: changed ? raceControlPhaseMessage({ raceControl: phase === "NONE" ? "GREEN" : "SAFETY_CAR", safetyCarPhase: phase }) : null,
+  };
+}
+
+function nextAbsoluteOccurrence(totalDistance: number, lapDistance: number, circuitLengthMeters: number): number {
+  if (circuitLengthMeters <= 0) throw new RangeError("circuitLengthMeters must be greater than 0");
+  const normalizedLapDistance = positiveModulo(lapDistance, circuitLengthMeters);
+  const lapIndex = Math.floor(totalDistance / circuitLengthMeters);
+  let candidate = lapIndex * circuitLengthMeters + normalizedLapDistance;
+  if (candidate <= totalDistance + 0.001) candidate += circuitLengthMeters;
+  return candidate;
+}
+
+function absoluteOccurrenceAtOrAfter(minimumDistance: number, lapDistance: number, circuitLengthMeters: number): number {
+  if (circuitLengthMeters <= 0) throw new RangeError("circuitLengthMeters must be greater than 0");
+  const normalizedLapDistance = positiveModulo(lapDistance, circuitLengthMeters);
+  const lapIndex = Math.floor(minimumDistance / circuitLengthMeters);
+  let candidate = lapIndex * circuitLengthMeters + normalizedLapDistance;
+  if (candidate < minimumDistance - 0.001) candidate += circuitLengthMeters;
+  return candidate;
+}
+
+/** Picks two tours whenever a wave-by is required; otherwise varies one/two by seed. */
+export function safetyCarTargetLapsFor(seed: number, deploymentNumber: number, hasLappedCars: boolean): 1 | 2 {
+  if (hasLappedCars) return 2;
+  let value = (seed ^ Math.imul(deploymentNumber + 1, 0x45d9f3b)) >>> 0;
+  value ^= value >>> 16;
+  value = Math.imul(value, 0x45d9f3b) >>> 0;
+  value ^= value >>> 16;
+  return (value & 1) === 0 ? 1 : 2;
+}
+
+/**
+ * Builds late-sector-three withdrawal markers only after the requested number
+ * of complete circuits has elapsed from deployment. Alignment to sector three
+ * may add only the remaining partial circuit; targetLaps itself stays capped at
+ * one or two.
+ */
+export function buildSafetyCarSchedule(input: {
+  deploymentDistance: number;
+  targetLaps: 1 | 2;
+  circuitLengthMeters: number;
+  sectorThreeStartDistance: number;
+  pitEntryLapDistance: number;
+}): SafetyCarSchedule {
+  const minimumEndingDistance = input.deploymentDistance
+    + input.targetLaps * input.circuitLengthMeters;
+  const endingStartDistance = absoluteOccurrenceAtOrAfter(
+    minimumEndingDistance,
+    input.sectorThreeStartDistance,
+    input.circuitLengthMeters,
+  );
+  const pitEntryOffset = positiveModulo(input.pitEntryLapDistance - input.sectorThreeStartDistance, input.circuitLengthMeters);
+  const pitEntryDistance = endingStartDistance + pitEntryOffset;
+  const restartLineDistance = nextAbsoluteOccurrence(pitEntryDistance, 0, input.circuitLengthMeters);
+  return {
+    deploymentDistance: input.deploymentDistance,
+    targetLaps: input.targetLaps,
+    unlappingStartDistance: input.targetLaps === 2 ? endingStartDistance - input.circuitLengthMeters : null,
+    endingStartDistance,
+    pitEntryDistance,
+    restartLineDistance,
   };
 }
 
@@ -286,14 +362,18 @@ export function buildSafetyCarFormation(
   cars: readonly SafetyCarCandidate[],
   safetyCar: SafetyCarPosition,
   phase: Exclude<SafetyCarPhase, "NONE">,
+  excludedCarIds: readonly string[] = [],
+  queueOffsetMetersByCarId: Readonly<Record<string, number>> = {},
 ): SafetyCarFormation {
+  const excluded = new Set(excludedCarIds);
   const ordered = cars
-    .filter((car) => !car.finished && car.incidentStatus !== "RETIRED" && car.pitStatus === "TRACK")
+    .filter((car) => !excluded.has(car.carId) && !car.finished && car.incidentStatus !== "RETIRED" && car.pitStatus === "TRACK")
     .sort((a, b) => a.racePosition - b.racePosition || a.carId.localeCompare(b.carId));
   const targetGapMeters = queueGapFor(phase);
   const leadGapMeters = phase === "DEPLOYED" ? 42 : 28;
   const queue = ordered.map<SafetyCarQueueEntry>((car, index) => {
-    const targetTotalDistance = safetyCar.totalDistance - leadGapMeters - index * targetGapMeters;
+    const preservedLapOffset = Math.max(0, queueOffsetMetersByCarId[car.carId] ?? 0);
+    const targetTotalDistance = safetyCar.totalDistance - leadGapMeters - index * targetGapMeters - preservedLapOffset;
     return {
       carId: car.carId,
       queuePosition: index + 1,
@@ -324,6 +404,14 @@ export function pitLaneProcedureFor(
 ): PitLaneProcedure {
   // Kept in the public contract so callers can use the same clock across phases.
   void phaseElapsedSeconds;
+  if (raceControl === "RED_FLAG") {
+    return {
+      status: "CLOSED",
+      open: false,
+      reason: "RED_FLAG_SUSPENSION",
+      message: "PIT EXIT CLOSED — RED FLAG QUEUE",
+    };
+  }
   const initiallyClosed = raceControl === "SAFETY_CAR"
     && safetyCarPhase === "DEPLOYED";
   return initiallyClosed
@@ -340,12 +428,13 @@ export function isOvertakePermitted(input: OvertakePermissionInput): boolean {
   if (input.raceControl === "GREEN") return true;
   if (input.raceControl === "YELLOW") return input.yellowSector !== input.currentSector;
   if (input.raceControl === "VSC") return false;
+  if (input.raceControl === "RED_FLAG") return false;
+  if (input.lappedCarMayOvertakeSafetyCar === true) return true;
   return input.safetyCarPhase === "RESTART" && input.crossedRestartLine === true;
 }
 
 export function isRestartEligible(input: RestartEligibilityInput): boolean {
   return input.phase === "RESTART"
-    && input.fieldBunched
     && input.safetyCarInPitLane
     && input.leaderReachedRestartLine;
 }
@@ -355,6 +444,8 @@ export function raceControlPhaseMessage(input: {
   safetyCarPhase?: SafetyCarPhase;
   yellowSector?: TrackSector | null;
   pitLaneOpen?: boolean;
+  lappedCarsMayOvertake?: boolean;
+  waveByCarCount?: number;
 }): RaceControlPhaseMessage {
   if (input.raceControl === "GREEN") {
     return { headline: "GREEN FLAG", detail: "Racing resumed", priority: "NORMAL" };
@@ -365,14 +456,25 @@ export function raceControlPhaseMessage(input: {
   if (input.raceControl === "VSC") {
     return { headline: "VIRTUAL SAFETY CAR · VSC", detail: "Maintain positive delta · no overtaking", priority: "URGENT" };
   }
+  if (input.raceControl === "RED_FLAG") {
+    return { headline: "RED FLAG", detail: "Race suspended · proceed to the pit-lane queue · no overtaking", priority: "URGENT" };
+  }
   if (input.safetyCarPhase === "DEPLOYED") {
     return { headline: "SAFETY CAR DEPLOYED", detail: input.pitLaneOpen === false ? "Catch the queue · pit lane closed" : "Catch the queue · no overtaking", priority: "URGENT" };
   }
   if (input.safetyCarPhase === "BUNCHING") {
+    if (input.lappedCarsMayOvertake) {
+      const count = Math.max(1, input.waveByCarCount ?? 1);
+      return {
+        headline: "LAPPED CARS MAY NOW OVERTAKE",
+        detail: `${count} car${count === 1 ? "" : "s"} may pass the Safety Car · rejoin at the back`,
+        priority: "WARNING",
+      };
+    }
     return { headline: "FIELD BUNCHING", detail: "Maintain queue position · pit lane open", priority: "WARNING" };
   }
   if (input.safetyCarPhase === "RESTART") {
-    return { headline: "SAFETY CAR IN THIS LAP", detail: "Leader controls the pace · overtake after the line", priority: "WARNING" };
+    return { headline: "SC ENDING", detail: "Safety Car enters the pits in sector 3 · leader controls the pace", priority: "WARNING" };
   }
   return { headline: "RACE CONTROL", detail: "Await instructions", priority: "NORMAL" };
 }

@@ -35,6 +35,28 @@ function teamAggression(teamId: string): number {
   return (hash % 5 - 2) / 2;
 }
 
+type StrategyArchetype = "AGGRESSIVE" | "BALANCED" | "EXTENDER" | "OPPORTUNIST";
+
+interface StrategyPersonality {
+  archetype: StrategyArchetype;
+  tyreTriggerOffset: number;
+  undercutBias: number;
+  overcutBias: number;
+  compoundBias: Readonly<Record<"SOFT" | "MEDIUM" | "HARD", number>>;
+}
+
+function strategyPersonality(car: RaceCarState): StrategyPersonality {
+  let hash = 2_166_136_261;
+  for (const character of `${car.teamId}:${car.driverId}`) hash = Math.imul(hash ^ character.charCodeAt(0), 16_777_619);
+  const archetypes: readonly StrategyArchetype[] = ["AGGRESSIVE", "BALANCED", "EXTENDER", "OPPORTUNIST"];
+  const archetype = archetypes[(hash >>> 0) % archetypes.length];
+  const driverStagger = ((hash >>> 5) % 7) - 3;
+  if (archetype === "AGGRESSIVE") return { archetype, tyreTriggerOffset: 9 + driverStagger, undercutBias: 8, overcutBias: -3, compoundBias: { SOFT: 8, MEDIUM: 3, HARD: -3 } };
+  if (archetype === "EXTENDER") return { archetype, tyreTriggerOffset: -8 + driverStagger, undercutBias: -4, overcutBias: 8, compoundBias: { SOFT: -7, MEDIUM: 2, HARD: 9 } };
+  if (archetype === "OPPORTUNIST") return { archetype, tyreTriggerOffset: driverStagger, undercutBias: 5, overcutBias: 4, compoundBias: { SOFT: 2, MEDIUM: 7, HARD: 1 } };
+  return { archetype, tyreTriggerOffset: 2 + driverStagger, undercutBias: 2, overcutBias: 1, compoundBias: { SOFT: 1, MEDIUM: 5, HARD: 3 } };
+}
+
 function availableCompounds(car: RaceCarState): TyreCompound[] {
   return [...new Set(car.tyreSets.filter((set) => set.status === "AVAILABLE").map((set) => set.compound))];
 }
@@ -80,12 +102,14 @@ function compoundScore(compound: TyreCompound, remainingLaps: number, wetness: n
 
 export function buildAiStrategyDecision(context: AiStrategyContext, car: RaceCarState): AiStrategyDecision {
   const aggression = teamAggression(car.teamId);
+  const personality = strategyPersonality(car);
   const remainingLaps = car.finished ? 0 : Math.max(0, SILVERSTONE_CIRCUIT.totalLaps - car.currentLap + 1);
   const compounds = availableCompounds(car);
   const teammate = context.cars.find((candidate) => candidate.carId !== car.carId && candidate.teamId === car.teamId);
   const doubleStackRisk = Boolean(teammate?.scheduledPitCompound || teammate?.pitStatus === "PIT_LANE" || teammate?.pitStatus === "PIT_STOP");
   const cheapStop = context.raceControl === "SAFETY_CAR" || context.raceControl === "VSC";
   const undercut = car.gapToCarAhead > 0.3 && car.gapToCarAhead < 2.4;
+  const overcutWindow = car.gapToCarAhead > 0.4 && car.gapToCarAhead < 3.2 && car.tyreLife > 45;
   const surface = weatherSurfaceSignal(context);
   const wetTyreFitted = car.tyreCompound === "INTERMEDIATE" || car.tyreCompound === "WET";
   const crossover = context.weather ? estimateTyreCrossover({
@@ -124,7 +148,12 @@ export function buildAiStrategyDecision(context: AiStrategyContext, car: RaceCar
     && surface.strategicWetness >= 0.24;
   const weatherTransitionReady = weatherTransition
     && (weatherEmergency || car.pitStops === 0 || car.tyreAgeLaps >= 1.5);
-  const threshold = 43 + aggression * 4 + (undercut ? 8 : 0) + (cheapStop ? 20 : 0) - (doubleStackRisk ? 9 : 0);
+  const threshold = 43
+    + personality.tyreTriggerOffset
+    + aggression * 3
+    + (undercut ? personality.undercutBias : 0)
+    + (cheapStop ? 20 : 0)
+    - (doubleStackRisk ? personality.archetype === "OPPORTUNIST" ? 5 : 11 : 0);
   const tyreCritical = car.tyreLife <= 35;
   const prematureDryStop = context.trackWetness < 0.16
     && car.currentLap <= 3
@@ -143,8 +172,9 @@ export function buildAiStrategyDecision(context: AiStrategyContext, car: RaceCar
     .map((compound) => {
       const freshest = Math.max(...car.tyreSets.filter((set) => set.status === "AVAILABLE" && set.compound === compound).map((set) => set.condition));
       const switchingBonus = wetTarget === compound ? (crossover ? 90 : 18) : 0;
-      const repeatPenalty = compound === car.tyreCompound && car.tyreLife > 45 ? 3 : 0;
-      return { compound, score: compoundScore(compound, remainingLaps, surface.strategicWetness, aggression) + freshest * 0.08 + switchingBonus - repeatPenalty };
+      const repeatPenalty = compound === car.tyreCompound && car.tyreLife > 35 ? 16 : 0;
+      const dryPersonalityBias = DRY_COMPOUNDS.includes(compound) ? personality.compoundBias[compound as "SOFT" | "MEDIUM" | "HARD"] : 0;
+      return { compound, score: compoundScore(compound, remainingLaps, surface.strategicWetness, aggression) + freshest * 0.08 + switchingBonus + dryPersonalityBias - repeatPenalty };
     })
     .sort((a, b) => b.score - a.score || a.compound.localeCompare(b.compound));
   const best = ranked[0] ?? null;
@@ -156,7 +186,9 @@ export function buildAiStrategyDecision(context: AiStrategyContext, car: RaceCar
         ? "TYRE_LIMIT"
         : undercut && shouldPit
           ? "UNDERCUT"
-          : car.tyreLife > threshold + 12 ? "EXTEND" : "HOLD";
+          : personality.overcutBias > personality.undercutBias && overcutWindow && car.tyreLife > threshold + 5
+            ? "OVERCUT"
+            : car.tyreLife > threshold + 12 ? "EXTEND" : "HOLD";
   const margin = best && ranked[1] ? best.score - ranked[1].score : best ? 12 : 0;
   const modelConfidence = crossover && weatherTransition ? crossover.confidence : 0;
   const confidence = Math.max(0.35, Math.min(0.96, 0.52 + margin * 0.018 + (weatherTransition ? 0.16 : 0) + modelConfidence * 0.08 - (doubleStackRisk ? 0.12 : 0)));

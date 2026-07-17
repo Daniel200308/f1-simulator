@@ -91,7 +91,7 @@ export interface LiveStrategyAssessment {
   reasons: readonly string[];
 }
 
-const RACE_CONTROLS: readonly RaceControlStatus[] = ["GREEN", "YELLOW", "VSC", "SAFETY_CAR"];
+const RACE_CONTROLS: readonly RaceControlStatus[] = ["GREEN", "YELLOW", "VSC", "SAFETY_CAR", "RED_FLAG"];
 const PIT_STATUSES: readonly PitStatus[] = ["TRACK", "PIT_ENTRY", "PIT_LANE", "PIT_STOP", "PIT_EXIT"];
 const COMPOUNDS: readonly TyreCompound[] = ["SOFT", "MEDIUM", "HARD", "INTERMEDIATE", "WET"];
 
@@ -100,6 +100,7 @@ const BASE_PIT_LOSS_SECONDS: Readonly<Record<RaceControlStatus, number>> = {
   YELLOW: 20.8,
   VSC: 15.6,
   SAFETY_CAR: 11.8,
+  RED_FLAG: 0,
 };
 
 const REMAINING_PIT_LOSS_FACTOR: Readonly<Record<PitStatus, number>> = {

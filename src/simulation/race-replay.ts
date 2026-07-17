@@ -206,7 +206,7 @@ function compactSnapshot(snapshot: RaceSnapshot): ReplayFrame {
 
 function eventSeverity(event: RaceEvent): ReplayEventSeverity {
   if (event.type === "INCIDENT") return "CRITICAL";
-  if (event.type === "RACE_CONTROL" || event.type === "PIT" || event.type === "THERMAL") return "WARNING";
+  if (event.type === "RACE_CONTROL" || event.type === "PIT" || event.type === "THERMAL" || event.type === "PENALTY") return "WARNING";
   return "INFO";
 }
 

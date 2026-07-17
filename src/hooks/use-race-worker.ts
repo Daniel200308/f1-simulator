@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useRef } from "react";
 
-import type { CoolingMode, EnergyMode, PaceMode, SimulationSpeed, TyreCompound, TyreMode, WeekendTyreUsage } from "@/domain/race";
+import type { CoolingMode, EnergyMode, PaceMode, SimulationSpeed, TeamOrderType, TyreCompound, TyreMode, WeekendTyreUsage } from "@/domain/race";
 import { DEFAULT_PLAYER_TEAM_ID } from "@/fixtures/grid";
 import { DEFAULT_SEED } from "@/simulation/engine";
 import type { WorkerCommand, WorkerEvent } from "@/simulation/protocol";
+import type { EnergyDebugAction } from "@/simulation/protocol";
 import { useRaceStore } from "@/store/race-store";
 
 export function useRaceWorker() {
@@ -43,11 +44,14 @@ export function useRaceWorker() {
     setAutoPause: (enabled: boolean) => send({ type: "SET_AUTO_PAUSE", enabled }),
     setSpeed: (speed: SimulationSpeed) => send({ type: "SET_SPEED", speed }),
     setPace: (carId: string, mode: PaceMode) => send({ type: "SET_PACE", carId, mode }),
+    setTeamOrder: (order: TeamOrderType) => send({ type: "SET_TEAM_ORDER", order }),
     setTyreMode: (carId: string, mode: TyreMode) => send({ type: "SET_TYRE_MODE", carId, mode }),
     setEnergyMode: (carId: string, mode: EnergyMode) => send({ type: "SET_ENERGY_MODE", carId, mode }),
+    debugEnergy: (carId: string, action: EnergyDebugAction) => send({ type: "DEBUG_ENERGY", carId, action }),
     setCoolingMode: (carId: string, mode: CoolingMode) => send({ type: "SET_COOLING_MODE", carId, mode }),
     setBrakeBias: (carId: string, brakeBiasPercent: number) => send({ type: "SET_BRAKE_BIAS", carId, brakeBiasPercent }),
     box: (carId: string, compound: TyreCompound) => send({ type: "BOX", carId, compound }),
+    servePenalty: (carId: string) => send({ type: "SERVE_PENALTY", carId }),
     stayOut: (carId: string) => send({ type: "CANCEL_PIT", carId }),
     setStartingTyre: (carId: string, compound: TyreCompound) => send({ type: "SET_START_TYRE", carId, compound }),
     reset: (seed = DEFAULT_SEED, gridOrder?: readonly string[], weekendTyreUsage?: WeekendTyreUsage, setupPerformanceByCar?: Readonly<Record<string, number>>, playerTeamId = DEFAULT_PLAYER_TEAM_ID) => send({ type: "RESET", seed, playerTeamId, gridOrder, weekendTyreUsage, setupPerformanceByCar }),

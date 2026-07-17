@@ -1,11 +1,14 @@
-import type { IncidentStatus, PitStopIssue, RaceSnapshot, TyreCompound } from "@/domain/race";
+import type { IncidentStatus, PitStopIssue, RacePenalty, RaceSnapshot, TyreCompound } from "@/domain/race";
 import { DRIVER_BY_ID, DRIVERS, TEAM_BY_ID } from "@/fixtures/grid";
 import type { RaceReplayRecording, ReplayEventSeverity, ReplayKeyEvent } from "@/simulation/race-replay";
+import { resultPenaltySeconds } from "@/simulation/fia-2026-rules";
 
-export type ClassificationStatus = "FINISHED" | "RETIRED" | "RUNNING";
+export type ClassificationStatus = "FINISHED" | "RETIRED" | "DISQUALIFIED" | "RUNNING";
 
 export interface RaceClassificationEntry {
   position: number;
+  /** Position at the chequered flag before steward adjustments. */
+  onTrackPosition: number;
   carId: string;
   driverId: string;
   driverName: string;
@@ -15,8 +18,11 @@ export interface RaceClassificationEntry {
   gridPosition: number;
   positionsGained: number;
   status: ClassificationStatus;
+  rawRaceTimeSeconds: number;
   raceTimeSeconds: number;
   gapToWinnerSeconds: number;
+  penaltySeconds: number;
+  penalties: readonly RacePenalty[];
   bestLapTimeSeconds: number | null;
   pitStops: number;
   overtakes: number;
@@ -90,6 +96,7 @@ export interface RaceReportTotals {
   incidents: number;
   thermalWarnings: number;
   strategyCalls: number;
+  penalties: number;
 }
 
 export interface RaceReport {
@@ -105,6 +112,7 @@ export interface RaceReport {
   playerReports: readonly PlayerRaceReport[];
   strategyEvents: readonly ReplayKeyEvent[];
   thermalWarnings: readonly ReplayKeyEvent[];
+  penalties: readonly RacePenalty[];
   totals: RaceReportTotals;
 }
 
@@ -149,7 +157,7 @@ function eventFallback(snapshot: RaceSnapshot): ReplayKeyEvent[] {
     kind: event.type,
     message: event.message,
     carId: fallbackEventCarId(snapshot, event),
-    severity: event.type === "INCIDENT" ? "CRITICAL" : event.type === "RACE_CONTROL" || event.type === "PIT" || event.type === "THERMAL" ? "WARNING" : "INFO",
+    severity: event.type === "INCIDENT" ? "CRITICAL" : event.type === "RACE_CONTROL" || event.type === "PIT" || event.type === "THERMAL" || event.type === "PENALTY" ? "WARNING" : "INFO",
   }));
   const radioEvents: ReplayKeyEvent[] = snapshot.radioMessages.map((message) => ({
     id: `radio:${message.id}`,
@@ -197,27 +205,29 @@ export function buildRaceReport(snapshot: RaceSnapshot, options: BuildRaceReport
   const replayEvents = options.recording?.events ?? eventFallback(snapshot);
   const completed = snapshot.status === "FINISHED";
   const orderedCars = [...snapshot.cars].sort((left, right) => left.racePosition - right.racePosition || left.gridPosition - right.gridPosition);
-  const leader = orderedCars[0] ?? null;
-  const leaderRaceTime = leader ? positiveTime(leader.finishTime) ?? leader.totalRaceTime : 0;
-
-  const classification: RaceClassificationEntry[] = orderedCars.map((car) => {
+  const penalties = snapshot.penalties ?? [];
+  const rawClassification = orderedCars.map((car) => {
     const identity = carIdentity(car);
-    const raceTime = positiveTime(car.finishTime) ?? car.totalRaceTime;
-    const status = classificationStatus(car);
-    const finalGap = completed && status === "FINISHED" && leaderRaceTime > 0
-      ? Math.max(0, raceTime - leaderRaceTime)
-      : Math.max(0, car.gapToLeader);
+    const rawRaceTime = positiveTime(car.finishTime) ?? car.totalRaceTime;
+    const carPenalties = penalties.filter((penalty) => penalty.carId === car.carId && penalty.status !== "EXPIRED");
+    const disqualified = carPenalties.some((penalty) => penalty.type === "DISQUALIFICATION" && penalty.status !== "SERVED");
+    const status: ClassificationStatus = disqualified ? "DISQUALIFIED" : classificationStatus(car);
+    const penaltySeconds = carPenalties.reduce((total, penalty) => total + resultPenaltySeconds(penalty), 0);
     return {
       position: car.racePosition,
+      onTrackPosition: car.racePosition,
       carId: car.carId,
       driverId: car.driverId,
       ...identity,
       teamId: car.teamId,
       gridPosition: car.gridPosition,
-      positionsGained: car.gridPosition - car.racePosition,
+      positionsGained: 0,
       status,
-      raceTimeSeconds: raceTime,
-      gapToWinnerSeconds: car.racePosition === 1 ? 0 : finalGap,
+      rawRaceTimeSeconds: rawRaceTime,
+      raceTimeSeconds: rawRaceTime + (completed && status === "FINISHED" ? penaltySeconds : 0),
+      gapToWinnerSeconds: Math.max(0, car.gapToLeader),
+      penaltySeconds,
+      penalties: carPenalties,
       bestLapTimeSeconds: positiveTime(car.bestLapTime),
       pitStops: car.pitStops,
       overtakes: car.overtakes,
@@ -225,6 +235,28 @@ export function buildRaceReport(snapshot: RaceSnapshot, options: BuildRaceReport
       retiredReason: car.retiredReason,
     };
   });
+  if (completed) {
+    rawClassification.sort((left, right) => {
+      const leftRank = left.status === "FINISHED" ? 0 : left.status === "RUNNING" ? 1 : left.status === "RETIRED" ? 2 : 3;
+      const rightRank = right.status === "FINISHED" ? 0 : right.status === "RUNNING" ? 1 : right.status === "RETIRED" ? 2 : 3;
+      if (leftRank !== rightRank) return leftRank - rightRank;
+      if (left.status === "FINISHED" && right.status === "FINISHED") return left.raceTimeSeconds - right.raceTimeSeconds || left.onTrackPosition - right.onTrackPosition;
+      return left.onTrackPosition - right.onTrackPosition;
+    });
+  }
+  const winnerRaceTime = rawClassification.find((entry) => entry.status === "FINISHED")?.raceTimeSeconds ?? 0;
+  const classification: RaceClassificationEntry[] = rawClassification.map((entry, index) => {
+    const position = completed ? index + 1 : entry.onTrackPosition;
+    return {
+      ...entry,
+      position,
+      positionsGained: entry.gridPosition - position,
+      gapToWinnerSeconds: position === 1 ? 0 : completed && entry.status === "FINISHED" && winnerRaceTime > 0
+        ? Math.max(0, entry.raceTimeSeconds - winnerRaceTime)
+        : entry.gapToWinnerSeconds,
+    };
+  });
+  const leader = classification[0] ?? null;
 
   const fastestCar = orderedCars
     .filter((car) => positiveTime(car.bestLapTime) !== null)
@@ -308,15 +340,16 @@ export function buildRaceReport(snapshot: RaceSnapshot, options: BuildRaceReport
   const playerIds = new Set(options.playerCarIds ?? defaultPlayerCarIds(snapshot));
   const playerReports: PlayerRaceReport[] = orderedCars.filter((car) => playerIds.has(car.carId)).map((car) => {
     const identity = carIdentity(car);
+    const classified = classification.find((entry) => entry.carId === car.carId);
     const tyreStrategy = tyreStrategies.find((strategy) => strategy.carId === car.carId)?.compounds ?? [car.tyreCompound];
     const playerWarnings = thermalWarnings.filter((event) => event.carId === car.carId);
     return {
       carId: car.carId,
       driverName: identity.driverName,
       driverShortName: identity.driverShortName,
-      finishPosition: car.racePosition,
+      finishPosition: classified?.position ?? car.racePosition,
       gridPosition: car.gridPosition,
-      positionsGained: car.gridPosition - car.racePosition,
+      positionsGained: classified?.positionsGained ?? car.gridPosition - car.racePosition,
       overtakes: car.overtakes,
       pitStops: car.pitStops,
       tyreStrategy,
@@ -332,7 +365,7 @@ export function buildRaceReport(snapshot: RaceSnapshot, options: BuildRaceReport
   return {
     seed: snapshot.seed,
     completed,
-    elapsedTimeSeconds: completed && leaderRaceTime > 0 ? leaderRaceTime : snapshot.elapsedTime,
+    elapsedTimeSeconds: completed && winnerRaceTime > 0 ? winnerRaceTime : snapshot.elapsedTime,
     winnerCarId: completed ? leader?.carId ?? null : null,
     classification,
     fastestLap,
@@ -342,6 +375,7 @@ export function buildRaceReport(snapshot: RaceSnapshot, options: BuildRaceReport
     playerReports,
     strategyEvents,
     thermalWarnings,
+    penalties,
     totals: {
       classifiedCars: classification.length,
       finishers: classification.filter((entry) => entry.status === "FINISHED").length,
@@ -352,6 +386,7 @@ export function buildRaceReport(snapshot: RaceSnapshot, options: BuildRaceReport
       incidents: incidents.length,
       thermalWarnings: thermalWarnings.length,
       strategyCalls: strategyEvents.length,
+      penalties: penalties.length,
     },
   };
 }

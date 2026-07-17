@@ -12,6 +12,7 @@ export function criticalRaceControlTransition(
   if (previous.raceControl !== next.raceControl && next.raceControl !== "GREEN") {
     if (next.raceControl === "YELLOW") return `LOCAL YELLOW · SECTOR ${next.yellowSector ?? "—"}`;
     if (next.raceControl === "VSC") return "VIRTUAL SAFETY CAR DEPLOYED";
+    if (next.raceControl === "RED_FLAG") return "RED FLAG · RACE SUSPENDED";
     return "SAFETY CAR DEPLOYED";
   }
 
@@ -28,7 +29,7 @@ export function criticalRaceControlTransition(
     && previous.safetyCarPhase !== next.safetyCarPhase
     && next.safetyCarPhase === "RESTART"
   ) {
-    return "SAFETY CAR IN THIS LAP";
+    return "SC ENDING · LEADER CONTROLS RESTART";
   }
 
   return null;

@@ -1,5 +1,6 @@
 import type { TyreCompound } from "@/domain/race";
 import { DEFAULT_PLAYER_TEAM_ID, DRIVER_BY_ID, DRIVERS, playerCarIdsFor, TEAM_BY_ID } from "@/fixtures/grid";
+import { buildSessionDriverMessage, buildSessionEngineerMessage } from "@/simulation/message-library";
 import { hashNoise, signedNoise } from "@/simulation/random";
 
 export type PracticeSession = "FP1" | "FP2" | "FP3";
@@ -8,8 +9,18 @@ export type WeekendSession = PracticeSession | QualifyingSession | "RACE";
 
 export interface CarSetup {
   frontWing: number;
+  rearWing: number;
   suspension: number;
+  rideHeight: number;
+  differential: number;
   cooling: number;
+}
+
+export interface SetupRecommendationRange {
+  minimum: number;
+  maximum: number;
+  confidence: number;
+  sourceSession: PracticeSession;
 }
 
 export interface SetupFeedback {
@@ -43,6 +54,9 @@ export interface WeekendCarReport {
   mechanicalBalancePercent: number;
   thermalMarginPercent: number;
   tyreConditionPercent: number;
+  energyRecoveryPercent: number;
+  energyDeploymentPercent: number;
+  energyProgramme: "RECOVERY MAP" | "RACE ENERGY" | "QUALIFYING DEPLOY";
   driverMessage: string;
   engineerMessage: string;
 }
@@ -115,7 +129,10 @@ function optimalSetupFor(seed: number, carId: string): CarSetup {
   const driverPreference = driverIndex % 2 === 0 ? 0 : 1;
   return {
     frontWing: clamp(7 + aeroShift + driverPreference, 5, 9),
+    rearWing: clamp(6 + Math.round(signedNoise(seed, 704, driverIndex + 3) * 1.1) - driverPreference, 4, 9),
     suspension: clamp(5 + mechanicalShift - driverPreference, 3, 8),
+    rideHeight: clamp(5 + Math.round(signedNoise(seed, 705, driverIndex + 7) * 1.1), 3, 8),
+    differential: clamp(6 + Math.round(signedNoise(seed, 706, driverIndex + 11) * 1.15) + driverPreference, 3, 9),
     cooling: clamp(3 + Math.round(signedNoise(seed, 703, 19) * 0.8), 2, 4),
   };
 }
@@ -125,21 +142,27 @@ function initialSetupFor(seed: number, carId: string, playerTeamId: string): Car
   if (driver?.teamId === playerTeamId) {
     const teamSlot = playerCarIdsFor(playerTeamId).indexOf(carId);
     return teamSlot === 0
-      ? { frontWing: 5, suspension: 6, cooling: 2 }
-      : { frontWing: 6, suspension: 4, cooling: 4 };
+      ? { frontWing: 5, rearWing: 6, suspension: 6, rideHeight: 5, differential: 5, cooling: 2 }
+      : { frontWing: 6, rearWing: 5, suspension: 4, rideHeight: 6, differential: 7, cooling: 4 };
   }
   const target = optimalSetupFor(seed, carId);
   const driverIndex = Math.max(0, DRIVERS.findIndex((driver) => driver.id === carId));
   return {
     frontWing: clamp(target.frontWing + Math.round(signedNoise(seed, driverIndex + 810, 1) * 0.7), 1, 10),
+    rearWing: clamp(target.rearWing + Math.round(signedNoise(seed, driverIndex + 810, 4) * 0.7), 1, 10),
     suspension: clamp(target.suspension + Math.round(signedNoise(seed, driverIndex + 810, 2) * 0.7), 1, 10),
+    rideHeight: clamp(target.rideHeight + Math.round(signedNoise(seed, driverIndex + 810, 5) * 0.7), 1, 10),
+    differential: clamp(target.differential + Math.round(signedNoise(seed, driverIndex + 810, 6) * 0.7), 1, 10),
     cooling: clamp(target.cooling + Math.round(signedNoise(seed, driverIndex + 810, 3) * 0.55), 1, 5),
   };
 }
 
 function setupPenalty(setup: CarSetup, target: CarSetup): number {
   return Math.abs(setup.frontWing - target.frontWing) * 0.12
+    + Math.abs(setup.rearWing - target.rearWing) * 0.09
     + Math.abs(setup.suspension - target.suspension) * 0.09
+    + Math.abs(setup.rideHeight - target.rideHeight) * 0.075
+    + Math.abs(setup.differential - target.differential) * 0.08
     + Math.abs(setup.cooling - target.cooling) * 0.06;
 }
 
@@ -262,11 +285,13 @@ function sessionReportFor(state: WeekendState, result: WeekendSessionResult): We
   const qualifying = result.session.startsWith("Q");
   const reports = playerCarIdsFor(state.playerTeamId).map((carId): WeekendCarReport => {
     const driver = DRIVER_BY_ID.get(carId)!;
+    const carIndex = DRIVERS.findIndex((candidate) => candidate.id === carId);
+    const sessionIndex = SESSION_SEQUENCE.indexOf(result.session);
     const entry = result.entries.find((candidate) => candidate.carId === carId);
     const setup = state.setups[carId];
     const target = optimalSetupFor(state.seed, carId);
-    const aeroDifference = setup.frontWing - target.frontWing;
-    const mechanicalDifference = setup.suspension - target.suspension;
+    const aeroDifference = (setup.frontWing - target.frontWing + setup.rearWing - target.rearWing) / 2;
+    const mechanicalDifference = (setup.suspension - target.suspension + setup.rideHeight - target.rideHeight + setup.differential - target.differential) / 3;
     const coolingDifference = setup.cooling - target.cooling;
     const aeroBalancePercent = Math.round(clamp(100 - Math.abs(aeroDifference) * 18, 28, 100));
     const mechanicalBalancePercent = Math.round(clamp(100 - Math.abs(mechanicalDifference) * 20, 25, 100));
@@ -274,22 +299,53 @@ function sessionReportFor(state: WeekendState, result: WeekendSessionResult): We
     const tyreConditionPercent = entry
       ? Math.round(clamp(100 - entry.laps * (result.session === "FP3" || qualifying ? 1.05 : result.session === "FP2" ? 0.72 : 0.52), 38, 96))
       : 100;
+    const energyProgramme: WeekendCarReport["energyProgramme"] = qualifying
+      ? "QUALIFYING DEPLOY"
+      : result.session === "FP1" ? "RECOVERY MAP" : result.session === "FP2" ? "RACE ENERGY" : "QUALIFYING DEPLOY";
+    const energyRecoveryPercent = Math.round(clamp(
+      energyProgramme === "RECOVERY MAP" ? 84 : energyProgramme === "RACE ENERGY" ? 72 : 46,
+      0,
+      100,
+    ));
+    const energyDeploymentPercent = Math.round(clamp(
+      (energyProgramme === "QUALIFYING DEPLOY" ? 91 : energyProgramme === "RACE ENERGY" ? 75 : 58)
+        - Math.abs(coolingDifference) * 4
+        + signedNoise(state.seed, carIndex + 1_440, sessionIndex + 31) * 4,
+      0,
+      100,
+    ));
     const outcome: WeekendCarReport["outcome"] = !entry ? "NO RUN" : entry.eliminated ? "ELIMINATED" : qualifying && result.session !== "Q3" ? "ADVANCED" : "COMPLETE";
-    const balanceIssue = Math.abs(aeroDifference) >= Math.abs(mechanicalDifference)
-      ? aeroDifference < 0 ? "high-speed understeer" : aeroDifference > 0 ? "straight-line drag" : "a stable front balance"
-      : mechanicalDifference < 0 ? "platform movement through direction changes" : mechanicalDifference > 0 ? "rear instability over kerbs" : "a stable mechanical platform";
-    const driverMessage = !entry
-      ? `We did not run in ${result.session}. I will stay involved with the engineering debrief for the next session.`
-      : qualifying
-        ? entry.eliminated
-          ? `I did not put the lap together. The car still had ${balanceIssue}, and we left time in the final sector.`
-          : `The lap was committed and the car gave me confidence. I still feel ${balanceIssue}, so there is more performance available.`
-        : `Across the long and short runs I felt ${balanceIssue}. ${tyreConditionPercent < 60 ? "The tyre balance faded late in the run." : "The balance remained repeatable as the fuel came down."}`;
-    const engineerMessage = !entry
-      ? `${driver.shortName} was not eligible for this segment. We retained the car and tyre allocation for the remaining programme.`
-      : qualifying
-        ? `${driver.shortName} classified P${entry.position} with ${entry.bestLapSeconds.toFixed(3)}. ${entry.eliminated ? "The lap missed the progression threshold; review preparation, traffic and final-run execution." : result.session === "Q3" ? "Final grid position is confirmed." : "The car advances, but the next run will require a cleaner tyre-preparation window."}`
-        : `${driver.shortName} completed ${entry.laps} laps and classified P${entry.position}, ${entry.gapSeconds.toFixed(3)}s from the reference. Aero ${aeroBalancePercent}%, mechanical ${mechanicalBalancePercent}%, thermal margin ${thermalMarginPercent}%.`;
+    const dominantDifference = Math.max(Math.abs(aeroDifference), Math.abs(mechanicalDifference), Math.abs(coolingDifference));
+    const balanceIssue = dominantDifference === 0
+      ? "a stable mechanical platform"
+      : Math.abs(coolingDifference) === dominantDifference
+        ? coolingDifference < 0 ? "restricted cooling margin" : "excess cooling drag"
+        : Math.abs(aeroDifference) === dominantDifference
+          ? aeroDifference < 0 ? "high-speed understeer" : "straight-line drag"
+          : mechanicalDifference < 0 ? "platform movement through direction changes" : "rear instability over kerbs";
+    const messageContext = {
+      seed: state.seed,
+      carIndex,
+      sessionIndex,
+      session: result.session,
+      phase: qualifying ? "QUALIFYING" as const : "PRACTICE" as const,
+      outcome,
+      driverShortName: driver.shortName,
+      position: entry?.position ?? null,
+      laps: entry?.laps ?? 0,
+      gapSeconds: entry?.gapSeconds ?? 0,
+      balanceIssue,
+      tyreConditionPercent,
+      energyRecoveryPercent,
+      energyDeploymentPercent,
+      energyProgramme,
+      aeroBalancePercent,
+      mechanicalBalancePercent,
+      thermalMarginPercent,
+      bestLapSeconds: entry?.bestLapSeconds ?? null,
+    };
+    const driverMessage = buildSessionDriverMessage(messageContext);
+    const engineerMessage = buildSessionEngineerMessage(messageContext);
     return {
       carId,
       position: entry?.position ?? null,
@@ -299,6 +355,9 @@ function sessionReportFor(state: WeekendState, result: WeekendSessionResult): We
       mechanicalBalancePercent,
       thermalMarginPercent,
       tyreConditionPercent,
+      energyRecoveryPercent,
+      energyDeploymentPercent,
+      energyProgramme,
       driverMessage,
       engineerMessage,
     };
@@ -311,8 +370,8 @@ function sessionReportFor(state: WeekendState, result: WeekendSessionResult): We
     summary: bestPosition === null
       ? "No player car recorded a timed lap in this segment."
       : qualifying
-        ? `Best team result P${bestPosition}. Review driver execution and engineering state before the next segment.`
-        : `Programme complete. Best team result P${bestPosition}; use the driver and engineering reports before changing the setup.`,
+        ? `Best car P${bestPosition}. The lap and balance notes point to the next decision.`
+        : `Best car P${bestPosition}. Both drivers have given us a clear direction for the next setup step.`,
     cars: reports,
   };
 }
@@ -369,16 +428,43 @@ export function setupFeedbackFor(state: WeekendState, carId: string): readonly S
   return [runFeedback, aero, mechanical, thermal];
 }
 
-export function setWeekendCarSetup(state: WeekendState, carId: string, setup: CarSetup): WeekendState {
+function roundHalf(value: number): number {
+  return Math.round(value * 2) / 2;
+}
+
+/** Returns the telemetry-supported setup band. FP1 is broad; FP2 and FP3 progressively narrow it. */
+export function setupRecommendationFor(state: WeekendState, carId: string, key: keyof CarSetup): SetupRecommendationRange | null {
+  const completedPractice = state.completedSessions.filter((session): session is PracticeSession => session.startsWith("FP"));
+  const sourceSession = completedPractice.at(-1);
+  if (!sourceSession || !DRIVER_BY_ID.has(carId)) return null;
+  const target = optimalSetupFor(state.seed, carId)[key];
+  const limits = key === "cooling" ? { minimum: 1, maximum: 5 } : { minimum: 1, maximum: 10 };
+  const halfWidth = completedPractice.length === 1 ? (key === "cooling" ? 1 : 2)
+    : completedPractice.length === 2 ? (key === "cooling" ? 0.5 : 1)
+      : 0.5;
+  return {
+    minimum: roundHalf(clamp(target - halfWidth, limits.minimum, limits.maximum)),
+    maximum: roundHalf(clamp(target + halfWidth, limits.minimum, limits.maximum)),
+    confidence: completedPractice.length === 1 ? 54 : completedPractice.length === 2 ? 76 : 92,
+    sourceSession,
+  };
+}
+
+export function setWeekendCarSetup(state: WeekendState, carId: string, setup: Partial<CarSetup>): WeekendState {
   if (!DRIVER_BY_ID.has(carId)) return state;
+  const current = setupFor(state, carId);
+  const rounded = (value: number | undefined, fallback: number, minimum: number, maximum: number) => clamp(roundHalf(value ?? fallback), minimum, maximum);
   return {
     ...state,
     setups: {
       ...state.setups,
       [carId]: {
-        frontWing: clamp(Math.round(setup.frontWing), 1, 10),
-        suspension: clamp(Math.round(setup.suspension), 1, 10),
-        cooling: clamp(Math.round(setup.cooling), 1, 5),
+        frontWing: rounded(setup.frontWing, current.frontWing, 1, 10),
+        rearWing: rounded(setup.rearWing, current.rearWing, 1, 10),
+        suspension: rounded(setup.suspension, current.suspension, 1, 10),
+        rideHeight: rounded(setup.rideHeight, current.rideHeight, 1, 10),
+        differential: rounded(setup.differential, current.differential, 1, 10),
+        cooling: rounded(setup.cooling, current.cooling, 1, 5),
       },
     },
   };

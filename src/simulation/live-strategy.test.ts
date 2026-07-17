@@ -102,7 +102,7 @@ describe("live strategy core", () => {
     expect(yellow.pitLoss.expectedSeconds).toBe(20.8);
     expect(vsc.pitLoss.expectedSeconds).toBe(15.6);
     expect(safetyCar.pitLoss.expectedSeconds).toBe(11.8);
-    expect(safetyCar.pitLoss.byRaceControl).toEqual({ GREEN: 23, YELLOW: 20.8, VSC: 15.6, SAFETY_CAR: 11.8 });
+    expect(safetyCar.pitLoss.byRaceControl).toEqual({ GREEN: 23, YELLOW: 20.8, VSC: 15.6, SAFETY_CAR: 11.8, RED_FLAG: 0 });
     expect(green.call).toBe("STAY_OUT");
     expect(vsc.call).toBe("BOX_NOW");
     expect(safetyCar.call).toBe("BOX_NOW");

@@ -141,11 +141,12 @@ const SPEED_BY_KIND: Record<SegmentKind, number> = {
   SLOW: 112,
 };
 
-const ACTIVE_AERO_RANGES = [
-  [0.00, 0.10],
-  [0.24, 0.32],
-  [0.40, 0.50],
-  [0.73, 0.83],
+/** Official 2026 Silverstone Straight Mode sections, mapped to lap ratios. */
+export const SILVERSTONE_STRAIGHT_MODE_ZONES = [
+  { id: "SM1", label: "HAMILTON", from: "T18", to: "T1", startRatio: 0.00, endRatio: 0.10 },
+  { id: "SM2", label: "WELLINGTON", from: "T5", to: "T6", startRatio: 0.24, endRatio: 0.32 },
+  { id: "SM3", label: "NATIONAL", from: "T7", to: "T9", startRatio: 0.40, endRatio: 0.50 },
+  { id: "SM4", label: "HANGAR", from: "T14", to: "T15", startRatio: 0.73, endRatio: 0.83 },
 ] as const;
 
 function distance(a: TrackPoint, b: TrackPoint): number {
@@ -214,7 +215,7 @@ function segmentKind(points: readonly TrackPoint[], index: number): SegmentKind 
 }
 
 function isActiveAeroDistance(ratio: number): boolean {
-  return ACTIVE_AERO_RANGES.some(([start, end]) => ratio >= start && ratio <= end);
+  return SILVERSTONE_STRAIGHT_MODE_ZONES.some((zone) => ratio >= zone.startRatio && ratio <= zone.endRatio);
 }
 
 function buildCircuit(): CircuitDefinition {
@@ -267,6 +268,14 @@ export const SILVERSTONE_CORNERS = SILVERSTONE_CORNER_ANCHORS.map(({ number, nam
       % SILVERSTONE_CIRCUIT.points.length
   ],
 }));
+
+// 2026 Silverstone uses one Overtake Mode detection point just after T17 and
+// an activation line just before T18. The public circuit guide does not publish
+// metre coordinates, so the game maps "just after/before" onto this centreline.
+const CLUB_CORNER_GAP = SILVERSTONE_CORNERS[17].distanceMeters - SILVERSTONE_CORNERS[16].distanceMeters;
+export const SILVERSTONE_OVERTAKE_DETECTION_DISTANCE = SILVERSTONE_CORNERS[16].distanceMeters + Math.min(42, CLUB_CORNER_GAP * 0.28);
+export const SILVERSTONE_OVERTAKE_ACTIVATION_DISTANCE = SILVERSTONE_CORNERS[17].distanceMeters - Math.min(34, CLUB_CORNER_GAP * 0.2);
+export const SILVERSTONE_OVERTAKE_ZONE_END_DISTANCE = SILVERSTONE_CIRCUIT.lengthMeters * 0.1;
 
 export const SILVERSTONE_SECTOR_ENDS = [
   SILVERSTONE_CORNERS[4].distanceMeters + 30,

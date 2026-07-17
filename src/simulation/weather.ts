@@ -7,7 +7,7 @@ import type {
   WeatherSectorState,
   WeatherState,
 } from "@/domain/race";
-import { signedNoise } from "@/simulation/random";
+import { hashNoise, signedNoise } from "@/simulation/random";
 
 export const WEATHER_RADAR_CELL_COUNT = 24;
 export const WEATHER_SURFACE_ZONE_COUNT = 48;
@@ -46,50 +46,138 @@ function smoothNoise(seed: number, stream: number, elapsedTime: number, interval
   return current + (next - current) * blend;
 }
 
-function rainWindow(seed: number): { start: number; end: number } {
-  const start = 180 + Math.abs(seed % 180);
-  return { start, end: start + 620 };
+export type WeatherScenarioKind = "DRIZZLE" | "PASSING_SHOWERS" | "BUILDING_RAIN" | "SUDDEN_DOWNPOUR" | "PATCHY_CELLS" | "TWO_WAVE";
+
+export interface WeatherCellPlan {
+  id: string;
+  startSeconds: number;
+  durationSeconds: number;
+  peakIntensity: number;
+  originX: number;
+  originY: number;
+  directionRadians: number;
+  travelDistance: number;
+  radius: number;
+  buildFraction: number;
+  buildExponent: number;
+  decayExponent: number;
 }
 
-function rainEnvelope(seed: number, elapsedTime: number): number {
-  const { start, end } = rainWindow(seed);
-  if (elapsedTime <= start || elapsedTime >= end) return 0;
-  const progress = (elapsedTime - start) / (end - start);
-  return Math.pow(Math.sin(progress * Math.PI), 0.72);
+export interface WeatherScenario {
+  kind: WeatherScenarioKind;
+  cells: readonly WeatherCellPlan[];
+}
+
+const WEATHER_SCENARIO_KINDS: readonly WeatherScenarioKind[] = [
+  "DRIZZLE",
+  "PASSING_SHOWERS",
+  "BUILDING_RAIN",
+  "SUDDEN_DOWNPOUR",
+  "PATCHY_CELLS",
+  "TWO_WAVE",
+];
+const weatherScenarioCache = new Map<number, WeatherScenario>();
+
+function range(seed: number, stream: number, minimum: number, maximum: number): number {
+  return minimum + hashNoise(seed, stream, 0) * (maximum - minimum);
+}
+
+/** A seed creates one to three independent cells with varied timing and direction. */
+export function createWeatherScenario(seed: number): WeatherScenario {
+  const cached = weatherScenarioCache.get(seed);
+  if (cached) return cached;
+  const kind = WEATHER_SCENARIO_KINDS[Math.min(
+    WEATHER_SCENARIO_KINDS.length - 1,
+    Math.floor(hashNoise(seed, 9_000, 0) * WEATHER_SCENARIO_KINDS.length),
+  )];
+  const count = kind === "PATCHY_CELLS" ? 3 : kind === "TWO_WAVE" || kind === "PASSING_SHOWERS" ? 2 : 1;
+  const baseStart = kind === "SUDDEN_DOWNPOUR"
+    ? range(seed, 9_010, 110, 2_400)
+    : kind === "DRIZZLE"
+      ? range(seed, 9_010, 180, 3_100)
+      : range(seed, 9_010, 80, 2_850);
+  const cells = Array.from({ length: count }, (_, index): WeatherCellPlan => {
+    const stream = 9_100 + index * 20;
+    const directionRadians = range(seed, stream, 0, Math.PI * 2);
+    const perpendicularOffset = range(seed, stream + 1, -0.42, 0.42);
+    const directionX = Math.cos(directionRadians);
+    const directionY = Math.sin(directionRadians);
+    const durationSeconds = kind === "DRIZZLE"
+      ? range(seed, stream + 2, 720, 1_500)
+      : kind === "BUILDING_RAIN"
+        ? range(seed, stream + 2, 760, 1_420)
+        : kind === "SUDDEN_DOWNPOUR"
+          ? range(seed, stream + 2, 210, 460)
+          : range(seed, stream + 2, 260, 760);
+    const peakIntensity = kind === "DRIZZLE"
+      ? range(seed, stream + 3, 0.1, 0.3)
+      : kind === "SUDDEN_DOWNPOUR"
+        ? range(seed, stream + 3, 0.76, 0.98)
+        : kind === "BUILDING_RAIN"
+          ? range(seed, stream + 3, 0.46, 0.78)
+          : range(seed, stream + 3, 0.24, 0.72);
+    const stagger = index === 0 ? 0
+      : kind === "TWO_WAVE" ? index * range(seed, stream + 4, 620, 1_180)
+        : index * range(seed, stream + 4, 95, 390);
+    const originX = 0.5 - directionX * range(seed, stream + 5, 0.72, 1.05) - directionY * perpendicularOffset;
+    const originY = 0.5 - directionY * range(seed, stream + 6, 0.72, 1.05) + directionX * perpendicularOffset;
+    return {
+      id: `weather-cell-${index + 1}`,
+      startSeconds: baseStart + stagger,
+      durationSeconds,
+      peakIntensity,
+      originX,
+      originY,
+      directionRadians,
+      travelDistance: range(seed, stream + 7, 1.45, 2.2),
+      radius: kind === "DRIZZLE" ? range(seed, stream + 8, 0.34, 0.52) : range(seed, stream + 8, 0.2, 0.42),
+      buildFraction: kind === "SUDDEN_DOWNPOUR" ? range(seed, stream + 9, 0.08, 0.2) : range(seed, stream + 9, 0.28, 0.6),
+      buildExponent: kind === "SUDDEN_DOWNPOUR" ? range(seed, stream + 10, 0.16, 0.36) : range(seed, stream + 10, 0.55, 1.25),
+      decayExponent: range(seed, stream + 11, 0.65, 1.55),
+    };
+  });
+  const scenario = { kind, cells } satisfies WeatherScenario;
+  weatherScenarioCache.set(seed, scenario);
+  return scenario;
+}
+
+function weatherCellEnvelope(cell: WeatherCellPlan, elapsedTime: number): number {
+  const progress = (elapsedTime - cell.startSeconds) / cell.durationSeconds;
+  if (progress <= 0 || progress >= 1) return 0;
+  if (progress < cell.buildFraction) return Math.pow(progress / cell.buildFraction, cell.buildExponent);
+  return Math.pow((1 - progress) / (1 - cell.buildFraction), cell.decayExponent);
+}
+
+function weatherCellIntensity(cell: WeatherCellPlan, elapsedTime: number, x: number, y: number): number {
+  const envelope = weatherCellEnvelope(cell, elapsedTime);
+  if (envelope === 0) return 0;
+  const progress = clamp01((elapsedTime - cell.startSeconds) / cell.durationSeconds);
+  const centreX = cell.originX + Math.cos(cell.directionRadians) * cell.travelDistance * progress;
+  const centreY = cell.originY + Math.sin(cell.directionRadians) * cell.travelDistance * progress;
+  const distance = Math.hypot(x - centreX, y - centreY);
+  const spatialIntensity = Math.exp(-Math.pow(distance / cell.radius, 2));
+  return clamp01(cell.peakIntensity * envelope * spatialIntensity);
 }
 
 function radarIntensityAt(seed: number, elapsedTime: number, x: number, y: number): number {
-  const { start, end } = rainWindow(seed);
-  const envelope = rainEnvelope(seed, elapsedTime);
-  if (envelope === 0) return 0;
-
-  const progress = (elapsedTime - start) / (end - start);
-  const slope = signedNoise(seed, 7_100, 0) * 0.38;
-  const front = -0.24 + progress * 1.48;
-  const projectedX = x + (y - 0.5) * slope;
-  const distanceToFront = projectedX - front;
-  const mainBand = Math.exp(-Math.pow(distanceToFront / 0.24, 2));
-  const trailingBand = Math.exp(-Math.pow((distanceToFront + 0.31) / 0.19, 2)) * 0.42;
+  const scenario = createWeatherScenario(seed);
+  const combined = scenario.cells.reduce((remainingDry, cell) => (
+    remainingDry * (1 - weatherCellIntensity(cell, elapsedTime, x, y))
+  ), 1);
   const cellStream = 7_200 + Math.round(x * (RADAR_COLUMNS - 1)) + Math.round(y * (RADAR_ROWS - 1)) * RADAR_COLUMNS;
-  const localVariation = 0.9 + smoothNoise(seed, cellStream, elapsedTime, 38) * 0.14;
-  const rainPulse = 0.91 + smoothNoise(seed, 7_500, elapsedTime, 24) * 0.09;
-  return clamp01(envelope * (0.1 + mainBand * 0.91 + trailingBand) * localVariation * rainPulse);
+  const localVariation = 0.92 + smoothNoise(seed, cellStream, elapsedTime, 27) * 0.08;
+  const pulse = 0.94 + smoothNoise(seed, 7_500, elapsedTime, 18) * 0.06;
+  return clamp01((1 - combined) * localVariation * pulse);
 }
 
 function radarProbabilityAt(seed: number, elapsedTime: number, x: number, y: number): number {
-  const { start, end } = rainWindow(seed);
-  const envelope = rainEnvelope(seed, elapsedTime);
-  if (elapsedTime > end || elapsedTime + 900 < start) return 0;
-  if (elapsedTime < start) {
-    const approach = clamp01(1 - (start - elapsedTime) / 300);
-    return approach * (0.32 + (1 - x) * 0.18);
-  }
-  const progress = (elapsedTime - start) / (end - start);
-  const slope = signedNoise(seed, 7_100, 0) * 0.38;
-  const front = -0.24 + progress * 1.48;
-  const distanceToFront = x + (y - 0.5) * slope - front;
-  const broadBand = Math.exp(-Math.pow(distanceToFront / 0.38, 2));
-  return clamp01(envelope * (0.2 + broadBand * 0.82) + radarIntensityAt(seed, elapsedTime, x, y) * 0.22);
+  const now = radarIntensityAt(seed, elapsedTime, x, y);
+  const approaching = Math.max(
+    radarIntensityAt(seed, elapsedTime + 60, x, y),
+    radarIntensityAt(seed, elapsedTime + 180, x, y),
+    radarIntensityAt(seed, elapsedTime + 300, x, y),
+  );
+  return clamp01(now * 0.9 + approaching * 0.78);
 }
 
 function rainEtaSeconds(seed: number, elapsedTime: number, x: number, y: number): number | null {

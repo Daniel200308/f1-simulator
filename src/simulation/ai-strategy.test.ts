@@ -61,7 +61,7 @@ describe("AI strategy model", () => {
     const cars = aiCars().map((car) => ({ ...car, currentLap: 40, tyreLife: 34 }));
     const choices = cars.map((car) => buildAiStrategyDecision({ trackWetness: 0, raceControl: "GREEN", pitLaneOpen: true, cars }, car).compound);
     expect(new Set(choices).size).toBeGreaterThan(1);
-    expect(choices.every((compound) => compound === "SOFT" || compound === "MEDIUM")).toBe(true);
+    expect(choices.every((compound) => compound === "SOFT" || compound === "MEDIUM" || compound === "HARD")).toBe(true);
   });
 
   it("does not change a decision when hidden rival resource values change", () => {

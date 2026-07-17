@@ -15,7 +15,7 @@ function tyreThermalBand(temperature: number, compound: TyreCompound): ThermalBa
   if (temperature < minimum - 8) return { label: "COLD", color: "#398cff" };
   if (temperature < minimum) return { label: "WARMING", color: "#20d7e7" };
   if (temperature <= maximum) return { label: "OPTIMAL", color: "#4bde95" };
-  if (tyreThermalSeverity(temperature, compound) !== "CRITICAL") return { label: "HOT", color: "#f4d35e" };
+  if (tyreThermalSeverity(temperature, compound) !== "CRITICAL") return { label: "HOT", color: "#ff5269" };
   return { label: "CRITICAL", color: "#ff5269" };
 }
 

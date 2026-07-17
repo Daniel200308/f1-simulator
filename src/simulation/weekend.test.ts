@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { DRIVERS, PLAYER_CAR_IDS, playerCarIdsFor } from "@/fixtures/grid";
-import { createWeekendState, runWeekendSession, setWeekendCarSetup, setupFeedbackFor, STANDARD_WEEKEND_RULES } from "@/simulation/weekend";
+import { DRIVERS, PLAYER_CAR_IDS, playerCarIdsFor, TEAMS } from "@/fixtures/grid";
+import { createWeekendState, runWeekendSession, setWeekendCarSetup, setupFeedbackFor, setupRecommendationFor, STANDARD_WEEKEND_RULES } from "@/simulation/weekend";
 
 describe("standard Formula 1 weekend", () => {
   it("uses the 2026 22-car qualifying format", () => {
@@ -38,7 +38,7 @@ describe("standard Formula 1 weekend", () => {
     const carId = DRIVERS[0].id;
     const initial = createWeekendState(77);
     const configured = setWeekendCarSetup(initial, carId, { frontWing: 99, suspension: -3, cooling: 8 });
-    expect(configured.setups[carId]).toEqual({ frontWing: 10, suspension: 1, cooling: 5 });
+    expect(configured.setups[carId]).toEqual({ frontWing: 10, rearWing: 7, suspension: 1, rideHeight: 6, differential: 6, cooling: 5 });
     expect(runWeekendSession(configured)).toEqual(runWeekendSession(configured));
   });
 
@@ -49,6 +49,21 @@ describe("standard Formula 1 weekend", () => {
     expect(feedback[0].message).toContain("FP1 debrief");
     expect(feedback.some((item) => item.area === "AERO" && item.message.includes("Copse"))).toBe(true);
     expect(feedback.map((item) => item.message).join(" ")).not.toContain("Wing 7");
+  });
+
+  it("narrows the recommended setup band after each practice session", () => {
+    let weekend = createWeekendState(20_260_712);
+    const carId = PLAYER_CAR_IDS[0];
+    expect(setupRecommendationFor(weekend, carId, "frontWing")).toBeNull();
+    weekend = runWeekendSession(weekend);
+    const afterFp1 = setupRecommendationFor(weekend, carId, "frontWing")!;
+    weekend = runWeekendSession(weekend);
+    const afterFp2 = setupRecommendationFor(weekend, carId, "frontWing")!;
+    weekend = runWeekendSession(weekend);
+    const afterFp3 = setupRecommendationFor(weekend, carId, "frontWing")!;
+    expect(afterFp1.maximum - afterFp1.minimum).toBeGreaterThan(afterFp2.maximum - afterFp2.minimum);
+    expect(afterFp2.maximum - afterFp2.minimum).toBeGreaterThan(afterFp3.maximum - afterFp3.minimum);
+    expect([afterFp1.sourceSession, afterFp2.sourceSession, afterFp3.sourceSession]).toEqual(["FP1", "FP2", "FP3"]);
   });
 
   it("does not gift both player cars the front row on the untouched baseline", () => {
@@ -69,6 +84,9 @@ describe("standard Formula 1 weekend", () => {
       for (const car of report.cars) {
         expect(car.driverMessage.length).toBeGreaterThan(30);
         expect(car.engineerMessage.length).toBeGreaterThan(30);
+        expect(car.driverMessage.length).toBeLessThan(330);
+        expect(car.engineerMessage.length).toBeLessThan(390);
+        expect(car.engineerMessage).not.toMatch(/Aero \d+%|mechanical \d+%|thermal margin \d+%/);
         expect(car.aeroBalancePercent).toBeGreaterThanOrEqual(0);
         expect(car.aeroBalancePercent).toBeLessThanOrEqual(100);
         expect(car.mechanicalBalancePercent).toBeGreaterThanOrEqual(0);
@@ -82,7 +100,18 @@ describe("standard Formula 1 weekend", () => {
     const weekend = createWeekendState(77, "mclaren");
     expect(weekend.playerTeamId).toBe("mclaren");
     expect(playerCarIdsFor(weekend.playerTeamId)).toEqual(["mclaren-1", "mclaren-2"]);
-    expect(weekend.setups["mclaren-1"]).toEqual({ frontWing: 5, suspension: 6, cooling: 2 });
-    expect(weekend.setups["mclaren-2"]).toEqual({ frontWing: 6, suspension: 4, cooling: 4 });
+    expect(weekend.setups["mclaren-1"]).toEqual({ frontWing: 5, rearWing: 6, suspension: 6, rideHeight: 5, differential: 5, cooling: 2 });
+    expect(weekend.setups["mclaren-2"]).toEqual({ frontWing: 6, rearWing: 5, suspension: 4, rideHeight: 6, differential: 7, cooling: 4 });
+  });
+
+  it("runs the complete weekend safely for every selectable constructor", () => {
+    for (const team of TEAMS) {
+      let weekend = createWeekendState(20_260_715, team.id);
+      expect(playerCarIdsFor(team.id)).toHaveLength(2);
+      for (let index = 0; index < 6; index += 1) weekend = runWeekendSession(weekend);
+      expect(weekend.currentSession, team.id).toBe("RACE");
+      expect(weekend.gridOrder, team.id).toHaveLength(22);
+      expect(weekend.sessionReports.at(-1)?.cars.map((car) => car.carId), team.id).toEqual(playerCarIdsFor(team.id));
+    }
   });
 });

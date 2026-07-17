@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { normalizeLapDistance, pointAtDistance, segmentIndexAtDistance, SILVERSTONE_CIRCUIT, SILVERSTONE_CORNERS } from "@/simulation/track";
+import { normalizeLapDistance, pointAtDistance, segmentIndexAtDistance, SILVERSTONE_CIRCUIT, SILVERSTONE_CORNERS, SILVERSTONE_OVERTAKE_ACTIVATION_DISTANCE, SILVERSTONE_OVERTAKE_DETECTION_DISTANCE } from "@/simulation/track";
 
 describe("track geometry", () => {
   it("uses the current Silverstone Grand Prix dimensions", () => {
@@ -33,5 +33,11 @@ describe("track geometry", () => {
     expect(SILVERSTONE_CORNERS[17].name).toBe("Club");
     expect(SILVERSTONE_CORNERS[0].distanceMeters).toBeGreaterThan(190);
     expect(SILVERSTONE_CORNERS[0].distanceMeters).toBeLessThan(280);
+  });
+
+  it("places the 2026 overtake detection after T17 and activation before T18", () => {
+    expect(SILVERSTONE_OVERTAKE_DETECTION_DISTANCE).toBeGreaterThan(SILVERSTONE_CORNERS[16].distanceMeters);
+    expect(SILVERSTONE_OVERTAKE_DETECTION_DISTANCE).toBeLessThan(SILVERSTONE_OVERTAKE_ACTIVATION_DISTANCE);
+    expect(SILVERSTONE_OVERTAKE_ACTIVATION_DISTANCE).toBeLessThan(SILVERSTONE_CORNERS[17].distanceMeters);
   });
 });

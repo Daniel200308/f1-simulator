@@ -3,37 +3,44 @@
 import type { CSSProperties } from "react";
 
 import type { RaceCarState } from "@/domain/race";
-import type { CommandDockControls } from "@/components/race/command-dock";
+import { EnergyTelemetry } from "@/components/race/energy-telemetry";
 import { formatLapTime } from "@/components/race/format";
 import { VehicleThermalMap } from "@/components/race/tyre-temperature-car";
 import { DEFAULT_PLAYER_TEAM_ID, DRIVER_BY_ID, playerCarIdsFor, TEAM_BY_ID } from "@/fixtures/grid";
 import { estimatePitOutPosition } from "@/simulation/engine";
-import { assessVehicleThermals, type ThermalAlert } from "@/simulation/thermal-management";
-import { SILVERSTONE_CIRCUIT } from "@/simulation/track";
+import { penaltyLabel } from "@/simulation/stewarding";
 import { useRaceStore } from "@/store/race-store";
 
-function CarCard({ car, title, selected, predictedPitPosition }: { car: RaceCarState; title: string; selected: boolean; predictedPitPosition: number }) {
+function CarCard({ car, selected, predictedPitPosition }: { car: RaceCarState; selected: boolean; predictedPitPosition: number }) {
   const driver = DRIVER_BY_ID.get(car.driverId);
   const team = TEAM_BY_ID.get(car.teamId);
   const select = useRaceStore((state) => state.setSelectedCarId);
+  const snapshot = useRaceStore((state) => state.snapshot);
   const displayedGap = useRaceStore((state) => state.timingGaps[car.carId]?.ahead ?? car.gapToCarAhead);
   if (!driver || !team) return null;
-  const conditionPercent = car.incidentStatus === "RETIRED" ? 0 : Math.max(0, 100 - car.damageLevel * 100);
-  const lapProgressPercent = (car.lapDistance / SILVERSTONE_CIRCUIT.lengthMeters) * 100;
-  const conditionLabel = car.incidentStatus === "RUNNING" ? "NOMINAL" : car.incidentStatus;
   const teamColor = `#${team.primaryColor.toString(16).padStart(6, "0")}`;
   const tacticalLabel = car.battleStatus === "ATTACKING" ? "ATK" : car.battleStatus === "DEFENDING" ? "DEF" : car.battleStatus === "SIDE_BY_SIDE" ? "DUEL" : car.racingLineMode === "RACING" ? "RUN" : car.racingLineMode;
+  const activePenalty = snapshot?.penalties.find((penalty) => penalty.carId === car.carId && (penalty.status === "PENDING" || penalty.status === "SERVING"));
+  const penaltyShort = activePenalty?.type === "TIME_5" ? "+5"
+    : activePenalty?.type === "TIME_10" ? "+10"
+      : activePenalty?.type === "DRIVE_THROUGH" ? "DT" : activePenalty?.type === "STOP_GO_10" ? "SG" : activePenalty ? "PEN" : null;
   const pitLabel = car.pitStatus !== "TRACK"
     ? car.pitStatus === "PIT_STOP"
-      ? `TYRE ${car.pitTimer.toFixed(1)}/${car.pitStopTargetSeconds.toFixed(1)}s`
+      ? car.pitServicePhase === "PENALTY_HOLD" || car.pitServicePhase === "STOP_GO_HOLD"
+        ? `PEN ${car.penaltyHoldElapsedSeconds?.toFixed(1) ?? "0.0"}/${car.penaltyHoldSeconds?.toFixed(1) ?? "0.0"}s`
+        : `TYRE ${car.pitTyreServiceElapsedSeconds?.toFixed(1) ?? car.pitTimer.toFixed(1)}/${car.pitTyreServiceTargetSeconds?.toFixed(1) ?? car.pitStopTargetSeconds.toFixed(1)}s`
       : `${car.pitStatus.replace("PIT_", "")} ${car.pitLaneTimer.toFixed(1)}s`
     : car.scheduledPitCompound
-      ? `BOX ${car.scheduledPitCompound}`
+      ? `BOX ${car.scheduledPitCompound[0]}${penaltyShort ? ` · ${penaltyShort}` : ""}`
+      : penaltyShort
+        ? `${penaltyShort} PENDING`
       : car.lastPitStopTime !== null
         ? `${car.lastPitStopTime.toFixed(2)}s / ${car.lastPitLaneTime?.toFixed(1) ?? "—"}s`
         : `PRED P${predictedPitPosition}`;
   const pitTitle = car.pitStatus !== "TRACK"
-    ? `Current total pit time ${car.pitLaneTimer.toFixed(1)}s · tyre change ${car.pitTimer.toFixed(1)} of ${car.pitStopTargetSeconds.toFixed(1)}s`
+    ? `Current total pit time ${car.pitLaneTimer.toFixed(1)}s · penalty hold ${(car.penaltyHoldElapsedSeconds ?? 0).toFixed(1)} of ${(car.penaltyHoldSeconds ?? 0).toFixed(1)}s · tyre change ${(car.pitTyreServiceElapsedSeconds ?? 0).toFixed(1)} of ${(car.pitTyreServiceTargetSeconds ?? car.pitStopTargetSeconds).toFixed(1)}s`
+    : activePenalty
+      ? `${penaltyLabel(activePenalty.type)} · ${activePenalty.reason} · ${activePenalty.status}`
     : car.lastPitStopTime !== null
       ? `Last tyre change ${car.lastPitStopTime.toFixed(2)}s · total pit lane ${car.lastPitLaneTime?.toFixed(1) ?? "—"}s · ${car.pitStopIssue.replace("_", " ")}`
       : car.pitStopIssue === "NONE" ? "Pit stop nominal" : car.pitStopIssue.replace("_", " ");
@@ -41,10 +48,10 @@ function CarCard({ car, title, selected, predictedPitPosition }: { car: RaceCarS
   return (
     <button className={`car-card ${selected ? "is-selected" : ""}`} onClick={() => select(car.carId)} style={{ "--team-color": teamColor } as CSSProperties} type="button">
       <div className="car-card__top">
-        <span className="car-number">#{driver.number.toString().padStart(2, "0")}</span>
-        <div className="car-card__identity"><span>{title}</span><strong>{driver.name}</strong><small>{driver.shortName} · {team.shortName}</small></div>
-        <span className={`status-chip status-chip--${car.battleStatus.toLowerCase()}`}>{tacticalLabel}</span>
         <span className="car-position">P{car.racePosition}</span>
+        <div className="car-card__identity"><strong>{driver.name}</strong></div>
+        <span className={`status-chip status-chip--${car.battleStatus.toLowerCase()}`}>{tacticalLabel}</span>
+        <span className="car-number">#{driver.number.toString().padStart(2, "0")}</span>
       </div>
       <div className="car-kpi-rail">
         <div><span>SPEED</span><strong>{Math.round(car.currentSpeed)}</strong><small>km/h</small></div>
@@ -65,78 +72,29 @@ function CarCard({ car, title, selected, predictedPitPosition }: { car: RaceCarS
           temperatures={car.tyreTemperatures}
         />
       </div>
+      <EnergyTelemetry car={car} />
       <div className="resource-line">
         <span>S{car.currentSector} <strong>{formatLapTime(car.currentLapTime)}</strong></span>
         <span>BEST <strong>{formatLapTime(car.bestLapTime)}</strong></span>
-        <span>ERS <strong className={car.overtakeActive ? "accent" : ""}>{car.batteryPercent.toFixed(0)}%</strong></span>
+        <span>ERS <strong className={car.overtakeActive ? "accent" : ""}>{car.overtakeActive ? "OVT" : (car.energySystem?.deploymentMode ?? car.energyMode).slice(0, 3)}</strong></span>
         <span>PIT <strong className={car.pitStatus !== "TRACK" || car.scheduledPitCompound ? "accent" : ""} title={pitTitle}>{pitLabel}</strong></span>
-      </div>
-      <div className="car-card__health-grid">
-        <div className={`car-health car-health--${car.incidentStatus.toLowerCase()}`}><span>CAR <strong>{conditionLabel}</strong></span><i><b style={{ width: `${conditionPercent}%` }} /></i></div>
-        <div className="car-health car-health--lap"><span>LAP <strong>{Math.round(lapProgressPercent)}%</strong></span><i><b style={{ width: `${lapProgressPercent}%` }} /></i></div>
       </div>
     </button>
   );
 }
 
-type CarStatusControls = Pick<CommandDockControls, "setTyreMode" | "setEnergyMode" | "setCoolingMode" | "box">;
-
-export function CarStatusPanel({ controls }: { controls: CarStatusControls }) {
+export function CarStatusPanel() {
   const snapshot = useRaceStore((state) => state.snapshot);
   const selectedCarId = useRaceStore((state) => state.selectedCarId);
   const playerTeamId = snapshot?.playerTeamId ?? DEFAULT_PLAYER_TEAM_ID;
-  const playerTeam = TEAM_BY_ID.get(playerTeamId);
-  const playerTeamColor = playerTeam ? `#${playerTeam.primaryColor.toString(16).padStart(6, "0")}` : "#20d7e7";
   const playerCarIds = playerCarIdsFor(playerTeamId);
   const playerCars = playerCarIds.map((id) => snapshot?.cars.find((car) => car.carId === id)).filter((car): car is RaceCarState => Boolean(car));
-  const selectedCar = playerCars.find((car) => car.carId === selectedCarId);
-  const thermalAlert = selectedCar
-    ? [...assessVehicleThermals(selectedCar).alerts].sort((a, b) => (a.severity === "CRITICAL" ? -1 : 1) - (b.severity === "CRITICAL" ? -1 : 1))[0]
-    : undefined;
-  const radioMessages = snapshot?.radioMessages
-    .filter((message) => message.source !== "RACE CONTROL" && message.carId !== null && playerCarIds.includes(message.carId))
-    .slice(0, thermalAlert ? 2 : 3) ?? [];
-
-  function applyThermalAction(alert: ThermalAlert) {
-    if (!selectedCar || !snapshot) return;
-    if (alert.action === "TYRE_COOL") controls.setTyreMode(selectedCar.carId, "TEMPERATURE");
-    else if (alert.action === "BRAKE_COOL") controls.setCoolingMode(selectedCar.carId, "LIFT_AND_COAST");
-    else if (alert.action === "LIFT_AND_COAST") controls.setCoolingMode(selectedCar.carId, alert.severity === "CRITICAL" ? "MAX_COOLING" : "LIFT_AND_COAST");
-    else if (alert.action === "RECHARGE") controls.setEnergyMode(selectedCar.carId, "RECHARGE");
-    else {
-      const preferred = snapshot.weather.trackWetness > 0.68 ? "WET" : snapshot.weather.trackWetness > 0.22 ? "INTERMEDIATE" : selectedCar.tyreCompound === "MEDIUM" ? "HARD" : "MEDIUM";
-      const available = selectedCar.tyreSets.find((set) => set.compound === preferred && set.status === "AVAILABLE")
-        ?? selectedCar.tyreSets.find((set) => set.status === "AVAILABLE");
-      if (available) controls.box(selectedCar.carId, available.compound);
-    }
-  }
 
   return (
     <aside className="status-column">
-      {playerCars.map((car, index) => (
-        <CarCard key={car.carId} car={car} title={`${playerTeam?.shortName ?? "TEAM"} CAR ${index + 1}`} selected={selectedCarId === car.carId} predictedPitPosition={snapshot ? estimatePitOutPosition(snapshot, car.carId) : car.racePosition} />
+      {playerCars.map((car) => (
+        <CarCard key={car.carId} car={car} selected={selectedCarId === car.carId} predictedPitPosition={snapshot ? estimatePitOutPosition(snapshot, car.carId) : car.racePosition} />
       ))}
-      <div className="panel engineer-panel" style={{ "--team-color": playerTeamColor } as CSSProperties}>
-        <div className="team-radio-heading">
-          <span className="eyebrow">{playerTeam?.name.toUpperCase() ?? "TEAM"} RADIO</span>
-          <span>{playerCarIds.map((carId) => DRIVER_BY_ID.get(carId)?.shortName).join(" · ")}</span>
-        </div>
-        {thermalAlert && (
-          <div className={`thermal-alert thermal-alert--${thermalAlert.severity.toLowerCase()}`} role="status">
-            <span><b>{thermalAlert.title}</b><small>{thermalAlert.message}</small></span>
-            <button onClick={() => applyThermalAction(thermalAlert)} type="button">{thermalAlert.actionLabel}</button>
-          </div>
-        )}
-        <div className="event-list" aria-label="Team radio log" aria-live="polite" role="log">
-          {radioMessages.length ? radioMessages.map((message) => (
-            <div className={`event-row event-row--${message.priority.toLowerCase()}`} key={message.id}>
-              <time>{Math.floor(message.elapsedTime / 60).toString().padStart(2, "0")}:{Math.floor(message.elapsedTime % 60).toString().padStart(2, "0")}</time>
-              <p><b>{message.carId ? DRIVER_BY_ID.get(message.carId)?.shortName : "TEAM"} · {message.source}</b>{message.message}</p>
-            </div>
-          )) : <p className="event-empty">{playerCarIds.map((carId) => DRIVER_BY_ID.get(carId)?.shortName).join(" and ")} radio check complete. Driver feedback and engineering calls will appear here.</p>}
-        </div>
-        <div className="engineer-meta"><i /> UNIFIED TEAM CHANNEL · LIVE</div>
-      </div>
     </aside>
   );
 }

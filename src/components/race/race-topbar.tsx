@@ -6,9 +6,7 @@ import {
   CloudSun,
   Pause,
   Play,
-  RadioTower,
   RotateCcw,
-  ShieldCheck,
   Thermometer,
   Zap,
 } from "lucide-react";
@@ -24,12 +22,9 @@ interface RaceTopbarProps {
   snapshot: RaceSnapshot | null;
   speed: SimulationSpeed;
   paused: boolean;
-  autoPauseEnabled: boolean;
-  autoPauseReason: string | null;
   startPhase: RaceStartPhase;
   onPlay: () => void;
   onPause: () => void;
-  onSetAutoPause: (enabled: boolean) => void;
   onSetSpeed: (speed: SimulationSpeed) => void;
   onReset: () => void;
 }
@@ -41,54 +36,61 @@ function getWeatherLabel(snapshot: RaceSnapshot | null): string {
   return (snapshot?.weather.condition ?? "DRY").replace("_", " ");
 }
 
-function getRaceControlLabel(snapshot: RaceSnapshot | null): string {
-  if (snapshot?.raceControl === "YELLOW") return `YELLOW S${snapshot.yellowSector ?? "—"}`;
-  if (snapshot?.raceControl === "SAFETY_CAR") return `SC · ${snapshot.safetyCarPhase}`;
-  return snapshot?.raceControl.replace("_", " ") ?? "GREEN";
+interface TrackFlagDisplay {
+  label: "GREEN" | "YELLOW" | "VIRTUAL SAFETY CAR" | "SAFETY CAR" | "SAFETY CAR ENDING" | "RED FLAG";
+  tone: "green" | "yellow" | "red";
+  key: string;
+}
+
+export function getTrackFlagDisplay(snapshot: RaceSnapshot | null, redFlag = false): TrackFlagDisplay {
+  if (redFlag || snapshot?.raceControl === "RED_FLAG") return { label: "RED FLAG", tone: "red", key: `red-flag-${snapshot?.redFlagPhase ?? "active"}` };
+  if (snapshot?.raceControl === "YELLOW") return { label: "YELLOW", tone: "yellow", key: "yellow" };
+  if (snapshot?.raceControl === "VSC") return { label: "VIRTUAL SAFETY CAR", tone: "yellow", key: "vsc" };
+  if (snapshot?.raceControl === "SAFETY_CAR" && snapshot.safetyCarPhase === "RESTART") {
+    return { label: "SAFETY CAR ENDING", tone: "yellow", key: "sc-ending" };
+  }
+  if (snapshot?.raceControl === "SAFETY_CAR") return { label: "SAFETY CAR", tone: "yellow", key: "sc" };
+  return { label: "GREEN", tone: "green", key: "green" };
 }
 
 export function RaceTopbar({
   snapshot,
   speed,
   paused,
-  autoPauseEnabled,
-  autoPauseReason,
   startPhase,
   onPlay,
   onPause,
-  onSetAutoPause,
   onSetSpeed,
   onReset,
 }: RaceTopbarProps) {
-  const raceControlLabel = getRaceControlLabel(snapshot);
   const weatherLabel = getWeatherLabel(snapshot);
-  const controlStatus = raceControlLabel;
   const playLabel = paused ? "Resume race" : "Pause race";
   const notice = snapshot ? latestRaceControlNotice(snapshot) : null;
-  const controlMessage = notice?.message ?? "TRACK CLEAR · RACE CONTROL MONITORING";
+  const controlHeadline = notice?.headline ?? "TRACK CLEAR";
+  const controlDetail = notice?.detail ?? "RACE CONTROL MONITORING · PIT LANE OPEN";
   const controlMessageTime = notice?.elapsedTime ?? 0;
   const controlMessageClock = `${Math.floor(controlMessageTime / 60).toString().padStart(2, "0")}:${Math.floor(controlMessageTime % 60).toString().padStart(2, "0")}`;
-  const flagState = snapshot?.raceControl ?? "GREEN";
-  const previousFlagState = useRef(flagState);
+  const liveRedFlag = snapshot?.raceControl === "RED_FLAG";
+  const flagDisplay = getTrackFlagDisplay(snapshot, liveRedFlag);
+  const flashKey = `${flagDisplay.key}:${snapshot?.safetyCarLappedCarsMayOvertake ? "wave-by" : "standard"}`;
+  const previousFlagState = useRef(flashKey);
   const [flagFlashing, setFlagFlashing] = useState(false);
 
   useEffect(() => {
-    if (previousFlagState.current === flagState) return;
-    previousFlagState.current = flagState;
+    if (previousFlagState.current === flashKey) return;
+    previousFlagState.current = flashKey;
     setFlagFlashing(true);
     const timer = window.setTimeout(() => setFlagFlashing(false), 1_650);
     return () => window.clearTimeout(timer);
-  }, [flagState]);
+  }, [flashKey]);
 
   return (
     <header className="topbar topbar--telemetry" aria-label="Live race header">
       <div className="brand-block brand-block--signal">
-        <span className="brand-mark" aria-hidden="true"><RadioTower size={20} strokeWidth={2.4} /></span>
         <div className="brand-copy">
           <strong>PROJECT PITWALL</strong>
-          <small>LIVE RACE OPERATIONS</small>
+          <small>SILVERSTONE PITWALL</small>
         </div>
-        <span className="brand-signal" aria-hidden="true"><i /><i /><i /></span>
       </div>
 
       <div className="broadcast-strip broadcast-strip--iconic">
@@ -96,28 +98,27 @@ export function RaceTopbar({
           <div className="hud-stat-copy">
             <span>ROUND 09</span>
             <strong>RACE</strong>
-            <small>GBR</small>
+            <small>SILVERSTONE</small>
           </div>
         </section>
 
         <section
-          className={`broadcast-status track-flag-panel condition--${flagState.toLowerCase()} ${flagFlashing ? "is-flashing" : ""}`}
-          aria-label={`Race control ${controlStatus}, ${snapshot?.pitLaneOpen === false ? "pit lane closed" : "pit lane open"}`}
+          className={`broadcast-status track-flag-panel condition--${flagDisplay.tone} status--${flagDisplay.key} ${flagFlashing ? "is-flashing" : ""}`}
+          aria-label={`Race control ${flagDisplay.label}, ${snapshot?.pitLaneOpen === false ? "pit lane closed" : "pit lane open"}`}
           aria-live="polite"
         >
           <div className="hud-stat-copy">
-            <span>TRACK FLAG</span>
-            <strong>{controlStatus}</strong>
+            <strong>{flagDisplay.label}</strong>
             <small className="pit-lane-state">{snapshot?.pitLaneOpen === false ? "PIT CLOSED" : "PIT OPEN"}</small>
           </div>
         </section>
 
-        <section aria-live="polite" className={`broadcast-control-message priority--${(notice?.priority ?? "NORMAL").toLowerCase()}`}>
+        <section aria-live="polite" className={`broadcast-control-message flag--${flagDisplay.tone} priority--${(notice?.priority ?? "NORMAL").toLowerCase()}`}>
           <div className="control-message-meta">
             <span>FIA RACE CONTROL · {controlMessageClock}</span>
-            <span>{notice?.category ?? "Other"} · {notice?.scope ?? "Track"}{notice?.sector ? ` S${notice.sector}` : ""} · LAP {notice?.lapNumber ?? 1}{notice?.driverNumber ? ` · CAR ${notice.driverNumber}` : ""}</span>
           </div>
-          <strong>{controlMessage}</strong>
+          <strong className="control-message-title">{controlHeadline}</strong>
+          <p className="control-message-detail">{controlDetail}</p>
         </section>
 
         <section className="broadcast-conditions conditions-cluster" aria-label={`Track ${Math.round(snapshot?.weather.trackTemperature ?? 31)} degrees, weather ${weatherLabel}`}>
@@ -143,19 +144,6 @@ export function RaceTopbar({
         >
           {paused ? <Play size={20} fill="currentColor" /> : <Pause size={20} fill="currentColor" />}
           <span className="transport-orb-ring" aria-hidden="true" />
-        </button>
-
-        <button
-          aria-label={`Important race-control event auto pause ${autoPauseEnabled ? "on" : "off"}`}
-          aria-pressed={autoPauseEnabled}
-          className="auto-pause-toggle auto-event-hold"
-          onClick={() => onSetAutoPause(!autoPauseEnabled)}
-          title={autoPauseReason ?? "Pause on yellow, VSC, safety car and restart calls"}
-          type="button"
-        >
-          <ShieldCheck size={16} aria-hidden="true" />
-          <span>AUTO</span>
-          <small>EVENT HOLD</small>
         </button>
 
         <div className="speed-selector" role="group" aria-label="Simulation speed">

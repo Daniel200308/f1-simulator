@@ -20,7 +20,7 @@ describe("criticalRaceControlTransition", () => {
   it("stops when the safety car enters its restart phase", () => {
     const bunching: ControlView = { raceControl: "SAFETY_CAR", yellowSector: 3, safetyCarPhase: "BUNCHING" };
     const restart: ControlView = { ...bunching, safetyCarPhase: "RESTART" };
-    expect(criticalRaceControlTransition(bunching, restart)).toBe("SAFETY CAR IN THIS LAP");
+    expect(criticalRaceControlTransition(bunching, restart)).toBe("SC ENDING · LEADER CONTROLS RESTART");
   });
 
   it("stops when a new incident redeploys an active safety car", () => {

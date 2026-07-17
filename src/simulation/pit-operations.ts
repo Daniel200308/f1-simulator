@@ -30,11 +30,37 @@ export interface PitStopExecution {
   carId: string;
   issue: PitStopIssue;
   stationarySeconds: number;
+  /** Actual wheel-change work, including a wheel-gun delay when present. */
+  tyreServiceSeconds: number;
   serviceSeconds: number;
+  serviceIssueDelaySeconds: number;
   queueDelaySeconds: number;
   releaseDelaySeconds: number;
   doubleStackConflict: boolean;
 }
+
+/**
+ * Mean of the 24 event-winning stationary stops in the official 2025 DHL
+ * Fastest Pit Stop table. This is a front-running benchmark, not the mean of
+ * every stop in the field; crew offsets and execution variance sit above it.
+ */
+export const F1_2025_FASTEST_STOP_MEAN_SECONDS = 2.082;
+export const F1_2025_FASTEST_STOP_RANGE_SECONDS = [1.91, 2.32] as const;
+export const F1_2025_TYPICAL_CLEAN_STOP_SECONDS = 2.2;
+
+const TEAM_CREW_OFFSET_SECONDS: Readonly<Record<string, number>> = {
+  "red-bull": 0.00,
+  mclaren: 0.01,
+  ferrari: 0.03,
+  mercedes: 0.06,
+  "racing-bulls": 0.08,
+  williams: 0.11,
+  alpine: 0.13,
+  "aston-martin": 0.15,
+  haas: 0.17,
+  audi: 0.19,
+  cadillac: 0.22,
+};
 
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.max(minimum, Math.min(maximum, value));
@@ -82,16 +108,17 @@ function deterministicExecution(context: PitOperationsContext, car: RaceCarState
   const stopNumber = car.pitStops + 1;
   const noise = signedNoise(context.seed, 7_000 + carIndex, stopNumber);
   const doubleStackConflict = hasDoubleStackConflict(context, car);
-  const serviceSeconds = 2.18 + Math.abs(noise) * 0.68;
+  const crewOffset = TEAM_CREW_OFFSET_SECONDS[car.teamId] ?? 0.14;
+  const serviceSeconds = F1_2025_FASTEST_STOP_MEAN_SECONDS + crewOffset + Math.abs(noise) * 0.24;
   let issue: PitStopIssue = "NONE";
   let issueDelay = 0;
   if (doubleStackConflict) {
     issue = "DOUBLE_STACK";
     issueDelay = 1.6 + Math.abs(signedNoise(context.seed, 7_100 + carIndex, stopNumber)) * 1.2;
-  } else if (noise > 0.88) {
+  } else if (noise > 0.94) {
     issue = "WHEEL_GUN";
     issueDelay = 2.1 + Math.abs(signedNoise(context.seed, 7_200 + carIndex, stopNumber)) * 1.8;
-  } else if (noise > 0.68) {
+  } else if (noise > 0.82) {
     issue = "SLOW_RELEASE";
     issueDelay = 0.8 + Math.abs(signedNoise(context.seed, 7_300 + carIndex, stopNumber)) * 0.8;
   }
@@ -99,11 +126,14 @@ function deterministicExecution(context: PitOperationsContext, car: RaceCarState
   const releaseDelaySeconds = issue === "SLOW_RELEASE" ? issueDelay : risk === "HIGH" ? 0.42 : risk === "MEDIUM" ? 0.16 : 0;
   const queueDelaySeconds = issue === "DOUBLE_STACK" ? issueDelay : 0;
   const serviceIssueDelay = issue === "WHEEL_GUN" ? issueDelay : 0;
+  const tyreServiceSeconds = serviceSeconds + serviceIssueDelay;
   return {
     carId: car.carId,
     issue,
-    stationarySeconds: serviceSeconds + queueDelaySeconds + serviceIssueDelay + releaseDelaySeconds,
+    stationarySeconds: tyreServiceSeconds + queueDelaySeconds + releaseDelaySeconds,
+    tyreServiceSeconds,
     serviceSeconds,
+    serviceIssueDelaySeconds: serviceIssueDelay,
     queueDelaySeconds,
     releaseDelaySeconds,
     doubleStackConflict,

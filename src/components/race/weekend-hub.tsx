@@ -1,7 +1,8 @@
 "use client";
 
 import type { CSSProperties } from "react";
-import { ChevronRight, Flag, Gauge, Headphones, Settings2, Timer, Trophy, Wrench, X } from "lucide-react";
+import Image from "next/image";
+import { Activity, ChevronRight, CircleUserRound, Fan, Flag, Gauge, Headphones, Settings2, Timer, Trophy, Waves, Wrench, X } from "lucide-react";
 
 import { formatLapTime } from "@/components/race/format";
 import type { TyreCompound } from "@/domain/race";
@@ -10,6 +11,7 @@ import {
   currentWeekendRule,
   latestWeekendResult,
   setupFeedbackFor,
+  setupRecommendationFor,
   STANDARD_WEEKEND_RULES,
   type CarSetup,
   type WeekendSessionReport,
@@ -35,14 +37,15 @@ interface WeekendHubProps {
 function SessionRail({ state }: { state: WeekendState }) {
   return (
     <ol className={styles.sessionRail} aria-label="Race weekend progress">
-      {STANDARD_WEEKEND_RULES.map((rule, index) => {
+      {STANDARD_WEEKEND_RULES.map((rule) => {
+        const index = STANDARD_WEEKEND_RULES.findIndex((candidate) => candidate.id === rule.id);
         const complete = state.completedSessions.includes(rule.id as never);
-        const active = state.currentSession === rule.id;
+        const active = rule.id === state.currentSession;
         return (
-          <li className={complete ? styles.complete : active ? styles.active : ""} key={rule.id}>
+          <li className={`${complete ? styles.complete : ""} ${active ? styles.active : ""}`} key={rule.id}>
             <span>{complete ? "✓" : index + 1}</span>
             <div><b>{rule.id}</b><small>{rule.group}</small></div>
-            {index < STANDARD_WEEKEND_RULES.length - 1 && <ChevronRight aria-hidden="true" size={13} />}
+            {rule.id !== STANDARD_WEEKEND_RULES.at(-1)?.id && <i />}
           </li>
         );
       })}
@@ -50,31 +53,112 @@ function SessionRail({ state }: { state: WeekendState }) {
   );
 }
 
-function SetupControl({ carId, setup, knowledge, onChange }: { carId: string; setup: CarSetup; knowledge: number; onChange: (setup: CarSetup) => void }) {
+function SetupControl({ carId, setup, state, onChange, slot }: { carId: string; setup: CarSetup; state: WeekendState; onChange: (setup: CarSetup) => void; slot: number }) {
   const driver = DRIVER_BY_ID.get(carId);
   if (!driver) return null;
-  const controls: readonly { key: keyof CarSetup; label: string; minimum: number; maximum: number; low: string; high: string }[] = [
-    { key: "frontWing", label: "FRONT WING", minimum: 1, maximum: 10, low: "SPEED", high: "GRIP" },
-    { key: "suspension", label: "SUSPENSION", minimum: 1, maximum: 10, low: "SOFT", high: "FIRM" },
-    { key: "cooling", label: "COOLING", minimum: 1, maximum: 5, low: "TIGHT", high: "OPEN" },
+  const team = TEAM_BY_ID.get(driver.teamId);
+  const tone = team ? `#${(slot === 0 ? team.primaryColor : team.accentColor).toString(16).padStart(6, "0")}` : "#20d7e7";
+  const controls: readonly { key: keyof CarSetup; label: string; detail: string; minimum: number; maximum: number; low: string; high: string; icon: typeof Gauge }[] = [
+    { key: "frontWing", label: "FRONT WING", detail: "AERO BALANCE", minimum: 1, maximum: 10, low: "SPEED", high: "GRIP", icon: Gauge },
+    { key: "rearWing", label: "REAR WING", detail: "REAR LOAD", minimum: 1, maximum: 10, low: "LOW DRAG", high: "STABILITY", icon: Gauge },
+    { key: "suspension", label: "SUSPENSION", detail: "DAMPER RESPONSE", minimum: 1, maximum: 10, low: "SOFT", high: "FIRM", icon: Waves },
+    { key: "rideHeight", label: "RIDE HEIGHT", detail: "FLOOR PLATFORM", minimum: 1, maximum: 10, low: "LOW", high: "SAFE", icon: Activity },
+    { key: "differential", label: "DIFFERENTIAL", detail: "TRACTION LOCK", minimum: 1, maximum: 10, low: "OPEN", high: "LOCKED", icon: Settings2 },
+    { key: "cooling", label: "COOLING", detail: "BODYWORK APERTURE", minimum: 1, maximum: 5, low: "TIGHT", high: "OPEN", icon: Fan },
   ];
   return (
-    <section className={styles.setupCar}>
-      <header><span>#{driver.number}</span><div><strong>{driver.shortName}</strong><small>{driver.name}</small></div><b>{knowledge}% DATA</b></header>
-      {controls.map((control) => (
-        <label key={control.key}>
-          <span>{control.label}<b>{setup[control.key]}</b></span>
-          <input
-            aria-label={`${driver.shortName} ${control.label}`}
-            max={control.maximum}
-            min={control.minimum}
-            onChange={(event) => onChange({ ...setup, [control.key]: Number(event.target.value) })}
-            type="range"
-            value={setup[control.key]}
-          />
-          <small><i>{control.low}</i><i>{control.high}</i></small>
-        </label>
-      ))}
+    <section className={styles.setupCar} data-slot={slot} style={{ "--driver-tone": tone } as CSSProperties}>
+      <header><span>#{driver.number}</span><div><strong>{driver.shortName}</strong><small>{driver.name}</small></div><b>{state.setupKnowledge}% DATA</b></header>
+      <div className={styles.setupVisual}>
+        <div className={styles.carFigure}>
+          <Image alt={`${driver.name} setup car, top view`} height={640} priority src="/assets/telemetry/formula-car-top.png" width={420} />
+          <span>{driver.shortName}</span>
+        </div>
+        <div className={styles.controlStack}>
+          {controls.map((control) => {
+            const Icon = control.icon;
+            const progress = ((setup[control.key] - control.minimum) / (control.maximum - control.minimum)) * 100;
+            const recommendation = setupRecommendationFor(state, carId, control.key);
+            const recommendationStart = recommendation ? ((recommendation.minimum - control.minimum) / (control.maximum - control.minimum)) * 100 : 0;
+            const recommendationWidth = recommendation ? ((recommendation.maximum - recommendation.minimum) / (control.maximum - control.minimum)) * 100 : 0;
+            return (
+              <label key={control.key} style={{ "--control-progress": `${progress}%` } as CSSProperties}>
+                <span><Icon aria-hidden="true" size={18} /><i><b>{control.label}</b><small>{control.detail}</small></i><strong>{setup[control.key]}</strong></span>
+                <div className={styles.rangeControl} style={{ "--recommendation-start": `${recommendationStart}%`, "--recommendation-width": `${recommendationWidth}%` } as CSSProperties}>
+                  <input
+                    aria-label={`${driver.shortName} ${control.label}`}
+                    max={control.maximum}
+                    min={control.minimum}
+                    onChange={(event) => onChange({ ...setup, [control.key]: Number(event.target.value) })}
+                    step={state.setupKnowledge >= 60 ? 0.5 : 1}
+                    type="range"
+                    value={setup[control.key]}
+                  />
+                  {recommendation ? <span className={styles.recommendationBand} title={`${recommendation.sourceSession} telemetry range ${recommendation.minimum} to ${recommendation.maximum}`} /> : null}
+                </div>
+                <small className={styles.rangeLegend}><i>{control.low}</i>{recommendation ? <b>{recommendation.sourceSession} RANGE {recommendation.minimum}–{recommendation.maximum}</b> : <b>BASELINE</b>}<i>{control.high}</i></small>
+              </label>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function concise(message: string, maximumCharacters = 180): string {
+  const sentences = message.split(/(?<=[.!?])\s+(?=[A-Z“])/u);
+  const first = sentences[0]?.trim() ?? message.trim();
+  const second = sentences[1]?.trim();
+  const combined = second ? `${first} ${second}` : first;
+  if (combined.length <= maximumCharacters) return combined;
+  if (first.length <= maximumCharacters) return first;
+  const clipped = first.slice(0, maximumCharacters - 1);
+  const boundary = clipped.lastIndexOf(" ");
+  return `${clipped.slice(0, Math.max(48, boundary)).replace(/[,:;\s]+$/u, "")}.`;
+}
+
+function dockSummary(message: string): string {
+  const firstSentence = message.split(/(?<=[.!?])\s+/u)[0]?.trim() ?? message.trim();
+  const clauses = firstSentence.split(/\s+[—–]\s+|:\s+/u).map((clause) => clause.trim()).filter(Boolean);
+  const actionableClause = clauses.at(-1) ?? firstSentence;
+  const sentence = `${actionableClause.charAt(0).toUpperCase()}${actionableClause.slice(1)}`;
+  return concise(sentence, 116);
+}
+
+function DebriefDock({ state }: { state: WeekendState }) {
+  const playerCarIds = playerCarIdsFor(state.playerTeamId);
+  const latestReport = state.sessionReports.at(-1);
+  return (
+    <section className={styles.debriefDock} aria-label="Garage debrief">
+      <header><Activity aria-hidden="true" size={18} /><div><b>GARAGE DEBRIEF</b><small>DRIVER FEEDBACK · ENGINEERING RESPONSE</small></div><strong>{state.setupKnowledge}% CONFIDENCE</strong></header>
+      <div className={styles.debriefGrid}>
+        {playerCarIds.flatMap((carId, slot) => {
+          const driver = DRIVER_BY_ID.get(carId)!;
+          const team = TEAM_BY_ID.get(driver.teamId)!;
+          const report = latestReport?.cars.find((candidate) => candidate.carId === carId);
+          const feedback = setupFeedbackFor(state, carId);
+          const tone = `#${(slot === 0 ? team.primaryColor : team.accentColor).toString(16).padStart(6, "0")}`;
+          const driverMessage = report?.driverMessage
+            ? dockSummary(report.driverMessage)
+            : "Baseline ready. I will establish the first reference, then report the balance from entry to exit.";
+          const engineerMessage = report?.engineerMessage
+            ? dockSummary(report.engineerMessage)
+            : feedback.length > 1
+              ? dockSummary(feedback[1].message)
+              : "Run plan loaded. We will compare both cars before changing more than one setup parameter.";
+          return [
+            <article className={styles.debriefCard} data-speaker="driver" key={`${carId}-driver`} style={{ "--speaker-tone": tone } as CSSProperties}>
+              <header><CircleUserRound aria-hidden="true" size={24} /><div><span>DRIVER</span><strong>{driver.shortName}</strong><small>{driver.name}</small></div><Activity aria-hidden="true" className={styles.voiceWave} size={46} /></header>
+              <p>{driverMessage}</p>
+            </article>,
+            <article className={styles.debriefCard} data-speaker="engineer" key={`${carId}-engineer`} style={{ "--speaker-tone": tone } as CSSProperties}>
+              <header><Headphones aria-hidden="true" size={24} /><div><span>ENGINEER</span><strong>{driver.shortName} ENGINEER</strong><small>{team.shortName} PITWALL</small></div><Activity aria-hidden="true" className={styles.voiceWave} size={46} /></header>
+              <p>{engineerMessage}</p>
+            </article>,
+          ];
+        })}
+      </div>
     </section>
   );
 }
@@ -154,14 +238,16 @@ function SessionReport({ report, onClose }: { report: WeekendSessionReport; onCl
               ["MECHANICAL", carReport.mechanicalBalancePercent],
               ["THERMAL MARGIN", carReport.thermalMarginPercent],
               ["TYRE CONDITION", carReport.tyreConditionPercent],
+              ["ENERGY RECOVERY", carReport.energyRecoveryPercent],
+              ["DEPLOY CORRELATION", carReport.energyDeploymentPercent],
             ] as const;
             return (
               <article className={styles.reportCar} key={carReport.carId} style={{ "--team": `#${team.primaryColor.toString(16).padStart(6, "0")}` } as CSSProperties}>
                 <header><span>#{driver.number}</span><div><h3>{driver.name}</h3><p>{driver.shortName} · {team.shortName}</p></div><b data-outcome={carReport.outcome}>{carReport.position ? `P${carReport.position}` : carReport.outcome}</b></header>
                 <div className={styles.conditionGrid}>{metrics.map(([label, value]) => <span key={label}><small>{label}</small><strong>{value}%</strong><i><b style={{ width: `${value}%` }} /></i></span>)}</div>
                 <div className={styles.reportMessages}>
-                  <article><Headphones aria-hidden="true" size={18} /><div><strong>DRIVER REPORT</strong><p>“{carReport.driverMessage}”</p></div></article>
-                  <article><Wrench aria-hidden="true" size={18} /><div><strong>ENGINEER REPORT</strong><p>{carReport.engineerMessage}</p></div></article>
+                  <article><Headphones aria-hidden="true" size={18} /><div><strong>DRIVER REPORT</strong><p>“{concise(carReport.driverMessage, 215)}”</p></div></article>
+                  <article><Wrench aria-hidden="true" size={18} /><div><strong>ENGINEER REPORT</strong><p>{concise(carReport.engineerMessage, 215)}</p></div></article>
                 </div>
               </article>
             );
@@ -180,62 +266,47 @@ export function WeekendHub({ state, startingTyres, onRunSession, onSetupChange, 
   const isRace = state.currentSession === "RACE";
   const sessionResult = latestWeekendResult(state);
   const sessionTitle = isRace ? "RACE PREPARATION" : rule.group === "PRACTICE" ? "FREE PRACTICE" : "QUALIFYING";
-  const sessionDetail = isRace
-    ? "52 LAPS · FINAL GRID LOCKED"
-    : rule.group === "QUALIFYING"
-      ? `${rule.breakBeforeMinutes ? `${rule.breakBeforeMinutes} MIN BREAK · ` : ""}${rule.durationMinutes} MIN · ${rule.entrants} CARS · ${rule.eliminated ? `${rule.eliminated} ELIMINATED` : "POLE SHOOTOUT"}`
-      : `${rule.durationMinutes} MIN · SETUP & RUN PROGRAMME`;
+  const teamTone = playerTeam ? `#${playerTeam.primaryColor.toString(16).padStart(6, "0")}` : "#20d7e7";
 
   return (
     <div className={styles.backdrop} data-weekend-session={state.currentSession}>
-      <main className={styles.hub}>
+      <main className={styles.hub} style={{ "--team-tone": teamTone } as CSSProperties}>
         <header className={styles.header}>
-          <div><span>ROUND 09 · GREAT BRITAIN · {playerTeam?.name.toUpperCase()}</span><h1>Silverstone Race Weekend</h1><p>STANDARD FORMAT · 22 DRIVERS · 5.891 KM</p></div>
-          <div className={styles.sessionIdentity}><span>{sessionTitle}</span><strong>{state.currentSession}</strong><small>{sessionDetail}</small></div>
+          <div className={styles.sessionMasthead}>
+            <span>ROUND 09 · GREAT BRITAIN · SILVERSTONE</span>
+            <div><strong>{state.currentSession}</strong><i><b>{sessionTitle}</b><small>{playerTeam?.name.toUpperCase()} · SESSION COMMAND</small></i></div>
+          </div>
+          <SessionRail state={state} />
         </header>
-        <SessionRail state={state} />
 
-        <section className={styles.workspace}>
-          <aside className={styles.setupPanel}>
-            <header><Settings2 aria-hidden="true" size={18} /><div><b>CAR SETUP</b><small>SILVERSTONE BASELINE</small></div></header>
-            <div className={styles.setupCars}>{playerCarIds.map((carId) => <SetupControl carId={carId} key={carId} knowledge={state.setupKnowledge} onChange={(setup) => onSetupChange(carId, setup)} setup={state.setups[carId]} />)}</div>
-            <div className={styles.feedback}>
-              <b>FP DRIVER DEBRIEF · {state.setupKnowledge}% CONFIDENCE</b>
-              {playerCarIds.map((carId) => {
-                const driver = DRIVER_BY_ID.get(carId)!;
-                return (
-                  <section key={carId}>
-                    <h4>{driver.shortName} · RUN FEEDBACK</h4>
-                    <ul>{setupFeedbackFor(state, carId).map((item) => <li data-severity={item.severity} key={`${carId}-${item.area}`}><span>{item.area}</span><p>{item.message}</p></li>)}</ul>
-                  </section>
-                );
-              })}
-              <i><b style={{ width: `${state.setupKnowledge}%` }} /></i>
-            </div>
-          </aside>
+        <section className={`${styles.workspace} ${isRace ? styles.raceWorkspace : ""} ${!isRace && !sessionResult ? styles.workspaceSolo : ""}`}>
+          {isRace ? (
+            <section className={styles.timingPanel}>
+              <header><div><Flag aria-hidden="true" size={19} /><span><b>RACE PREPARATION</b><small>FINAL GRID · START TYRE CONFIRMATION</small></span></div></header>
+              <RacePreparation onStartingTyreChange={onStartingTyreChange} startingTyres={startingTyres} state={state} />
+            </section>
+          ) : (
+            <>
+              <section className={styles.garageCanvas}>
+                <header><Settings2 aria-hidden="true" size={19} /><div><b>GARAGE TELEMETRY</b><small>SILVERSTONE SETUP LAB · TWO-CAR COMPARISON</small></div><span>LIVE INPUT</span></header>
+                <div className={styles.setupCars}>{playerCarIds.map((carId, index) => <SetupControl carId={carId} key={carId} onChange={(setup) => onSetupChange(carId, setup)} setup={state.setups[carId]} slot={index} state={state} />)}</div>
+              </section>
 
-          <section className={styles.timingPanel}>
-            <header><div><Timer aria-hidden="true" size={18} /><span><b>{sessionResult?.session ?? state.currentSession} CLASSIFICATION</b><small>{sessionResult ? `${sessionResult.durationMinutes} MIN · ${sessionResult.entries.length} CLASSIFIED` : "AWAITING GREEN LIGHT"}</small></span></div>{sessionResult?.entries.some((entry) => entry.eliminated) && <em>RED = ELIMINATED</em>}</header>
-            {isRace ? <RacePreparation onStartingTyreChange={onStartingTyreChange} startingTyres={startingTyres} state={state} /> : <Classification state={state} />}
-          </section>
-
-          <aside className={styles.rulesPanel}>
-            <span>OFFICIAL FORMAT</span>
-            <h2>{state.currentSession}</h2>
-            <div><b>{rule.durationMinutes ?? 52}</b><small>{isRace ? "LAPS" : "MINUTES"}</small></div>
-            <dl><div><dt>ENTRY</dt><dd>{rule.entrants} CARS</dd></div><div><dt>ADVANCE</dt><dd>{isRace ? "GRID ORDER" : rule.eliminated ? `${rule.entrants - rule.eliminated} CARS` : "ALL CARS"}</dd></div><div><dt>TRACK</dt><dd>{Math.round(state.setupKnowledge)}% LEARNED</dd></div></dl>
-            {rule.group === "QUALIFYING" && <p>Fastest lap decides classification. Q1 and Q2 times are deleted for advancing cars; the next segment starts clean.</p>}
-            {rule.group === "PRACTICE" && <p>Run programmes build setup knowledge and consume one nominated tyre set per driver.</p>}
-            {isRace && <p>Qualifying order is transferred directly to the compact Hamilton Straight starting grid.</p>}
-          </aside>
+              {sessionResult && <section className={styles.timingPanel}>
+                <header><div>{sessionResult ? <Timer aria-hidden="true" size={19} /> : <Activity aria-hidden="true" size={19} />}<span><b>{sessionResult ? `${sessionResult.session} CLASSIFICATION` : "SESSION PLAN"}</b><small>{sessionResult ? `${sessionResult.entries.length} CLASSIFIED · BEST LAP ORDER` : `${state.currentSession} RUN PROGRAMME · READY`}</small></span></div>{sessionResult?.entries.some((entry) => entry.eliminated) && <em>ELIMINATION ZONE</em>}</header>
+                <Classification state={state} />
+              </section>}
+            </>
+          )}
         </section>
 
-        <footer className={styles.footer}>
-          <span>{isRace ? "GRID READY" : `${state.completedSessions.length}/6 SESSIONS COMPLETE`}<small>{isRace ? "Confirm race tyres before lights sequence" : "Deterministic session simulation"}</small></span>
-          <div>
-            <button className={styles.primary} onClick={isRace ? onStartRace : onRunSession} type="button">{isRace ? "START FORMATION · LIGHTS" : `RUN ${state.currentSession}`}<ChevronRight aria-hidden="true" size={18} /></button>
-          </div>
-        </footer>
+        <section className={styles.debriefArea}>
+          <DebriefDock state={state} />
+          <footer className={styles.footer}>
+            <span>{isRace ? "GRID READY" : `${state.completedSessions.length}/6 COMPLETE`}<small>{isRace ? "Confirm race tyres" : "SESSION SIMULATION"}</small></span>
+            <button className={styles.primary} onClick={isRace ? onStartRace : onRunSession} type="button">{isRace ? "START RACE" : `RUN ${state.currentSession}`}<ChevronRight aria-hidden="true" size={26} /></button>
+          </footer>
+        </section>
       </main>
       {activeReport && <SessionReport onClose={onCloseReport} report={activeReport} />}
     </div>

@@ -1,13 +1,38 @@
 import { describe, expect, it } from "vitest";
 
 import { createInitialSnapshot } from "@/simulation/engine";
-import { assessPitOperation, resolvePitStopExecution } from "@/simulation/pit-operations";
+import {
+  assessPitOperation,
+  F1_2025_FASTEST_STOP_MEAN_SECONDS,
+  F1_2025_FASTEST_STOP_RANGE_SECONDS,
+  F1_2025_TYPICAL_CLEAN_STOP_SECONDS,
+  resolvePitStopExecution,
+} from "@/simulation/pit-operations";
 
 describe("pit stop operations 2.0", () => {
+  it("uses the official 2025 event-winning pit-stop benchmark", () => {
+    expect(F1_2025_FASTEST_STOP_MEAN_SECONDS).toBe(2.082);
+    expect(F1_2025_FASTEST_STOP_RANGE_SECONDS).toEqual([1.91, 2.32]);
+    expect(F1_2025_TYPICAL_CLEAN_STOP_SECONDS).toBe(2.2);
+  });
+
   it("returns deterministic service timing", () => {
     const snapshot = createInitialSnapshot(51);
     const context = { seed: snapshot.seed, tick: 100, elapsedTime: 10, pitLaneOpen: true, cars: snapshot.cars };
     expect(resolvePitStopExecution(context, snapshot.cars[0].carId)).toEqual(resolvePitStopExecution(context, snapshot.cars[0].carId));
+  });
+
+  it("separates wheel-change time from queue and release delays", () => {
+    const snapshot = createInitialSnapshot(5_101);
+    const context = { seed: snapshot.seed, tick: 100, elapsedTime: 10, pitLaneOpen: true, cars: snapshot.cars };
+    const execution = resolvePitStopExecution(context, snapshot.cars[0].carId);
+
+    expect(execution.tyreServiceSeconds).toBeCloseTo(execution.serviceSeconds + execution.serviceIssueDelaySeconds, 8);
+    expect(execution.stationarySeconds).toBeCloseTo(
+      execution.tyreServiceSeconds + execution.queueDelaySeconds + execution.releaseDelaySeconds,
+      8,
+    );
+    expect(execution.tyreServiceSeconds).toBeGreaterThan(1.9);
   });
 
   it("keeps the same stop forecast while live ticks advance", () => {

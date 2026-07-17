@@ -2,7 +2,7 @@ import type { DriverDefinition, TeamDefinition } from "@/domain/race";
 
 // 2026 grid verified against Formula 1's official driver and results pages on 2026-07-12.
 export const TEAMS: readonly TeamDefinition[] = [
-  { id: "mercedes", name: "Mercedes", shortName: "MER", primaryColor: 0x27f4d2, accentColor: 0xb6fff3, performance: 1.012 },
+  { id: "mercedes", name: "Mercedes", shortName: "MER", primaryColor: 0x27f4d2, accentColor: 0xb6fff3, performance: 1.000 },
   { id: "ferrari", name: "Ferrari", shortName: "FER", primaryColor: 0xff2238, accentColor: 0xffa1aa, performance: 1.008 },
   { id: "mclaren", name: "McLaren", shortName: "MCL", primaryColor: 0xff8700, accentColor: 0xffc47a, performance: 1.005 },
   { id: "red-bull", name: "Red Bull Racing", shortName: "RBR", primaryColor: 0x4c6fff, accentColor: 0xa8b6ff, performance: 1.002 },
