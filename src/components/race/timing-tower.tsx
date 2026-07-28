@@ -42,7 +42,7 @@ export function TimingTower() {
         <span><small>LAP</small><strong>{currentLap}<em>/ 52</em></strong></span>
         <span><small>RACE TIME</small><strong>{sessionTime(snapshot?.elapsedTime ?? 0)}</strong></span>
       </div>
-      <div className="timing-head"><span>P</span><span>DRIVER</span><span>TYRE</span><span>LIFE</span><span>GAP</span><span aria-hidden="true" /></div>
+      <div className="timing-head"><span title="Position">P</span><span title="Driver">DRIVER</span><span title="Tyre compound">TYRE</span><span title="Tyre life">LIFE</span><span title="Gap to the car ahead">GAP</span><span aria-hidden="true" /></div>
       {activeSportingNotice && <section aria-live="polite" className={`sporting-explainer ${noticePenalty ? "is-penalty" : "is-investigation"}`}>
         <header>
           <span>{noticePenalty ? "STEWARDS DECISION" : "INCIDENT REVIEW"}</span>
@@ -82,12 +82,11 @@ export function TimingTower() {
               <span className="timing-position">{car.racePosition.toString().padStart(2, "0")}</span>
               <span className="driver-cell">
                 <i style={{ backgroundColor: `#${team.primaryColor.toString(16).padStart(6, "0")}` }} />
-                <strong>{driver.shortName}</strong>
-                <small>{team.shortName}</small>
+                <strong title={driver.name}>{driver.shortName}</strong>
               </span>
               <span className="timing-tyre"><TyreBadge compound={car.tyreCompound} size="small" title={`${car.tyreCompound} · ${car.tyreAgeLaps.toFixed(1)} laps`} /></span>
               <span className={`timing-tyre-life ${car.tyreLife < 30 ? "is-critical" : car.tyreLife < 50 ? "is-warning" : ""}`}>{Math.round(car.tyreLife)}%</span>
-              <span className={`timing-gap ${isRetired ? "is-out" : ""}`} title={isRetired ? car.retiredReason ?? "Retired" : undefined}>
+              <span className={`timing-gap ${isRetired ? "is-out" : ""}`} title={isRetired ? car.retiredReason ?? "Retired" : car.racePosition === 1 ? "Race leader" : `Gap to car ahead: ${(timingGaps[car.carId]?.ahead ?? car.gapToCarAhead).toFixed(3)} seconds`}>
                 {isRetired ? "OUT" : gapLabel(car.racePosition, timingGaps[car.carId]?.ahead ?? car.gapToCarAhead)}
               </span>
               {(pendingPenalty || investigation)

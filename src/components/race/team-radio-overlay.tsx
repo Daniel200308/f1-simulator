@@ -17,10 +17,10 @@ export function TeamRadioOverlay() {
   const playerCarIds = playerCarIdsFor(playerTeamId);
   const teamMessages = snapshot?.radioMessages
     .filter((message) => message.source !== "RACE CONTROL" && message.carId !== null && playerCarIds.includes(message.carId)) ?? [];
-  const radioMessages = teamMessages.slice(0, 1);
+  const latestDriverMessage = teamMessages.find((message) => message.source === "DRIVER");
+  const latestCommandEngineerMessage = teamMessages.find((message) => message.source === "ENGINEER" && /-(pace|tyre|energy|box|stay-out|team-order|serve-penalty|cooling|brake-bias)$/.test(message.id));
+  const radioMessages = [latestDriverMessage, latestCommandEngineerMessage].filter((message): message is NonNullable<typeof message> => Boolean(message));
   const tone = team ? `#${team.primaryColor.toString(16).padStart(6, "0")}` : "#20d7e7";
-  const liveMessage = radioMessages[0];
-  const liveDriver = liveMessage?.carId ? DRIVER_BY_ID.get(liveMessage.carId) : undefined;
 
   return (
     <section
@@ -34,15 +34,22 @@ export function TeamRadioOverlay() {
         <strong>{playerCarIds.map((carId) => DRIVER_BY_ID.get(carId)?.shortName).join(" · ")}</strong>
       </header>
       <div className="track-radio__messages" role="log">
-        {radioMessages.length ? radioMessages.map((message) => (
-          <article className={`track-radio__message track-radio__message--${message.priority.toLowerCase()}`} key={message.id}>
+        {radioMessages.length ? radioMessages.map((message) => {
+          const messageDriver = message.carId ? DRIVER_BY_ID.get(message.carId) : undefined;
+          const isDriver = message.source === "DRIVER";
+          const speakerCode = isDriver ? messageDriver?.shortName ?? "DRV" : "ENG";
+          const speakerName = isDriver ? messageDriver?.name ?? "DRIVER" : "RACE ENGINEER";
+          const speakerMeta = isDriver
+            ? `DRIVER · ${messageClock(message.elapsedTime)}`
+            : `TO ${messageDriver?.shortName ?? "TEAM"} · ${messageClock(message.elapsedTime)}`;
+          return <article className={`track-radio__message track-radio__message--${message.priority.toLowerCase()} track-radio__message--${isDriver ? "driver" : "engineer"}`} data-source={message.source} key={message.id}>
             <div className="track-radio__speaker">
-              <strong>{liveDriver?.shortName ?? "PIT"}</strong>
-              <span><b>{liveDriver?.name ?? `${team?.shortName ?? "TEAM"} ENGINEER`}</b><small>{message.source} · {messageClock(message.elapsedTime)}</small></span>
+              <strong>{speakerCode}</strong>
+              <span><b title={speakerName}>{speakerName}</b><small title={speakerMeta}>{speakerMeta}</small></span>
             </div>
-            <p>{message.message}</p>
-          </article>
-        )) : (
+            <p title={message.message}>{message.message}</p>
+          </article>;
+        }) : (
           <p className="track-radio__standby">Radio check complete. Live calls will appear here.</p>
         )}
       </div>

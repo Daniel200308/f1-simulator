@@ -1,0 +1,132 @@
+{
+  "passed": [
+    "Q1 starts with all 22 classified entrants",
+    "both player-driver tabs are available in Q1",
+    "control selection /set out lap pace Gentle/i exposes an active state",
+    "control selection /set out lap pace Balanced/i exposes an active state",
+    "control selection /set out lap pace Aggressive Warm-up/i exposes an active state",
+    "control selection /set flying lap attack Safe/i exposes an active state",
+    "control selection /set flying lap attack Push/i exposes an active state",
+    "control selection /set flying lap attack Attack/i exposes an active state",
+    "control selection /set flying lap attack Maximum/i exposes an active state",
+    "control selection /set fuel plan 1 Flying Lap/i exposes an active state",
+    "control selection /set fuel plan 2 Flying Laps$/i exposes an active state",
+    "control selection /set fuel plan 2 Laps \\+ Margin/i exposes an active state",
+    "control selection /set energy mode CHARGE/i exposes an active state",
+    "control selection /set energy mode BALANCED/i exposes an active state",
+    "control selection /set energy mode QUALI/i exposes an active state",
+    "physical tyre set selection remains functional after the redesign",
+    "circuit shows the session-best sector ribbon",
+    "30-second exploratory run reaches a dense live-traffic state",
+    "live sector feedback updates during the exploratory run",
+    "pause exposes a clear active transport state",
+    "Q1 1440x900 has no document overflow",
+    "Q1 1440x900 keeps every qualifying region in view",
+    "Q1 1440x900 has no clipped control or circuit labels",
+    "Q1 report marks exactly six timed AI-simulated drivers as eliminated",
+    "Q2 entry list contains only the 16 Q1 qualifiers",
+    "Q1 eliminated codes are absent from the active Q2 field",
+    "a fully eliminated player team retains a visible non-interactive status rail",
+    "the eliminated team rail clearly explains that no controls remain",
+    "Q2 resets all session-specific lap records",
+    "Q2 resets session-best sector data",
+    "Q2 1920x1080 has no document overflow",
+    "Q2 1920x1080 keeps every qualifying region in view",
+    "Q2 1920x1080 has no clipped control or circuit labels",
+    "Q2 report marks exactly six drivers as eliminated",
+    "Q3 entry list contains only the 10 Q2 qualifiers",
+    "Q3 starts with clean segment-specific timing data",
+    "browser reports no runtime errors"
+  ],
+  "sessions": {
+    "Q1": {
+      "entrants": 22,
+      "eliminated": [
+        "PER",
+        "OCO",
+        "BEA",
+        "BOT",
+        "ALO",
+        "STR"
+      ],
+      "q2Entrants": 16
+    },
+    "Q2": {
+      "entrants": 16,
+      "eliminated": [
+        "BOR",
+        "LAW",
+        "ALB",
+        "HUL",
+        "LIN",
+        "SAI"
+      ],
+      "q3Entrants": 10
+    }
+  },
+  "viewports": {
+    "Q1 1440x900": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900,
+      "tower": {
+        "left": 8,
+        "top": 88,
+        "right": 348,
+        "bottom": 892,
+        "width": 340,
+        "height": 804
+      },
+      "map": {
+        "left": 357,
+        "top": 89,
+        "right": 1063,
+        "bottom": 891,
+        "width": 706,
+        "height": 802
+      },
+      "rail": {
+        "left": 1072,
+        "top": 88,
+        "right": 1432,
+        "bottom": 892,
+        "width": 360,
+        "height": 804
+      },
+      "clipped": []
+    },
+    "Q2 1920x1080": {
+      "width": 1920,
+      "height": 1080,
+      "scrollWidth": 1920,
+      "scrollHeight": 1080,
+      "tower": {
+        "left": 8,
+        "top": 88,
+        "right": 358,
+        "bottom": 1072,
+        "width": 350,
+        "height": 984
+      },
+      "map": {
+        "left": 367,
+        "top": 89,
+        "right": 1517,
+        "bottom": 1071,
+        "width": 1150,
+        "height": 982
+      },
+      "rail": {
+        "left": 1526,
+        "top": 88,
+        "right": 1912,
+        "bottom": 1072,
+        "width": 386,
+        "height": 984
+      },
+      "clipped": []
+    }
+  },
+  "consoleErrors": []
+}

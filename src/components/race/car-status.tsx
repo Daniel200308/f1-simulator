@@ -49,8 +49,8 @@ function CarCard({ car, selected, predictedPitPosition }: { car: RaceCarState; s
     <button className={`car-card ${selected ? "is-selected" : ""}`} onClick={() => select(car.carId)} style={{ "--team-color": teamColor } as CSSProperties} type="button">
       <div className="car-card__top">
         <span className="car-position">P{car.racePosition}</span>
-        <div className="car-card__identity"><strong>{driver.name}</strong></div>
-        <span className={`status-chip status-chip--${car.battleStatus.toLowerCase()}`}>{tacticalLabel}</span>
+        <div className="car-card__identity"><strong title={driver.name}>{driver.name}</strong></div>
+        <span className={`status-chip status-chip--${car.battleStatus.toLowerCase()}`} title={`${car.battleStatus.replaceAll("_", " ")} · ${car.racingLineMode.replaceAll("_", " ")}`}>{tacticalLabel}</span>
         <span className="car-number">#{driver.number.toString().padStart(2, "0")}</span>
       </div>
       <div className="car-kpi-rail">
@@ -77,7 +77,7 @@ function CarCard({ car, selected, predictedPitPosition }: { car: RaceCarState; s
         <span>S{car.currentSector} <strong>{formatLapTime(car.currentLapTime)}</strong></span>
         <span>BEST <strong>{formatLapTime(car.bestLapTime)}</strong></span>
         <span>ERS <strong className={car.overtakeActive ? "accent" : ""}>{car.overtakeActive ? "OVT" : (car.energySystem?.deploymentMode ?? car.energyMode).slice(0, 3)}</strong></span>
-        <span>PIT <strong className={car.pitStatus !== "TRACK" || car.scheduledPitCompound ? "accent" : ""} title={pitTitle}>{pitLabel}</strong></span>
+        <span title={pitTitle}>PIT <strong className={car.pitStatus !== "TRACK" || car.scheduledPitCompound ? "accent" : ""}>{pitLabel}</strong></span>
       </div>
     </button>
   );

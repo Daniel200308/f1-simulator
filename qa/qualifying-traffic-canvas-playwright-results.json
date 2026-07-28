@@ -1,0 +1,244 @@
+{
+  "passed": [
+    "1280x720 centre Circuit Detail is visible",
+    "1280x720 separates one animated canvas from the static circuit",
+    "1280x720 uses persistent driver-label anchors",
+    "1280x720 uses phase-coded map markers",
+    "1280x720 shows the five-state compact map legend",
+    "1280x720 legend covers flying, out, in, cool-down and player states",
+    "1280x720 keeps S1 S2 S3 for all 22 drivers in the leaderboard",
+    "1280x720 exposes two compact player-driver tabs",
+    "1280x720 does not duplicate large driver control rows",
+    "1280x720 shows one compact RELEASE control group",
+    "1280x720 shows one compact OUT LAP PACE control group",
+    "1280x720 shows one compact FLYING LAP ATTACK control group",
+    "1280x720 shows one compact FUEL PLAN control group",
+    "1280x720 shows one compact LAP ACTION control group",
+    "1280x720 shows one compact ENERGY MODE control group",
+    "1280x720 keeps visible control labels unclipped",
+    "1280x720 energy selector gives strong selected-state feedback",
+    "1280x720 flying attack selector updates the active driver",
+    "1280x720 fuel selector updates before release",
+    "1280x720 switches LEC and HAM through compact tabs",
+    "1280x720 spreads the early qualifying field instead of releasing one continuous train",
+    "1280x720 labels every active car with stable canvas labels",
+    "1280x720 reaches a visible pulsing flying-lap state",
+    "1280x720 stops marker and label animation while paused",
+    "1280x720 has no document overflow",
+    "1280x720 qualifying shell fits the viewport",
+    "1280x720 preserves leaderboard, centre circuit and right controls",
+    "1280x720 keeps the circuit as the dominant visual focus",
+    "1280x720 keeps the entire control rail above the fold",
+    "1280x720 keeps all six control groups inside the rail",
+    "1440x900 centre Circuit Detail is visible",
+    "1440x900 separates one animated canvas from the static circuit",
+    "1440x900 uses persistent driver-label anchors",
+    "1440x900 uses phase-coded map markers",
+    "1440x900 shows the five-state compact map legend",
+    "1440x900 legend covers flying, out, in, cool-down and player states",
+    "1440x900 keeps S1 S2 S3 for all 22 drivers in the leaderboard",
+    "1440x900 exposes two compact player-driver tabs",
+    "1440x900 does not duplicate large driver control rows",
+    "1440x900 shows one compact RELEASE control group",
+    "1440x900 shows one compact OUT LAP PACE control group",
+    "1440x900 shows one compact FLYING LAP ATTACK control group",
+    "1440x900 shows one compact FUEL PLAN control group",
+    "1440x900 shows one compact LAP ACTION control group",
+    "1440x900 shows one compact ENERGY MODE control group",
+    "1440x900 keeps visible control labels unclipped",
+    "1440x900 energy selector gives strong selected-state feedback",
+    "1440x900 flying attack selector updates the active driver",
+    "1440x900 fuel selector updates before release",
+    "1440x900 switches LEC and HAM through compact tabs",
+    "1440x900 spreads the early qualifying field instead of releasing one continuous train",
+    "1440x900 labels every active car with stable canvas labels",
+    "1440x900 reaches a visible pulsing flying-lap state",
+    "1440x900 stops marker and label animation while paused",
+    "1440x900 has no document overflow",
+    "1440x900 qualifying shell fits the viewport",
+    "1440x900 preserves leaderboard, centre circuit and right controls",
+    "1440x900 keeps the circuit as the dominant visual focus",
+    "1440x900 keeps the entire control rail above the fold",
+    "1440x900 keeps all six control groups inside the rail",
+    "browser reports no runtime errors"
+  ],
+  "viewports": {
+    "1280x720": {
+      "innerWidth": 1280,
+      "innerHeight": 720,
+      "scrollWidth": 1280,
+      "scrollHeight": 720,
+      "root": {
+        "left": 0,
+        "top": 0,
+        "right": 1280,
+        "bottom": 720,
+        "width": 1280,
+        "height": 720
+      },
+      "tower": {
+        "left": 8,
+        "top": 88,
+        "right": 338,
+        "bottom": 712,
+        "width": 330,
+        "height": 624
+      },
+      "map": {
+        "left": 347,
+        "top": 89,
+        "right": 963,
+        "bottom": 711,
+        "width": 616,
+        "height": 622
+      },
+      "controls": {
+        "left": 972,
+        "top": 88,
+        "right": 1272,
+        "bottom": 712,
+        "width": 300,
+        "height": 624
+      },
+      "controlSections": [
+        {
+          "left": 981,
+          "top": 266,
+          "right": 1263,
+          "bottom": 341,
+          "width": 282,
+          "height": 75
+        },
+        {
+          "left": 981,
+          "top": 341,
+          "right": 1263,
+          "bottom": 396,
+          "width": 282,
+          "height": 55
+        },
+        {
+          "left": 981,
+          "top": 396,
+          "right": 1263,
+          "bottom": 451,
+          "width": 282,
+          "height": 55
+        },
+        {
+          "left": 981,
+          "top": 451,
+          "right": 1263,
+          "bottom": 506,
+          "width": 282,
+          "height": 55
+        },
+        {
+          "left": 981,
+          "top": 506,
+          "right": 1263,
+          "bottom": 579,
+          "width": 282,
+          "height": 73
+        },
+        {
+          "left": 981,
+          "top": 579,
+          "right": 1263,
+          "bottom": 637,
+          "width": 282,
+          "height": 58
+        }
+      ]
+    },
+    "1440x900": {
+      "innerWidth": 1440,
+      "innerHeight": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900,
+      "root": {
+        "left": 0,
+        "top": 0,
+        "right": 1440,
+        "bottom": 900,
+        "width": 1440,
+        "height": 900
+      },
+      "tower": {
+        "left": 8,
+        "top": 88,
+        "right": 358,
+        "bottom": 892,
+        "width": 350,
+        "height": 804
+      },
+      "map": {
+        "left": 367,
+        "top": 89,
+        "right": 1105,
+        "bottom": 891,
+        "width": 738,
+        "height": 802
+      },
+      "controls": {
+        "left": 1114,
+        "top": 88,
+        "right": 1432,
+        "bottom": 892,
+        "width": 318,
+        "height": 804
+      },
+      "controlSections": [
+        {
+          "left": 1125,
+          "top": 280,
+          "right": 1421,
+          "bottom": 362,
+          "width": 296,
+          "height": 82
+        },
+        {
+          "left": 1125,
+          "top": 362,
+          "right": 1421,
+          "bottom": 421,
+          "width": 296,
+          "height": 59
+        },
+        {
+          "left": 1125,
+          "top": 421,
+          "right": 1421,
+          "bottom": 480,
+          "width": 296,
+          "height": 59
+        },
+        {
+          "left": 1125,
+          "top": 480,
+          "right": 1421,
+          "bottom": 539,
+          "width": 296,
+          "height": 59
+        },
+        {
+          "left": 1125,
+          "top": 539,
+          "right": 1421,
+          "bottom": 619,
+          "width": 296,
+          "height": 80
+        },
+        {
+          "left": 1125,
+          "top": 619,
+          "right": 1421,
+          "bottom": 682,
+          "width": 296,
+          "height": 63
+        }
+      ]
+    }
+  },
+  "consoleErrors": []
+}

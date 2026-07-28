@@ -8,6 +8,7 @@ import { CarStatusPanel } from "@/components/race/car-status";
 import { CommandDock, type CommandDockControls } from "@/components/race/command-dock";
 import { EnergyDebugPanel } from "@/components/race/energy-debug-panel";
 import { RaceMap } from "@/components/race/race-map";
+import { QualifyingRaceView } from "@/components/race/qualifying-race-view";
 import { ReplayReportPanel } from "@/components/race/replay-report-panel";
 import { RaceTopbar, type RaceStartPhase } from "@/components/race/race-topbar";
 import { TimingTower } from "@/components/race/timing-tower";
@@ -19,8 +20,35 @@ import { useRaceWorker } from "@/hooks/use-race-worker";
 import { DEFAULT_SEED } from "@/simulation/engine";
 import { RaceReplayRecorder, type RaceReplayRecording, type ReplayEventValue } from "@/simulation/race-replay";
 import { buildRaceReport } from "@/simulation/race-report";
+import { buildRaceStartingTyrePlan } from "@/simulation/starting-tyre-strategy";
 import { SILVERSTONE_CIRCUIT } from "@/simulation/track";
-import { createWeekendState, latestWeekendReport, raceSetupPerformanceFactor, runWeekendSession, setWeekendCarSetup, type WeekendSessionReport } from "@/simulation/weekend";
+import { chooseRaceStartTyreSet, type RaceStartTyreSelection } from "@/simulation/tyre-allocation";
+import { createSpatialWeather } from "@/simulation/weather";
+import {
+  abortQualifyingLap,
+  coolDownQualifyingCar,
+  createWeekendState,
+  holdQualifyingCar,
+  latestWeekendReport,
+  raceSetupPerformanceFactor,
+  recallQualifyingCar,
+  reserveRacePreparationTyreSet,
+  releaseQualifyingCar,
+  runWeekendSession,
+  setLiveQualifyingSpeed,
+  setQualifyingAttackMode,
+  setQualifyingEnergyMode,
+  setQualifyingFuelPlan,
+  setQualifyingOutLapMode,
+  setQualifyingTyreSet,
+  setWeekendCarSetup,
+  skipLiveQualifyingSession,
+  startLiveQualifying,
+  tickLiveQualifying,
+  toggleLiveQualifyingPause,
+  waitForQualifyingGap,
+  type WeekendSessionReport,
+} from "@/simulation/weekend";
 import { useRaceStore } from "@/store/race-store";
 
 function freshWeekendSeed(): number {
@@ -37,7 +65,7 @@ export function RaceShell() {
   const [startPhase, setStartPhase] = useState<RaceStartPhase>("MENU");
   const [lightsOn, setLightsOn] = useState(0);
   const [weekend, setWeekend] = useState(() => createWeekendState(DEFAULT_SEED, DEFAULT_PLAYER_TEAM_ID));
-  const [startingTyres, setStartingTyres] = useState<Record<string, TyreCompound>>(() => Object.fromEntries(playerCarIdsFor(DEFAULT_PLAYER_TEAM_ID).map((carId) => [carId, "MEDIUM"])));
+  const [startingTyres, setStartingTyres] = useState<Record<string, RaceStartTyreSelection>>(() => Object.fromEntries(playerCarIdsFor(DEFAULT_PLAYER_TEAM_ID).map((carId) => [carId, chooseRaceStartTyreSet(carId, "MEDIUM")])));
   const [activeWeekendReport, setActiveWeekendReport] = useState<WeekendSessionReport | null>(null);
   const [replayRecording, setReplayRecording] = useState<RaceReplayRecording | null>(null);
   const [strategyCarId, setStrategyCarId] = useState<string | null>(null);
@@ -46,6 +74,9 @@ export function RaceShell() {
   const replayRecorder = useRef(new RaceReplayRecorder({ captureIntervalSeconds: 1, maxFrames: 1_800, watchedCarIds: playerCarIdsFor(DEFAULT_PLAYER_TEAM_ID) }));
   const pendingReplayReset = useRef<{ expectedSeed: number; expectedStartingTyres: Readonly<Record<string, TyreCompound>> | null } | null>(null);
   const finalReportOpened = useRef(false);
+  const presentedWeekendReports = useRef(0);
+  const qualifyingTickCarry = useRef(0);
+  const raceTyreDefaultsSeed = useRef<number | null>(null);
   const snapshot = useRaceStore((state) => state.snapshot);
   const speed = useRaceStore((state) => state.speed);
   const paused = useRaceStore((state) => state.paused);
@@ -63,6 +94,10 @@ export function RaceShell() {
     : snapshot?.raceControl === "SAFETY_CAR"
       ? snapshot.safetyCarPhase === "RESTART" ? "SAFETY CAR ENDING" : "SAFETY CAR"
       : snapshot?.raceControl === "VSC" ? "VIRTUAL SAFETY CAR" : snapshot?.raceControl.replace("_", " ") ?? "GREEN";
+  const qualifyingLiveSession = weekend.qualifyingLive?.session;
+  const qualifyingLiveStatus = weekend.qualifyingLive?.status;
+  const qualifyingLivePaused = weekend.qualifyingLive?.paused ?? false;
+  const qualifyingLiveSpeed = weekend.qualifyingLive?.speed ?? 1;
 
   useEffect(() => () => {
     startTimers.current.forEach((timer) => window.clearTimeout(timer));
@@ -89,6 +124,46 @@ export function RaceShell() {
     finalReportOpened.current = true;
     setReportOpen(true);
   }, [replayRecording, snapshot?.status]);
+
+  useEffect(() => {
+    if (weekend.sessionReports.length <= presentedWeekendReports.current) return;
+    presentedWeekendReports.current = weekend.sessionReports.length;
+    setActiveWeekendReport(latestWeekendReport(weekend));
+  }, [weekend]);
+
+  useEffect(() => {
+    if (weekend.currentSession !== "RACE" || raceTyreDefaultsSeed.current === weekend.seed) return;
+    const plan = buildRaceStartingTyrePlan({
+      seed: weekend.seed,
+      gridOrder: weekend.gridOrder,
+      tyreUsage: weekend.tyreUsage,
+      weather: createSpatialWeather(weekend.seed),
+    });
+    const defaults = Object.fromEntries(playerCarIdsFor(selectedTeamId).map((carId) => [carId, chooseRaceStartTyreSet(carId, plan[carId].compound, weekend.tyreInventory)]));
+    raceTyreDefaultsSeed.current = weekend.seed;
+    setStartingTyres(defaults);
+  }, [selectedTeamId, weekend.currentSession, weekend.gridOrder, weekend.seed, weekend.tyreInventory, weekend.tyreUsage]);
+
+  useEffect(() => {
+    if ((qualifyingLiveStatus !== "RUNNING" && qualifyingLiveStatus !== "CHECKERED") || qualifyingLivePaused) return;
+    qualifyingTickCarry.current = 0;
+    let lastWallTime = performance.now();
+    const timer = window.setInterval(() => {
+      const now = performance.now();
+      const elapsedWallSeconds = Math.min(0.15, Math.max(0, (now - lastWallTime) / 1_000));
+      lastWallTime = now;
+      qualifyingTickCarry.current += elapsedWallSeconds * qualifyingLiveSpeed;
+      const wholeSeconds = Math.floor(qualifyingTickCarry.current);
+      if (wholeSeconds < 1) return;
+      qualifyingTickCarry.current -= wholeSeconds;
+      setWeekend((current) => {
+        const live = current.qualifyingLive;
+        if (!live || (live.status !== "RUNNING" && live.status !== "CHECKERED")) return current;
+        return tickLiveQualifying(current, wholeSeconds);
+      });
+    }, 50);
+    return () => window.clearInterval(timer);
+  }, [qualifyingLivePaused, qualifyingLiveSession, qualifyingLiveSpeed, qualifyingLiveStatus]);
 
   function annotateCommand(carId: string, message: string, data?: Readonly<Record<string, ReplayEventValue>>) {
     const recording = replayRecorder.current.annotate({ kind: "STRATEGY", message, carId, severity: "INFO", data }, snapshot?.elapsedTime ?? 0);
@@ -123,13 +198,13 @@ export function RaceShell() {
 
   function startRace() {
     clearStartTimers();
-    pendingReplayReset.current = { expectedSeed: weekend.seed, expectedStartingTyres: { ...startingTyres } };
+    pendingReplayReset.current = { expectedSeed: weekend.seed, expectedStartingTyres: Object.fromEntries(Object.entries(startingTyres).map(([carId, selection]) => [carId, selection.compound])) };
     replayRecorder.current.reset();
     setReplayRecording(null);
     finalReportOpened.current = false;
     const setupPerformanceByCar = Object.fromEntries(Object.entries(weekend.setups).map(([carId, setup]) => [carId, raceSetupPerformanceFactor(setup, weekend.seed, carId)]));
-    controls.reset(weekend.seed, weekend.gridOrder, weekend.tyreUsage, setupPerformanceByCar, selectedTeamId);
-    playerCarIds.forEach((carId) => controls.setStartingTyre(carId, startingTyres[carId]));
+    controls.reset(weekend.seed, weekend.gridOrder, weekend.tyreUsage, setupPerformanceByCar, selectedTeamId, weekend.tyreInventory);
+    playerCarIds.forEach((carId) => controls.setStartingTyre(carId, startingTyres[carId].compound, startingTyres[carId].id));
     setStartPhase("LIGHTS");
     setLightsOn(1);
     for (let count = 2; count <= 5; count += 1) {
@@ -153,8 +228,10 @@ export function RaceShell() {
     setStrategyCarId(null);
     setReportOpen(false);
     setActiveWeekendReport(null);
+    presentedWeekendReports.current = 0;
+    raceTyreDefaultsSeed.current = null;
     setTeamConfirmed(false);
-    setStartingTyres(Object.fromEntries(playerCarIds.map((carId) => [carId, "MEDIUM"])));
+    setStartingTyres(Object.fromEntries(playerCarIds.map((carId) => [carId, chooseRaceStartTyreSet(carId, "MEDIUM")])));
     const nextSeed = freshWeekendSeed();
     pendingReplayReset.current = { expectedSeed: nextSeed, expectedStartingTyres: null };
     controls.reset(nextSeed, undefined, undefined, undefined, selectedTeamId);
@@ -164,16 +241,17 @@ export function RaceShell() {
   function runCurrentWeekendSession() {
     const next = runWeekendSession(weekend);
     setWeekend(next);
-    setActiveWeekendReport(latestWeekendReport(next));
   }
 
   function confirmTeamSelection() {
     const carIds = playerCarIdsFor(selectedTeamId);
-    const tyres = Object.fromEntries(carIds.map((carId) => [carId, "MEDIUM" as TyreCompound]));
+    const tyres = Object.fromEntries(carIds.map((carId) => [carId, chooseRaceStartTyreSet(carId, "MEDIUM")]));
     const weekendSeed = freshWeekendSeed();
     setWeekend(createWeekendState(weekendSeed, selectedTeamId));
+    raceTyreDefaultsSeed.current = null;
     setStartingTyres(tyres);
     setActiveWeekendReport(null);
+    presentedWeekendReports.current = 0;
     setSelectedCarId(carIds[0]);
     replayRecorder.current = new RaceReplayRecorder({ captureIntervalSeconds: 1, maxFrames: 1_800, watchedCarIds: carIds });
     pendingReplayReset.current = { expectedSeed: weekendSeed, expectedStartingTyres: null };
@@ -183,6 +261,34 @@ export function RaceShell() {
 
   if (error) {
     return <main className="fatal-state"><span>SIMULATION LINK ERROR</span><h1>{error}</h1><button onClick={() => window.location.reload()}>Reload pitwall</button></main>;
+  }
+
+  if (startPhase === "MENU" && teamConfirmed && weekend.currentSession.startsWith("Q")) {
+    return (
+      <QualifyingRaceView
+        activeReport={activeWeekendReport}
+        onAbortLap={(carId) => setWeekend((current) => abortQualifyingLap(current, carId))}
+        onAttackModeChange={(carId, mode) => setWeekend((current) => setQualifyingAttackMode(current, carId, mode))}
+        onCloseReport={() => setActiveWeekendReport(null)}
+        onCoolDown={(carId) => setWeekend((current) => coolDownQualifyingCar(current, carId))}
+        onEnergyModeChange={(carId, mode) => setWeekend((current) => setQualifyingEnergyMode(current, carId, mode))}
+        onFuelPlanChange={(carId, plan) => setWeekend((current) => setQualifyingFuelPlan(current, carId, plan))}
+        onHoldInGarage={(carId) => setWeekend((current) => holdQualifyingCar(current, carId))}
+        onOutLapModeChange={(carId, mode) => setWeekend((current) => setQualifyingOutLapMode(current, carId, mode))}
+        onPause={() => setWeekend((current) => toggleLiveQualifyingPause(current))}
+        onRelease={(carId) => setWeekend((current) => releaseQualifyingCar(current, carId))}
+        onReset={resetToMenu}
+        onReturnToPits={(carId) => setWeekend((current) => recallQualifyingCar(current, carId))}
+        onSelectCar={setSelectedCarId}
+        onSkipSession={() => setWeekend((current) => skipLiveQualifyingSession(current))}
+        onSpeedChange={(qualifyingSpeed) => setWeekend((current) => setLiveQualifyingSpeed(current, qualifyingSpeed))}
+        onStart={() => setWeekend((current) => startLiveQualifying(current))}
+        onTyreSetChange={(carId, tyreSetId) => setWeekend((current) => setQualifyingTyreSet(current, carId, tyreSetId))}
+        onWaitForGap={(carId) => setWeekend((current) => waitForQualifyingGap(current, carId))}
+        selectedCarId={selectedCarId}
+        state={weekend}
+      />
+    );
   }
 
   return (
@@ -197,7 +303,10 @@ export function RaceShell() {
           onRunSession={runCurrentWeekendSession}
           onSetupChange={(carId, setup) => setWeekend((current) => setWeekendCarSetup(current, carId, setup))}
           onStartRace={startRace}
-          onStartingTyreChange={(carId, compound) => setStartingTyres((current) => ({ ...current, [carId]: compound }))}
+          onStartingTyreChange={(carId, selection) => {
+            setStartingTyres((current) => ({ ...current, [carId]: selection }));
+            setWeekend((current) => reserveRacePreparationTyreSet(current, carId, selection.id));
+          }}
           startingTyres={startingTyres}
           state={weekend}
         />

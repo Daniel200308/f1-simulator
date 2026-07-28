@@ -1,0 +1,127 @@
+{
+  "passed": [
+    "Q1 opens with the full 18-minute clock",
+    "Q1 displays the P16 advancing cut",
+    "cars cannot be released before the session starts",
+    "1× qualifying speed can be selected",
+    "6× qualifying speed can be selected",
+    "30× qualifying speed can be selected",
+    "garage tyre can be changed to MEDIUM",
+    "garage tyre can be changed to HARD",
+    "garage tyre can be changed to SOFT",
+    "1600x900 ready has no document-level overflow",
+    "1600x900 ready qualifying shell fits the viewport",
+    "1600x900 ready primary command regions remain visible",
+    "1600x900 ready primary command regions have no hidden horizontal clipping",
+    "START Q1 changes the session to live",
+    "an out-lap can be recalled without recording a time",
+    "player qualifying phases advance with elapsed time",
+    "player and AI cars record live timed laps",
+    "live Classification produces three-decimal GAP values",
+    "track evolution readout remains present during the session",
+    "1600x900 live has no document-level overflow",
+    "1600x900 live qualifying shell fits the viewport",
+    "1600x900 live primary command regions remain visible",
+    "1600x900 live primary command regions have no hidden horizontal clipping",
+    "Q1 reaches the checkered flag and produces a two-car report",
+    "acknowledging Q1 opens Q2",
+    "Q2 contains 16 entrants and the P10 cut",
+    "1280x720 ready has no document-level overflow",
+    "1280x720 ready qualifying shell fits the viewport",
+    "1280x720 ready primary command regions remain visible",
+    "1280x720 ready primary command regions have no hidden horizontal clipping",
+    "1280x720 keeps session and car actions visible"
+  ],
+  "viewports": {
+    "1600x900 ready": {
+      "innerWidth": 1600,
+      "innerHeight": 900,
+      "scrollWidth": 1600,
+      "scrollHeight": 900,
+      "shell": {
+        "left": 8,
+        "top": 8,
+        "right": 1592,
+        "bottom": 892
+      },
+      "regions": [
+        {
+          "left": 9,
+          "top": 137,
+          "right": 1591,
+          "bottom": 215,
+          "scrollWidth": 1582,
+          "clientWidth": 1582
+        },
+        {
+          "left": 9,
+          "top": 215,
+          "right": 1591,
+          "bottom": 891,
+          "scrollWidth": 1582,
+          "clientWidth": 1582
+        }
+      ]
+    },
+    "1600x900 live": {
+      "innerWidth": 1600,
+      "innerHeight": 900,
+      "scrollWidth": 1600,
+      "scrollHeight": 900,
+      "shell": {
+        "left": 8,
+        "top": 8,
+        "right": 1592,
+        "bottom": 892
+      },
+      "regions": [
+        {
+          "left": 9,
+          "top": 137,
+          "right": 1591,
+          "bottom": 215,
+          "scrollWidth": 1582,
+          "clientWidth": 1582
+        },
+        {
+          "left": 9,
+          "top": 215,
+          "right": 1591,
+          "bottom": 891,
+          "scrollWidth": 1582,
+          "clientWidth": 1582
+        }
+      ]
+    },
+    "1280x720 ready": {
+      "innerWidth": 1280,
+      "innerHeight": 720,
+      "scrollWidth": 1280,
+      "scrollHeight": 720,
+      "shell": {
+        "left": 8,
+        "top": 8,
+        "right": 1272,
+        "bottom": 712
+      },
+      "regions": [
+        {
+          "left": 9,
+          "top": 117,
+          "right": 1271,
+          "bottom": 183,
+          "scrollWidth": 1262,
+          "clientWidth": 1262
+        },
+        {
+          "left": 9,
+          "top": 183,
+          "right": 1271,
+          "bottom": 711,
+          "scrollWidth": 1262,
+          "clientWidth": 1262
+        }
+      ]
+    }
+  }
+}

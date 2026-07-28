@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef } from "react";
 
-import type { CoolingMode, EnergyMode, PaceMode, SimulationSpeed, TeamOrderType, TyreCompound, TyreMode, WeekendTyreUsage } from "@/domain/race";
+import type { CoolingMode, EnergyMode, PaceMode, SimulationSpeed, TeamOrderType, TyreCompound, TyreMode, WeekendTyreInventory, WeekendTyreUsage } from "@/domain/race";
 import { DEFAULT_PLAYER_TEAM_ID } from "@/fixtures/grid";
 import { DEFAULT_SEED } from "@/simulation/engine";
 import type { WorkerCommand, WorkerEvent } from "@/simulation/protocol";
@@ -53,7 +53,7 @@ export function useRaceWorker() {
     box: (carId: string, compound: TyreCompound) => send({ type: "BOX", carId, compound }),
     servePenalty: (carId: string) => send({ type: "SERVE_PENALTY", carId }),
     stayOut: (carId: string) => send({ type: "CANCEL_PIT", carId }),
-    setStartingTyre: (carId: string, compound: TyreCompound) => send({ type: "SET_START_TYRE", carId, compound }),
-    reset: (seed = DEFAULT_SEED, gridOrder?: readonly string[], weekendTyreUsage?: WeekendTyreUsage, setupPerformanceByCar?: Readonly<Record<string, number>>, playerTeamId = DEFAULT_PLAYER_TEAM_ID) => send({ type: "RESET", seed, playerTeamId, gridOrder, weekendTyreUsage, setupPerformanceByCar }),
+    setStartingTyre: (carId: string, compound: TyreCompound, tyreSetId?: string) => send({ type: "SET_START_TYRE", carId, compound, tyreSetId }),
+    reset: (seed = DEFAULT_SEED, gridOrder?: readonly string[], weekendTyreUsage?: WeekendTyreUsage, setupPerformanceByCar?: Readonly<Record<string, number>>, playerTeamId = DEFAULT_PLAYER_TEAM_ID, weekendTyreInventory?: WeekendTyreInventory) => send({ type: "RESET", seed, playerTeamId, gridOrder, weekendTyreUsage, weekendTyreInventory, setupPerformanceByCar }),
   };
 }

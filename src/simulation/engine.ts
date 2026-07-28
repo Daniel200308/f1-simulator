@@ -1,7 +1,8 @@
 import type { EnergyDeploymentMode, EnergyManagementContext, EnergySystemState } from "@/domain/energy";
-import type { ActiveAeroMode, ActiveIncident, BattleStatus, CoolingMode, EnergyMode, EnergyState, PaceMode, PitStopIssue, RaceCarState, RaceControlStatus, RaceEvent, RaceSnapshot, RaceStatus, RacingLineMode, RadioMessage, TeamOrderType, TyreCompound, TyreMode, TyreSetState, TyreTemperatureState, WeatherState, WeekendTyreUsage } from "@/domain/race";
+import type { ActiveAeroMode, ActiveIncident, BattleStatus, CoolingMode, EnergyMode, EnergyState, PaceMode, PitStopIssue, RaceCarState, RaceControlStatus, RaceEvent, RaceSnapshot, RaceStatus, RacingLineMode, RadioMessage, TeamOrderType, TyreCompound, TyreMode, TyreSetState, TyreTemperatureState, WeatherState, WeekendTyreInventory, WeekendTyreUsage } from "@/domain/race";
 import { DEFAULT_PLAYER_TEAM_ID, DRIVER_BY_ID, DRIVERS, TEAM_BY_ID } from "@/fixtures/grid";
 import { buildAiStrategyDecision } from "@/simulation/ai-strategy";
+import { pitMistakeRiskBias, raceIncidentRiskMultiplier } from "@/simulation/driver-risk";
 import { ENERGY_SYSTEM_CONFIG, energyProfileForTeam, normalizeEnergyMode } from "@/simulation/energy/energy-config";
 import { buildEnergyRadioMessages } from "@/simulation/energy/energy-messages";
 import { chooseAiEnergyMode } from "@/simulation/energy/energy-strategy";
@@ -11,6 +12,7 @@ import { resolvePitStopExecution } from "@/simulation/pit-operations";
 import { signedNoise } from "@/simulation/random";
 import { calculateFieldRacecraft } from "@/simulation/racecraft";
 import { classifiedFieldHasFinished } from "@/simulation/race-finish";
+import { buildRaceStartingTyrePlan } from "@/simulation/starting-tyre-strategy";
 import { advancePenaltyLifecycle, reviewStewarding } from "@/simulation/stewarding";
 import { FIA_2026_PENALTY_RULES, isMandatoryPitPenalty, isTimePenalty, penaltyCrossingsRemaining, pitSpeedingIncidentQuota } from "@/simulation/fia-2026-rules";
 import {
@@ -30,6 +32,7 @@ import {
 } from "@/simulation/race-control";
 import { telemetrySpeedAtDistance } from "@/simulation/silverstone-telemetry";
 import { advanceBrakeTemperatures, advanceThermalStress, assessVehicleThermals, averageCornerTemperature, thermalPerformanceFactor, thermalSeverityRank, THERMAL_THRESHOLDS } from "@/simulation/thermal-management";
+import { raceStartTyreInventory, raceStartTyreSetsFor } from "@/simulation/tyre-allocation";
 import {
   normalizeLapDistance,
   pointAtDistance,
@@ -130,14 +133,6 @@ export const PIT_RELEASE_SAFE_GAP_METERS = 22;
 export const UNSAFE_RELEASE_MISTAKE_PROBABILITY_PER_RACE = 0.03;
 export const UNSAFE_REJOIN_MISTAKE_PROBABILITY_PER_RACE = 0.05;
 
-const TYRE_SET_ALLOCATION: Readonly<Record<TyreCompound, number>> = {
-  SOFT: 4,
-  MEDIUM: 3,
-  HARD: 2,
-  INTERMEDIATE: 2,
-  WET: 1,
-};
-
 function uniformTyreTemperatures(temperature: number): TyreTemperatureState {
   return { frontLeft: temperature, frontRight: temperature, rearLeft: temperature, rearRight: temperature };
 }
@@ -146,30 +141,23 @@ export function averageTyreTemperature(temperatures: TyreTemperatureState): numb
   return (temperatures.frontLeft + temperatures.frontRight + temperatures.rearLeft + temperatures.rearRight) / 4;
 }
 
-function createTyreSets(carId: string, fittedCompound: TyreCompound, usedCounts: Partial<Record<TyreCompound, number>> = {}): TyreSetState[] {
-  let fitted = false;
-  const remainingUsed = { ...usedCounts };
-  return (Object.keys(TYRE_SET_ALLOCATION) as TyreCompound[]).flatMap((compound) =>
-    Array.from({ length: TYRE_SET_ALLOCATION[compound] }, (_, index) => {
-      const isFitted = !fitted && compound === fittedCompound;
-      if (isFitted) fitted = true;
-      const isUsed = !isFitted && (remainingUsed[compound] ?? 0) > 0;
-      if (isUsed) remainingUsed[compound] = (remainingUsed[compound] ?? 0) - 1;
-      return {
-        id: `${carId}-${compound.toLowerCase()}-${index + 1}`,
-        compound,
-        status: isFitted ? "FITTED" : isUsed ? "USED" : "AVAILABLE",
-        condition: isUsed ? 88 : 100,
-        lapsUsed: isUsed ? 4 : 0,
-      } satisfies TyreSetState;
-    }),
-  );
+function createTyreSets(carId: string, fittedCompound: TyreCompound, usedCounts: Partial<Record<TyreCompound, number>> = {}, inventory?: WeekendTyreInventory): TyreSetState[] {
+  const source = inventory ?? { [carId]: usedCounts };
+  const compoundSets = raceStartTyreSetsFor(carId, fittedCompound, source);
+  const fitted = compoundSets.find((set) => set.status === "RESERVED") ?? compoundSets[0];
+  return raceStartTyreInventory(carId, source).map((set) => ({
+    id: set.id,
+    compound: set.compound,
+    status: set.id === fitted.id ? "FITTED" : set.freshness === "USED" ? "USED" : "AVAILABLE",
+    condition: set.condition,
+    lapsUsed: set.lapsUsed,
+  } satisfies TyreSetState));
 }
 
 function reserveTyreSet(car: RaceCarState, compound: TyreCompound): RaceCarState {
   const released = car.tyreSets.map((set) => set.status === "RESERVED" ? { ...set, status: "AVAILABLE" as const } : set);
   const candidate = released
-    .filter((set) => set.compound === compound && set.status === "AVAILABLE")
+    .filter((set) => set.compound === compound && (set.status === "AVAILABLE" || set.status === "USED"))
     .sort((a, b) => b.condition - a.condition)[0];
   if (!candidate) return { ...car, tyreSets: released, scheduledPitCompound: null, scheduledPitTyreSetId: null };
   return {
@@ -194,8 +182,10 @@ function createCar(
   index: number,
   seed: number,
   playerTeamId: string,
+  startingTyre: TyreCompound,
   weekendTyreUsage?: WeekendTyreUsage,
   setupPerformanceByCar?: Readonly<Record<string, number>>,
+  weekendTyreInventory?: WeekendTyreInventory,
 ): RaceCarState {
   const driver = DRIVER_BY_ID.get(driverId);
   if (!driver) throw new Error(`Unknown driver: ${driverId}`);
@@ -208,9 +198,10 @@ function createCar(
   const segment = SILVERSTONE_CIRCUIT.segments[segmentIndex];
   const lapDistance = normalizeLapDistance(startingDistance);
 
-  const tyreCompound = driver.teamId === playerTeamId ? "MEDIUM" : DRY_COMPOUNDS[(index + Math.floor(index / 2)) % DRY_COMPOUNDS.length];
-  const tyreSets = createTyreSets(driver.id, tyreCompound, weekendTyreUsage?.[driver.id]);
-  const activeTyreSetId = tyreSets.find((set) => set.status === "FITTED")!.id;
+  const tyreCompound = startingTyre;
+  const tyreSets = createTyreSets(driver.id, tyreCompound, weekendTyreUsage?.[driver.id], weekendTyreInventory);
+  const activeTyreSet = tyreSets.find((set) => set.status === "FITTED")!;
+  const activeTyreSetId = activeTyreSet.id;
   const initialSoc = (72 + (index % 4) * 4) / 100;
   const energySystem = createEnergySystemState(initialSoc, 43);
 
@@ -234,8 +225,8 @@ function createCar(
     gapToCarAhead: index === 0 ? 0 : 0.18,
     gapToCarBehind: index === DRIVERS.length - 1 ? 0 : 0.18,
     tyreCompound,
-    tyreAgeLaps: 0,
-    tyreLife: 100,
+    tyreAgeLaps: activeTyreSet.lapsUsed,
+    tyreLife: activeTyreSet.condition,
     tyreTemperatures: uniformTyreTemperatures(88),
     tyreTemperature: 88,
     tyreSets,
@@ -339,6 +330,7 @@ export function createInitialSnapshot(
   weekendTyreUsage?: WeekendTyreUsage,
   setupPerformanceByCar?: Readonly<Record<string, number>>,
   playerTeamId = DEFAULT_PLAYER_TEAM_ID,
+  weekendTyreInventory?: WeekendTyreInventory,
 ): RaceSnapshot {
   if (!TEAM_BY_ID.has(playerTeamId)) throw new RangeError(`Unknown player team: ${playerTeamId}.`);
   const knownCars = new Set(DRIVERS.map((driver) => driver.id));
@@ -346,8 +338,9 @@ export function createInitialSnapshot(
     && new Set(requestedGridOrder).size === DRIVERS.length
     && requestedGridOrder.every((carId) => knownCars.has(carId));
   const gridOrder = validGrid ? requestedGridOrder : DRIVERS.map((driver) => driver.id);
-  const cars = gridOrder.map((driverId, index) => createCar(driverId, index, seed, playerTeamId, weekendTyreUsage, setupPerformanceByCar));
   const weather = createSpatialWeather(seed);
+  const startingTyrePlan = buildRaceStartingTyrePlan({ seed, gridOrder, tyreUsage: weekendTyreUsage, weather });
+  const cars = gridOrder.map((driverId, index) => createCar(driverId, index, seed, playerTeamId, startingTyrePlan[driverId].compound, weekendTyreUsage, setupPerformanceByCar, weekendTyreInventory));
   return {
     seed,
     playerTeamId,
@@ -1240,7 +1233,8 @@ function updateIncidents(snapshot: RaceSnapshot, weather: WeatherState, tick: nu
       const speedRisk = car.currentSpeed > 270 ? 0.55 : 0;
       const localWater = effectiveWaterAtDistance(weather, car.lapDistance, SILVERSTONE_CIRCUIT.lengthMeters);
       const rotatingExposure = 1 + (((index + Math.floor(elapsedTime / 180)) % Math.max(1, cars.length)) / Math.max(1, cars.length - 1)) * 0.36;
-      const risk = INCIDENT_BASE_PROBABILITY_PER_CAR_SECOND * rotatingExposure * (1 + localWater * 4.2 + tyreRisk + speedRisk);
+      const driverRisk = raceIncidentRiskMultiplier(DRIVER_BY_ID.get(car.driverId)?.risk ?? 6);
+      const risk = INCIDENT_BASE_PROBABILITY_PER_CAR_SECOND * rotatingExposure * driverRisk * (1 + localWater * 4.2 + tyreRisk + speedRisk);
       const roll = (signedNoise(snapshot.seed, 40_000 + index, tick) + 1) / 2;
       if (roll >= risk) return car;
 
@@ -1787,10 +1781,10 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
     .filter((car) => car.pitStatus === "PIT_ENTRY" && normalizeLapDistance(car.totalDistance) >= PIT_LANE_START)
     .sort((left, right) => {
       const risk = (car: RaceCarState) => {
-        const consistency = DRIVER_BY_ID.get(car.driverId)?.consistency ?? 1;
+        const driverRisk = DRIVER_BY_ID.get(car.driverId)?.risk ?? 6;
         const localWater = effectiveWaterAtDistance(weather, car.lapDistance, SILVERSTONE_CIRCUIT.lengthMeters);
         return signedNoise(snapshot.seed, 74_000 + car.gridPosition, car.pitStops + 1) * 0.52
-          + clamp((1.01 - consistency) * 24, 0, 0.35)
+          + pitMistakeRiskBias(driverRisk)
           + localWater * 0.28
           + car.damageLevel * 0.22
           + clamp(car.brakeStress ?? 0, 0, 1) * 0.12
@@ -2797,7 +2791,7 @@ export function setCarPit(snapshot: RaceSnapshot, carId: string, compound: TyreC
   return {
     ...snapshot,
     cars,
-    radioMessages: appendRadio(snapshot, carId, scheduled ? `Box this lap. Fit ${compound}.` : `No fresh ${compound} set available. Stay out.`, scheduled ? "WARNING" : "URGENT", scheduled ? "box" : "no-tyres"),
+    radioMessages: appendRadio(snapshot, carId, scheduled ? `Box this lap. Fit ${compound}.` : `No usable ${compound} set available. Stay out.`, scheduled ? "WARNING" : "URGENT", scheduled ? "box" : "no-tyres"),
   };
 }
 
@@ -2827,14 +2821,20 @@ export function cancelCarPit(snapshot: RaceSnapshot, carId: string): RaceSnapsho
   };
 }
 
-export function setCarStartingTyre(snapshot: RaceSnapshot, carId: string, compound: TyreCompound): RaceSnapshot {
+export function setCarStartingTyre(snapshot: RaceSnapshot, carId: string, compound: TyreCompound, tyreSetId?: string): RaceSnapshot {
   if (snapshot.elapsedTime > 0 || snapshot.status === "RUNNING") return snapshot;
   return {
     ...snapshot,
     cars: snapshot.cars.map((car) => {
-      if (car.carId !== carId || car.tyreCompound === compound) return car;
-      const released = car.tyreSets.map((set) => set.id === car.activeTyreSetId ? { ...set, status: "AVAILABLE" as const } : set);
-      const nextSet = released.find((set) => set.compound === compound && set.status === "AVAILABLE");
+      if (car.carId !== carId) return car;
+      if (car.tyreCompound === compound && (!tyreSetId || tyreSetId === car.activeTyreSetId)) return car;
+      const released = car.tyreSets.map((set) => set.id === car.activeTyreSetId
+        ? { ...set, status: set.lapsUsed > 0 ? "USED" as const : "AVAILABLE" as const }
+        : set);
+      const candidates = released
+        .filter((set) => set.compound === compound && (set.status === "AVAILABLE" || set.status === "USED"))
+        .sort((left, right) => right.condition - left.condition || left.lapsUsed - right.lapsUsed);
+      const nextSet = tyreSetId ? candidates.find((set) => set.id === tyreSetId) : candidates[0];
       if (!nextSet) return car;
       return {
         ...car,

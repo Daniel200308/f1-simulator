@@ -77,7 +77,7 @@ function wetCompound(weather: WeatherState): TyreCompound | null {
 }
 
 function setAvailable(sets: readonly TyreSetState[], compound: TyreCompound): boolean {
-  return sets.some((set) => set.compound === compound && (set.status === "AVAILABLE" || set.status === "RESERVED" || set.status === "FITTED"));
+  return sets.some((set) => set.compound === compound && (set.status === "AVAILABLE" || set.status === "USED" || set.status === "RESERVED" || set.status === "FITTED"));
 }
 
 function availableCompound(sets: readonly TyreSetState[], preferred: TyreCompound, fallbacks: readonly TyreCompound[]): TyreCompound {
@@ -155,7 +155,7 @@ function scorePlan(context: RaceStrategyPlanContext, stints: readonly RaceStrate
     const capacity = usableLaps(stint.compound, startingLife);
     const overflow = Math.max(0, laps - capacity);
     maximumWearOverflow = Math.max(maximumWearOverflow, overflow);
-    score += overflow * overflow * 0.58;
+    score += overflow * overflow * 1.45;
     if (wet) {
       score += stint.compound === wet ? 0 : laps * (stint.compound === "INTERMEDIATE" || stint.compound === "WET" ? 0.65 : 3.2);
     } else {
@@ -166,6 +166,8 @@ function scorePlan(context: RaceStrategyPlanContext, stints: readonly RaceStrate
   if (context.raceControl === "SAFETY_CAR" && stints[0]?.pitAtEnd) score -= 4.8;
   if (context.raceControl === "VSC" && stints[0]?.pitAtEnd) score -= 2.6;
   const lowestLife = Math.min(...stints.map((stint) => stint.projectedLifeAtEnd));
+  if (lowestLife <= 5) score += 18;
+  else if (lowestLife <= 12) score += 7;
   const risk: RaceStrategyPlanRisk = maximumWearOverflow >= 5 || lowestLife <= 5
     ? "HIGH"
     : maximumWearOverflow >= 1 || lowestLife <= 20 ? "MEDIUM" : "LOW";
@@ -213,7 +215,11 @@ function candidatesFor(context: RaceStrategyPlanContext): readonly CandidatePlan
   }
 
   const finishLaps = context.totalLaps - naturalStop;
-  const finishCompound = availableCompound(context.tyreSets, finishLaps > 23 ? "HARD" : finishLaps > 12 ? "MEDIUM" : "SOFT", ["HARD", "MEDIUM", "SOFT"]);
+  const finishCompound = availableDifferentDryCompound(
+    context.tyreSets,
+    finishLaps > 23 ? "HARD" : finishLaps > 12 ? "MEDIUM" : "SOFT",
+    context.tyreCompound,
+  );
   const secondStopNeeded = finishLaps > usableLaps(finishCompound);
   const secondStopLap = Math.min(context.totalLaps - 1, naturalStop + Math.max(8, usableLaps(finishCompound) - 2));
   const finalSprint = availableCompound(context.tyreSets, context.totalLaps - secondStopLap <= 12 ? "SOFT" : "MEDIUM", ["MEDIUM", "HARD", "SOFT"]);
@@ -244,7 +250,7 @@ function candidatesFor(context: RaceStrategyPlanContext): readonly CandidatePlan
     },
     {
       name: "LONG-STINT ONE-STOP",
-      stops: [{ lap: extendLap, compound: availableCompound(context.tyreSets, "HARD", ["MEDIUM", "SOFT"]) }],
+      stops: [{ lap: extendLap, compound: availableDifferentDryCompound(context.tyreSets, "HARD", context.tyreCompound) }],
       rationale: "Extend the opening stint to protect track position, then use the most durable available set.",
     },
   ];

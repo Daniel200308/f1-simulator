@@ -1,5 +1,7 @@
 "use client";
 
+import { ArrowLeftRight, Shield, Swords } from "lucide-react";
+
 import type { EnergyMode, PaceMode, RaceCarState, TeamOrderType, TyreCompound, TyreMode } from "@/domain/race";
 import { TyreBadge } from "@/components/race/tyre-badge";
 import { DEFAULT_PLAYER_TEAM_ID, DRIVER_BY_ID, playerCarIdsFor, TEAM_BY_ID } from "@/fixtures/grid";
@@ -50,7 +52,7 @@ export function CommandDock({ car, controls, pitLaneOpen }: { car?: RaceCarState
   const playerCarIds = playerCarIdsFor(snapshot?.playerTeamId ?? DEFAULT_PLAYER_TEAM_ID);
   const enabled = Boolean(car && car.teamId === snapshot?.playerTeamId && !car.finished && car.incidentStatus !== "RETIRED");
   const tyreSetsFor = (compound: TyreCompound) => car?.tyreSets?.filter((set) => set.compound === compound) ?? [];
-  const availableSetsFor = (compound: TyreCompound) => tyreSetsFor(compound).filter((set) => set.status === "AVAILABLE").length;
+  const availableSetsFor = (compound: TyreCompound) => tyreSetsFor(compound).filter((set) => set.status === "AVAILABLE" || set.status === "USED").length;
 
   return (
     <div className="command-console">
@@ -79,7 +81,8 @@ export function CommandDock({ car, controls, pitLaneOpen }: { car?: RaceCarState
         <div aria-label="Team orders" className="team-order-rail" role="group">
           {(["NONE", "HOLD_POSITION", "SWAP_CARS"] as const).map((order) => (
             <button aria-pressed={(snapshot?.teamOrder?.type ?? "NONE") === order} disabled={!snapshot || snapshot.status === "FINISHED"} key={order} onClick={() => controls.setTeamOrder(order)} title={order === "NONE" ? "Let both drivers race" : order === "HOLD_POSITION" ? "Hold the current team order" : "Release the following car and swap positions"} type="button">
-              {order === "NONE" ? "FREE" : order === "HOLD_POSITION" ? "HOLD" : "SWAP"}
+              {order === "NONE" ? <Swords aria-hidden="true" size={14} /> : order === "HOLD_POSITION" ? <Shield aria-hidden="true" size={14} /> : <ArrowLeftRight aria-hidden="true" size={14} />}
+              <span>{order === "NONE" ? "FREE" : order === "HOLD_POSITION" ? "HOLD" : "SWAP"}</span>
             </button>
           ))}
         </div>

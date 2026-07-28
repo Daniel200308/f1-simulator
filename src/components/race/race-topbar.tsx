@@ -3,10 +3,14 @@
 import { useEffect, useRef, useState } from "react";
 
 import {
+  Cloud,
+  CloudRain,
   CloudSun,
+  Droplets,
   Pause,
   Play,
   RotateCcw,
+  Sun,
   Thermometer,
   Zap,
 } from "lucide-react";
@@ -34,6 +38,13 @@ function getWeatherLabel(snapshot: RaceSnapshot | null): string {
   if (conditions.size > 1) return "MIXED";
   if (conditions.size === 1) return [...conditions][0].replace("_", " ");
   return (snapshot?.weather.condition ?? "DRY").replace("_", " ");
+}
+
+function WeatherGlyph({ label }: { label: string }) {
+  if (label === "DRY") return <Sun aria-hidden="true" size={22} />;
+  if (label === "CLOUDY") return <Cloud aria-hidden="true" size={22} />;
+  if (label === "LIGHT RAIN" || label === "HEAVY RAIN") return <CloudRain aria-hidden="true" size={22} />;
+  return <CloudSun aria-hidden="true" size={22} />;
 }
 
 interface TrackFlagDisplay {
@@ -75,6 +86,8 @@ export function RaceTopbar({
   const flashKey = `${flagDisplay.key}:${snapshot?.safetyCarLappedCarsMayOvertake ? "wave-by" : "standard"}`;
   const previousFlagState = useRef(flashKey);
   const [flagFlashing, setFlagFlashing] = useState(false);
+  const trackTemperature = Math.round(snapshot?.weather.trackTemperature ?? 31);
+  const trackWetness = Math.round((snapshot?.weather.trackWetness ?? 0) * 100);
 
   useEffect(() => {
     if (previousFlagState.current === flashKey) return;
@@ -117,18 +130,18 @@ export function RaceTopbar({
           <div className="control-message-meta">
             <span>FIA RACE CONTROL · {controlMessageClock}</span>
           </div>
-          <strong className="control-message-title">{controlHeadline}</strong>
-          <p className="control-message-detail">{controlDetail}</p>
+          <strong className="control-message-title" title={controlHeadline}>{controlHeadline}</strong>
+          <p className="control-message-detail" title={controlDetail}>{controlDetail}</p>
         </section>
 
         <section className="broadcast-conditions conditions-cluster" aria-label={`Track ${Math.round(snapshot?.weather.trackTemperature ?? 31)} degrees, weather ${weatherLabel}`}>
-          <span className="condition-reading">
-            <Thermometer size={16} aria-hidden="true" />
-            <span><small>TRACK</small><strong>{Math.round(snapshot?.weather.trackTemperature ?? 31)}°</strong></span>
+          <span className="condition-reading condition-reading--temperature">
+            <i className="condition-glyph"><Thermometer size={22} aria-hidden="true" /><b style={{ height: `${Math.max(18, Math.min(88, (trackTemperature - 15) * 3))}%` }} /></i>
+            <span><small>TRACK TEMP</small><strong><b>{trackTemperature}</b><em>°C</em></strong></span>
           </span>
-          <span className="condition-reading">
-            <CloudSun size={16} aria-hidden="true" />
-            <span><small>WEATHER</small><strong>{weatherLabel}</strong></span>
+          <span className="condition-reading condition-reading--weather" data-weather={weatherLabel.replaceAll(" ", "_")}>
+            <i className="condition-glyph"><WeatherGlyph label={weatherLabel} /></i>
+            <span><small>WEATHER</small><strong>{weatherLabel}</strong><em><Droplets aria-hidden="true" size={10} /> {trackWetness}% WET</em></span>
           </span>
         </section>
       </div>

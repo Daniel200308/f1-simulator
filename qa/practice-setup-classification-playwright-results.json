@@ -1,0 +1,63 @@
+{
+  "passed": [
+    "both player cars expose all 12 setup controls",
+    "all setup sliders use -50 to 50 with integer steps",
+    "negative endpoint is displayed without clipping",
+    "positive endpoint is displayed with a clear sign",
+    "neutral setup value remains available",
+    "1600x900 baseline has no document-level horizontal overflow",
+    "1600x900 baseline has no document-level vertical overflow",
+    "1600x900 baseline practice shell fits the viewport",
+    "FP1 recommendation bands retain 40 setup points",
+    "FP1 Classification renders all 22 drivers",
+    "Classification position and driver typography is enlarged",
+    "Classification GAP is large and high contrast",
+    "1600x900 classification has no document-level horizontal overflow",
+    "1600x900 classification has no document-level vertical overflow",
+    "1600x900 classification practice shell fits the viewport",
+    "FP2 recommendation bands narrow to 30 setup points",
+    "FP3 recommendation bands remain a non-trivial 22 setup points",
+    "1280x720 Classification panel remains inside the viewport",
+    "1280x720 classification has no document-level horizontal overflow",
+    "1280x720 classification has no document-level vertical overflow",
+    "1280x720 classification practice shell fits the viewport"
+  ],
+  "viewports": {
+    "1600x900 baseline": {
+      "innerWidth": 1600,
+      "innerHeight": 900,
+      "scrollWidth": 1600,
+      "scrollHeight": 900,
+      "shell": {
+        "left": 8,
+        "top": 8,
+        "right": 1592,
+        "bottom": 892
+      }
+    },
+    "1600x900 classification": {
+      "innerWidth": 1600,
+      "innerHeight": 900,
+      "scrollWidth": 1600,
+      "scrollHeight": 900,
+      "shell": {
+        "left": 8,
+        "top": 8,
+        "right": 1592,
+        "bottom": 892
+      }
+    },
+    "1280x720 classification": {
+      "innerWidth": 1280,
+      "innerHeight": 720,
+      "scrollWidth": 1280,
+      "scrollHeight": 720,
+      "shell": {
+        "left": 8,
+        "top": 8,
+        "right": 1272,
+        "bottom": 712
+      }
+    }
+  }
+}

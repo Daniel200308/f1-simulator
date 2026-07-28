@@ -41,17 +41,18 @@ describe("AI strategy model", () => {
     expect(vsc.intent).toBe("CHEAP_STOP");
   });
 
-  it("keeps fresh dry tyres on track during the opening laps", () => {
+  it("keeps a fresh strategically selected dry tyre on track during the opening laps", () => {
     const snapshot = createInitialSnapshot(4_242);
     const cars = snapshot.cars.filter((car) => car.teamId !== snapshot.playerTeamId);
-    const softCar = cars.find((car) => car.tyreCompound === "SOFT")!;
+    const dryTyreCar = cars.find((car) => car.tyreCompound === "SOFT" || car.tyreCompound === "MEDIUM" || car.tyreCompound === "HARD");
+    expect(dryTyreCar).toBeDefined();
     const decision = buildAiStrategyDecision({
       trackWetness: 0,
       weather: snapshot.weather,
       raceControl: "GREEN",
       pitLaneOpen: true,
       cars,
-    }, softCar);
+    }, dryTyreCar!);
 
     expect(decision.pitNow).toBe(false);
     expect(decision.compound).toBeNull();

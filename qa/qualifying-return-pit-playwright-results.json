@@ -1,0 +1,226 @@
+{
+  "passed": [
+    "1280x720 has no document overflow",
+    "1280x720 keeps the qualifying shell and controls above the fold",
+    "1280x720 keeps all four tyre labels and values unclipped",
+    "1280x720 exposes persistent FL/FR/RL/RR wheel names",
+    "1280x720 uses a proportionate thin circuit line and halo",
+    "1280x720 removes the ERS readout from driver telemetry",
+    "1280x720 renders one dedicated straight pit path",
+    "1280x720 marks the garage pit-box endpoint",
+    "1280x720 explains the pit-entry marker state",
+    "1280x720 Return changes to INLAP instead of teleporting",
+    "1280x720 keeps a returning car visible on the live circuit",
+    "1280x720 exposes the PIT ENTRY phase before garage",
+    "1280x720 Abort cancels the attempt into a physical INLAP",
+    "1280x720 keeps an aborted car visible while returning",
+    "1280x720 completes Abort through IN LAP and PIT ENTRY before GARAGE",
+    "1440x900 has no document overflow",
+    "1440x900 keeps the qualifying shell and controls above the fold",
+    "1440x900 keeps all four tyre labels and values unclipped",
+    "1440x900 exposes persistent FL/FR/RL/RR wheel names",
+    "1440x900 uses a proportionate thin circuit line and halo",
+    "1440x900 removes the ERS readout from driver telemetry",
+    "1440x900 renders one dedicated straight pit path",
+    "1440x900 marks the garage pit-box endpoint",
+    "1440x900 explains the pit-entry marker state",
+    "1440x900 Return changes to INLAP instead of teleporting",
+    "1440x900 keeps a returning car visible on the live circuit",
+    "1440x900 exposes the PIT ENTRY phase before garage",
+    "1440x900 Abort cancels the attempt into a physical INLAP",
+    "1440x900 keeps an aborted car visible while returning",
+    "1440x900 completes Abort through IN LAP and PIT ENTRY before GARAGE",
+    "browser reports no runtime errors"
+  ],
+  "viewports": {
+    "1280x720": {
+      "innerWidth": 1280,
+      "innerHeight": 720,
+      "scrollWidth": 1280,
+      "scrollHeight": 720,
+      "root": {
+        "left": 0,
+        "top": 0,
+        "right": 1280,
+        "bottom": 720,
+        "width": 1280,
+        "height": 720
+      },
+      "controls": {
+        "left": 972,
+        "top": 88,
+        "right": 1272,
+        "bottom": 712,
+        "width": 300,
+        "height": 624
+      },
+      "map": {
+        "left": 347,
+        "top": 89,
+        "right": 963,
+        "bottom": 711,
+        "width": 616,
+        "height": 622
+      },
+      "tyres": [
+        {
+          "text": "FLFront Left82°",
+          "rect": {
+            "left": 981,
+            "top": 225,
+            "right": 1119,
+            "bottom": 250,
+            "width": 138,
+            "height": 25
+          },
+          "clientWidth": 138,
+          "scrollWidth": 138,
+          "clientHeight": 25,
+          "scrollHeight": 25
+        },
+        {
+          "text": "FRFront Right82°",
+          "rect": {
+            "left": 1125,
+            "top": 225,
+            "right": 1263,
+            "bottom": 250,
+            "width": 138,
+            "height": 25
+          },
+          "clientWidth": 138,
+          "scrollWidth": 138,
+          "clientHeight": 25,
+          "scrollHeight": 25
+        },
+        {
+          "text": "RLRear Left82°",
+          "rect": {
+            "left": 981,
+            "top": 254,
+            "right": 1119,
+            "bottom": 279,
+            "width": 138,
+            "height": 25
+          },
+          "clientWidth": 138,
+          "scrollWidth": 138,
+          "clientHeight": 25,
+          "scrollHeight": 25
+        },
+        {
+          "text": "RRRear Right82°",
+          "rect": {
+            "left": 1125,
+            "top": 254,
+            "right": 1263,
+            "bottom": 279,
+            "width": 138,
+            "height": 25
+          },
+          "clientWidth": 138,
+          "scrollWidth": 138,
+          "clientHeight": 25,
+          "scrollHeight": 25
+        }
+      ],
+      "trackStroke": "4.5px",
+      "haloStroke": "12px"
+    },
+    "1440x900": {
+      "innerWidth": 1440,
+      "innerHeight": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900,
+      "root": {
+        "left": 0,
+        "top": 0,
+        "right": 1440,
+        "bottom": 900,
+        "width": 1440,
+        "height": 900
+      },
+      "controls": {
+        "left": 1114,
+        "top": 88,
+        "right": 1432,
+        "bottom": 892,
+        "width": 318,
+        "height": 804
+      },
+      "map": {
+        "left": 367,
+        "top": 89,
+        "right": 1105,
+        "bottom": 891,
+        "width": 738,
+        "height": 802
+      },
+      "tyres": [
+        {
+          "text": "FLFront Left82°",
+          "rect": {
+            "left": 1125,
+            "top": 239,
+            "right": 1270,
+            "bottom": 264.5,
+            "width": 145,
+            "height": 25.5
+          },
+          "clientWidth": 145,
+          "scrollWidth": 145,
+          "clientHeight": 26,
+          "scrollHeight": 26
+        },
+        {
+          "text": "FRFront Right82°",
+          "rect": {
+            "left": 1276,
+            "top": 239,
+            "right": 1421,
+            "bottom": 264.5,
+            "width": 145,
+            "height": 25.5
+          },
+          "clientWidth": 145,
+          "scrollWidth": 145,
+          "clientHeight": 26,
+          "scrollHeight": 26
+        },
+        {
+          "text": "RLRear Left82°",
+          "rect": {
+            "left": 1125,
+            "top": 268.5,
+            "right": 1270,
+            "bottom": 294,
+            "width": 145,
+            "height": 25.5
+          },
+          "clientWidth": 145,
+          "scrollWidth": 145,
+          "clientHeight": 26,
+          "scrollHeight": 26
+        },
+        {
+          "text": "RRRear Right82°",
+          "rect": {
+            "left": 1276,
+            "top": 268.5,
+            "right": 1421,
+            "bottom": 294,
+            "width": 145,
+            "height": 25.5
+          },
+          "clientWidth": 145,
+          "scrollWidth": 145,
+          "clientHeight": 26,
+          "scrollHeight": 26
+        }
+      ],
+      "trackStroke": "4.5px",
+      "haloStroke": "12px"
+    }
+  },
+  "consoleErrors": []
+}

@@ -11,6 +11,7 @@ export type BattleStatus = "CLEAR" | "ATTACKING" | "DEFENDING" | "SIDE_BY_SIDE";
 export type RacingLineMode = "GRID" | "RACING" | "ATTACK" | "DEFEND";
 export type TyreCompound = "SOFT" | "MEDIUM" | "HARD" | "INTERMEDIATE" | "WET";
 export type TyreSetStatus = "AVAILABLE" | "FITTED" | "RESERVED" | "USED";
+export type WeekendTyreSetStatus = "NEW" | "USED" | "FITTED" | "RESERVED" | "UNAVAILABLE";
 export type PitStopIssue = "NONE" | "SLOW_RELEASE" | "WHEEL_GUN" | "DOUBLE_STACK";
 export type StrategyIntent = "HOLD" | "EXTEND" | "UNDERCUT" | "OVERCUT" | "WEATHER" | "CHEAP_STOP" | "TYRE_LIMIT";
 export type TeamOrderType = "NONE" | "HOLD_POSITION" | "SWAP_CARS";
@@ -66,6 +67,20 @@ export type PenaltyStatus = "PENDING" | "SERVING" | "SERVED" | "CONVERTED_TO_RAC
 export type PitServicePhase = "NONE" | "PENALTY_HOLD" | "TYRE_SERVICE" | "RELEASE_HOLD" | "DRIVE_THROUGH" | "STOP_GO_HOLD";
 export type WeatherSector = 1 | 2 | 3;
 export type WeekendTyreUsage = Readonly<Record<string, Partial<Record<TyreCompound, number>>>>;
+
+/** A physical tyre set that persists from Q1 through race preparation. */
+export interface WeekendTyreSet {
+  id: string;
+  compound: TyreCompound;
+  driverId: string;
+  status: WeekendTyreSetStatus;
+  wearPercent: number;
+  heatCycles: number;
+  lapsCompleted: number;
+  sessionHistory: readonly string[];
+}
+
+export type WeekendTyreInventory = Readonly<Record<string, readonly WeekendTyreSet[]>>;
 
 export interface WeatherRadarCell {
   id: string;
@@ -253,6 +268,7 @@ export interface DriverDefinition {
   number: number;
   pace: number;
   consistency: number;
+  risk: number;
 }
 
 export interface TrackPoint {

@@ -62,7 +62,7 @@ context.onmessage = (message: MessageEvent<WorkerCommand>) => {
     switch (message.data.type) {
       case "INIT":
       case "RESET":
-        snapshot = createInitialSnapshot(message.data.seed, "PAUSED", message.data.gridOrder, message.data.weekendTyreUsage, message.data.setupPerformanceByCar, message.data.playerTeamId);
+        snapshot = createInitialSnapshot(message.data.seed, "PAUSED", message.data.gridOrder, message.data.weekendTyreUsage, message.data.setupPerformanceByCar, message.data.playerTeamId, message.data.weekendTyreInventory);
         paused = true;
         autoPauseReason = null;
         accumulator = 0;
@@ -132,7 +132,7 @@ context.onmessage = (message: MessageEvent<WorkerCommand>) => {
         publish();
         break;
       case "SET_START_TYRE":
-        snapshot = setCarStartingTyre(snapshot, message.data.carId, message.data.compound);
+        snapshot = setCarStartingTyre(snapshot, message.data.carId, message.data.compound, message.data.tyreSetId);
         publish();
         break;
     }

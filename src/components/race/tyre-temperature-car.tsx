@@ -88,6 +88,7 @@ interface VehicleThermalMapProps {
   powerUnitTemperature: number;
   gearboxTemperature: number;
   energyStoreTemperature: number;
+  showEnergyStore?: boolean;
   thermalDeratePercent: number;
   thermalRiskPercent: number;
 }
@@ -100,6 +101,7 @@ export function VehicleThermalMap({
   powerUnitTemperature,
   gearboxTemperature,
   energyStoreTemperature,
+  showEnergyStore = true,
   thermalDeratePercent,
   thermalRiskPercent,
 }: VehicleThermalMapProps) {
@@ -115,7 +117,7 @@ export function VehicleThermalMap({
     `brakes ${brakeTemperature.toFixed(1)} degrees`,
     `power unit ${powerUnitTemperature.toFixed(1)} degrees`,
     `gearbox ${gearboxTemperature.toFixed(1)} degrees`,
-    `energy store ${energyStoreTemperature.toFixed(1)} degrees`,
+    ...(showEnergyStore ? [`energy store ${energyStoreTemperature.toFixed(1)} degrees`] : []),
   ].join(", ");
 
   return (
@@ -152,11 +154,11 @@ export function VehicleThermalMap({
         <span className="vehicle-thermal__core" aria-hidden="true"><CircleGauge size={11} /></span>
       </div>
 
-      <div className="vehicle-thermal__systems">
+      <div className={`vehicle-thermal__systems ${showEnergyStore ? "" : "vehicle-thermal__systems--three"}`}>
         <SystemTemperature icon={<Disc3 size={12} />} label="BRAKE" thresholds={[350, 900, 1050]} temperature={brakeTemperature} />
         <SystemTemperature icon={<CircleGauge size={12} />} label="PU" thresholds={[82, 118, 125]} temperature={powerUnitTemperature} />
         <SystemTemperature icon={<Cog size={12} />} label="GBX" thresholds={[65, 110, 120]} temperature={gearboxTemperature} />
-        <SystemTemperature icon={<BatteryCharging size={12} />} label="E-STORE" thresholds={[18, 55, 63]} temperature={energyStoreTemperature} />
+        {showEnergyStore && <SystemTemperature icon={<BatteryCharging size={12} />} label="E-STORE" thresholds={[18, 55, 63]} temperature={energyStoreTemperature} />}
       </div>
     </section>
   );

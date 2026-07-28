@@ -14,6 +14,16 @@
   --broadcast-red: #e10600;
   --font-geist: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --ui-scale: 1;
+  --ui-font-label: clamp(10px, calc(10px * var(--ui-scale)), 13px);
+  --ui-font-body: clamp(12px, calc(12px * var(--ui-scale)), 15px);
+  --ui-font-data: clamp(13px, calc(13px * var(--ui-scale)), 17px);
+  --ui-font-title: clamp(16px, calc(16px * var(--ui-scale)), 20px);
+  --ui-row-height: clamp(36px, calc(36px * var(--ui-scale)), 45px);
+  --ui-space-xs: clamp(4px, calc(4px * var(--ui-scale)), 5px);
+  --ui-space-sm: clamp(6px, calc(6px * var(--ui-scale)), 8px);
+  --ui-space-md: clamp(9px, calc(9px * var(--ui-scale)), 12px);
+  --ui-topbar-height: clamp(80px, calc(72px + 8px * var(--ui-scale)), 84px);
 }
 
 * { box-sizing: border-box; }
@@ -182,7 +192,7 @@ button { font: inherit; }
 
 .f1-tyre-badge { --tyre-color: #e8eff2; position: relative; display: inline-grid; place-items: center; flex: 0 0 auto; border: 2px solid var(--tyre-color); border-radius: 50%; color: var(--tyre-color); background: #060a0d; box-shadow: inset 0 0 0 2px #111a1f, 0 0 7px color-mix(in srgb, var(--tyre-color) 38%, transparent); font-family: var(--font-mono); font-weight: 900; line-height: 1; }
 .f1-tyre-badge::before { content: ""; position: absolute; inset: 2px; border: 1px dashed color-mix(in srgb, var(--tyre-color) 55%, transparent); border-radius: 50%; }
-.f1-tyre-badge > span { position: relative; z-index: 1; }
+.f1-tyre-badge > span { position: absolute; z-index: 1; inset: 0; display: grid; place-items: center; line-height: 1; }
 .f1-tyre-badge--size-small { width: 22px; height: 22px; font-size: 8px; }
 .f1-tyre-badge--size-medium { width: 31px; height: 31px; font-size: 10px; }
 .f1-tyre-badge--size-large { width: 42px; height: 42px; font-size: 13px; }
@@ -192,7 +202,7 @@ button { font: inherit; }
 .f1-tyre-badge--intermediate { --tyre-color: #36dc79; }
 .f1-tyre-badge--wet { --tyre-color: #398cff; }
 
-.map-column { position: relative; min-width: 0; min-height: 0; display: grid; grid-template-rows: 58px minmax(300px, 1fr) clamp(170px, 20dvh, 190px); overflow: hidden; }
+.map-column { position: relative; min-width: 0; min-height: 0; display: grid; grid-template-rows: 58px minmax(300px, 1fr) clamp(180px, 20dvh, 190px); overflow: hidden; }
 .circuit-title { display: flex; align-items: center; justify-content: space-between; padding: 0 17px; border-bottom: 1px solid var(--line); }
 .circuit-title h1 { font-size: 17px; }
 .operations-launcher { min-width: 0; display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
@@ -215,7 +225,7 @@ button { font: inherit; }
 .track-start-sequence span { display: block; margin-top: 3px; color: var(--muted); font: 8px var(--font-mono); letter-spacing: .15em; }
 .track-start-sequence.is-go span { color: var(--green); }
 .track-weather { position: relative; z-index: 1; width: 100%; margin-top: auto; padding: 11px 10px 10px 12px; overflow: hidden; border: 1px solid rgba(32,215,231,.16); border-left: 3px solid rgba(32, 215, 231, .82); background: radial-gradient(circle at 93% 12%, rgba(32,215,231,.13), transparent 34%), linear-gradient(112deg, rgba(9,20,26,.9), rgba(5,12,17,.52)); pointer-events: none; }
-.track-weather::after { content: ""; position: absolute; top: -28px; right: -24px; width: 74px; height: 74px; border: 1px solid rgba(32,215,231,.12); border-radius: 50%; box-shadow: inset 0 0 0 12px rgba(32,215,231,.025), inset 0 0 0 24px rgba(32,215,231,.025); }
+.track-weather::after { content: ""; position: absolute; top: -18px; right: 6px; width: 64px; height: 64px; border: 1px solid rgba(32,215,231,.12); border-radius: 50%; box-shadow: inset 0 0 0 10px rgba(32,215,231,.025), inset 0 0 0 20px rgba(32,215,231,.025); }
 .track-weather__title { position: relative; z-index: 1; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 4px 8px; }
 .track-weather__title span, .track-weather small { color: #8fa5ad; font: 900 9px var(--font-mono); letter-spacing: .08em; }
 .track-weather__title span { display: flex; align-items: center; gap: 6px; color: var(--accent); }
@@ -599,6 +609,7 @@ button { font: inherit; }
 .brake-heat[data-state="critical"] { animation: thermal-pulse 1s ease-in-out infinite; }
 @keyframes thermal-pulse { 50% { opacity: .52; filter: drop-shadow(0 0 4px currentColor); } }
 .vehicle-thermal__systems { min-width: 0; display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); align-items: stretch; border-top: 1px solid rgba(148,177,190,.12); }
+.vehicle-thermal__systems--three { grid-template-columns: repeat(3,minmax(0,1fr)); }
 .system-temperature { --thermal-color: var(--green); min-width: 0; position: relative; display: grid; grid-template-columns: 14px minmax(0,1fr); grid-template-rows: 11px 13px; align-items: center; column-gap: 3px; padding: 2px 4px 1px; border-right: 1px solid rgba(148,177,190,.1); color: var(--thermal-color); }
 .system-temperature:last-child { border-right: 0; }
 .system-temperature > i { grid-row: 1 / 3; color: var(--thermal-color); font-style: normal; }
@@ -827,21 +838,25 @@ button { font: inherit; }
 .track-radio {
   --radio-tone: var(--accent);
   position: relative;
+  min-height: 0;
+  height: 100%;
   width: 100%;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   padding: 10px 9px 10px 12px;
-  overflow: visible;
+  overflow: hidden;
   border-right: 2px solid var(--radio-tone);
   color: #dce8eb;
   background: linear-gradient(90deg, rgba(4, 11, 15, .18), rgba(4, 11, 15, .82));
   backdrop-filter: blur(7px);
   pointer-events: none;
 }
-.track-intelligence-rail { position: absolute; z-index: 4; top: 0; right: 0; bottom: 0; width: clamp(230px, 29%, 320px); display: flex; flex-direction: column; gap: 10px; padding: 12px; overflow: hidden; border-left: 1px solid rgba(148,177,190,.08); background: linear-gradient(90deg, rgba(4,11,15,.04), rgba(4,11,15,.4) 25%, rgba(4,11,15,.72)); pointer-events: none; }
+.track-intelligence-rail { position: absolute; z-index: 4; top: 0; right: 0; bottom: 0; width: clamp(230px, 29%, 320px); display: grid; grid-template-rows: minmax(0, 1fr) auto; gap: 10px; padding: 12px; overflow: hidden; border-left: 1px solid rgba(148,177,190,.08); background: linear-gradient(90deg, rgba(4,11,15,.04), rgba(4,11,15,.4) 25%, rgba(4,11,15,.72)); pointer-events: none; }
 .track-radio > header { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-bottom: 6px; border-bottom: 1px solid rgba(148,177,190,.16); }
 .track-radio > header span { display: flex; align-items: center; gap: 6px; color: var(--radio-tone); font: 950 10px var(--font-mono); letter-spacing: .07em; }
 .track-radio > header strong { color: #a9bbc1; font: 900 9px var(--font-mono); letter-spacing: .07em; }
-.track-radio__messages { min-height: 0; display: grid; gap: 3px; padding-top: 4px; }
-.track-radio__message { min-width: 0; padding: 4px 0 3px; animation: radio-reveal .24s ease-out both; }
+.track-radio__messages { min-height: 0; display: grid; align-content: start; gap: 3px; padding: 4px 3px 0 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; pointer-events: auto; scrollbar-color: color-mix(in srgb,var(--radio-tone) 42%,transparent) transparent; scrollbar-width: thin; }
+.track-radio__message { min-width: 0; max-width: 100%; padding: 4px 0 3px; overflow: hidden; animation: radio-reveal .24s ease-out both; }
 .track-radio__message + .track-radio__message { border-top: 1px solid rgba(148,177,190,.1); opacity: .78; }
 .track-radio__speaker { display: grid !important; grid-template-columns: 48px minmax(0,1fr); align-items: center !important; gap: 9px !important; }
 .track-radio__speaker > strong { display: grid; width: 48px; height: 29px; place-items: center; border: 1px solid color-mix(in srgb,var(--radio-tone) 68%,transparent); border-radius: 3px; color: #071014; background: var(--radio-tone); box-shadow: 0 0 14px color-mix(in srgb,var(--radio-tone) 26%,transparent); font: 950 15px/1 var(--font-mono); }
@@ -849,7 +864,8 @@ button { font: inherit; }
 .track-radio__speaker b, .track-radio__speaker small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .track-radio__speaker b { color: #f0f6f7; font: 900 11px var(--font-mono); }
 .track-radio__speaker small { margin-top: 3px; color: var(--radio-tone); font: 850 8px var(--font-mono); letter-spacing: .06em; }
-.track-radio__message p { display: block; margin: 7px 0 0; overflow: visible; color: #eff5f6; font: 12px/1.42 var(--font-mono); overflow-wrap: anywhere; text-shadow: 0 1px 5px #000; }
+.track-radio__message p { display: block; max-width: 100%; margin: 7px 0 0; overflow: visible; color: #eff5f6; font: 12px/1.42 var(--font-mono); overflow-wrap: anywhere; text-shadow: 0 1px 5px #000; }
+.track-intelligence-rail > .track-weather { min-height: 98px; margin-top: 0; }
 .track-radio__message--warning p { color: #fff0a9; }
 .track-radio__message--urgent p { color: #ffb8c1; }
 .track-radio__standby { margin: 8px 0 3px; color: #94a8af; font: 10px/1.4 var(--font-mono); }
@@ -861,13 +877,20 @@ button { font: inherit; }
 
 @media (min-width: 901px) {
   .race-grid { grid-template-columns: clamp(232px, 14.5vw, 278px) minmax(0, 1fr) clamp(320px, 21vw, 382px); }
-  .map-column { grid-template-rows: 58px minmax(300px, 1fr) clamp(170px, 20dvh, 190px); }
+  .map-column { grid-template-rows: 58px minmax(300px, 1fr) clamp(180px, 20dvh, 190px); }
   .status-column { grid-template-rows: repeat(2, minmax(0, 1fr)); }
   .car-card { grid-template-rows: 38px 45px minmax(112px, 1fr) 82px 20px; padding: 10px 12px; }
   .vehicle-thermal__car { height: min(124px, calc(100% + 4px)); }
   .vehicle-thermal__stage::before { width: 112px; height: 88px; }
   .command-console__target { align-content: start; gap: 8px; padding-top: 3px; }
   .timing-head, .timing-row { grid-template-columns: 20px minmax(44px, 1fr) 24px 38px 50px 22px; }
+}
+
+@media (min-width: 1201px) and (max-width: 1439px) {
+  .race-grid { grid-template-columns: 260px minmax(0,1fr) 320px; }
+  .timing-head, .timing-row { grid-template-columns: 22px minmax(62px,1fr) 28px 42px 55px 24px; }
+  .timing-head > span:nth-child(3) { font-size: 0; }
+  .timing-head > span:nth-child(3)::after { content: "TY"; font-size: var(--ui-font-label); }
 }
 
 @media (max-width: 1380px) and (min-width: 901px) {
@@ -888,7 +911,7 @@ button { font: inherit; }
 }
 
 @media (min-width: 1500px) and (min-height: 760px) {
-  .map-column { grid-template-rows: 58px minmax(360px, 1fr) 126px; }
+  .map-column { grid-template-rows: 58px minmax(360px, 1fr) 140px; }
   .command-console { grid-template-columns: 112px repeat(4, minmax(0, 1fr)); grid-template-rows: minmax(0, 1fr); grid-template-areas: "target pace energy tyre pit"; }
   .command-console__target { align-content: center; }
 }
@@ -897,4 +920,241 @@ button { font: inherit; }
   .track-flag-panel.is-flashing { animation: none; }
   .track-radio__message { animation: none; }
   .energy-flow__path > i b, .energy-track-plan i[data-action="clipping_risk"], .energy-battery-icon { animation: none; }
+}
+
+/* Shared legibility system: scale type, row rhythm and spacing without transforming the canvas. */
+.pitwall-shell { grid-template-rows: var(--ui-topbar-height) minmax(0, 1fr); }
+.brand-copy, .brand-copy strong, .brand-copy small,
+.broadcast-control-message, .control-message-meta, .control-message-title, .control-message-detail,
+.car-card__identity, .car-card__identity strong, .track-radio__speaker > span,
+.track-radio__speaker b, .track-radio__speaker small, .resource-line span,
+.visual-control header > *, .pit-tyre-control header > * { min-width: 0; }
+
+.brand-copy strong { font-size: var(--ui-font-body); line-height: 1.2; }
+.brand-copy small { font-size: var(--ui-font-label); line-height: 1.2; }
+.eyebrow { font-size: var(--ui-font-label); line-height: 1.25; }
+.panel__header--leader { min-height: 54px; padding: var(--ui-space-md) 13px; }
+.panel__header--leader h2 { font-size: var(--ui-font-title); line-height: 1.15; }
+
+.broadcast-strip--iconic > section { min-height: var(--ui-topbar-height); }
+.session-copy-panel .hud-stat-copy > span,
+.session-copy-panel .hud-stat-copy > small,
+.status-cluster span, .lap-copy small, .condition-reading small,
+.track-flag-panel .pit-lane-state { font-size: var(--ui-font-label) !important; line-height: 1.15; }
+.session-copy-panel .hud-stat-copy > strong { font-size: clamp(20px, calc(20px * var(--ui-scale)), 25px); line-height: 1; }
+.control-message-meta > span { font-size: var(--ui-font-label); line-height: 1.15; }
+.control-message-title {
+  overflow: hidden;
+  font-size: clamp(13px, calc(13px * var(--ui-scale)), 16px);
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.control-message-detail {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: var(--ui-font-body);
+  line-height: 1.3;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.broadcast-control-message { grid-template-rows: minmax(11px, auto) minmax(18px, auto) minmax(0, 1fr); }
+.condition-reading strong { font-size: var(--ui-font-data); line-height: 1.15; }
+.speed-selector-label, .speed-step span { font-size: var(--ui-font-label); line-height: 1; }
+.speed-selector { width: 174px; }
+.transport--iconic { gap: var(--ui-space-md); }
+
+.timing-session-summary { min-height: 56px; height: auto; }
+.timing-session-summary small { font-size: var(--ui-font-label); line-height: 1.1; }
+.timing-session-summary strong { font-size: var(--ui-font-data); line-height: 1.1; font-variant-numeric: tabular-nums; }
+.timing-head, .timing-row {
+  grid-template-columns: 21px minmax(52px, 1fr) 26px 40px 58px 24px;
+  gap: 2px;
+  font-variant-numeric: tabular-nums;
+}
+.timing-head {
+  min-height: 32px;
+  padding: 7px 8px;
+  font-size: var(--ui-font-label);
+  line-height: 1.1;
+}
+.timing-head > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.timing-row {
+  height: auto;
+  min-height: var(--ui-row-height);
+  padding: var(--ui-space-xs) 4px;
+}
+.timing-row > * { min-width: 0; }
+.timing-position { font-size: var(--ui-font-body); line-height: 1.15; }
+.driver-cell { min-width: 0; grid-template-rows: minmax(14px, auto) minmax(11px, auto); column-gap: 5px; }
+.driver-cell strong { font-size: var(--ui-font-body); line-height: 1.2; }
+.driver-cell small { margin-top: 1px; font-size: var(--ui-font-label); line-height: 1.15; }
+.timing-gap { font-size: var(--ui-font-body); line-height: 1.15; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.timing-tyre-life { font-size: var(--ui-font-body); line-height: 1.15; font-variant-numeric: tabular-nums; }
+.timing-list { overflow-x: hidden; overflow-y: auto; }
+
+.car-card {
+  grid-template-rows: minmax(38px, auto) minmax(46px, auto) minmax(94px, 1fr) minmax(78px, auto) minmax(24px, auto);
+  gap: var(--ui-space-xs);
+  padding: var(--ui-space-md) 11px;
+}
+.car-card__top { grid-template-columns: 48px minmax(0,1fr) minmax(30px,auto) 38px; }
+.car-card__identity strong { font-size: clamp(13px, calc(13px * var(--ui-scale)), 16px); line-height: 1.25; }
+.car-card__top .status-chip { max-width: 78px; overflow: hidden; font-size: var(--ui-font-label); line-height: 1.15; text-overflow: ellipsis; white-space: nowrap; }
+.car-number { font-size: var(--ui-font-body); line-height: 1; }
+.car-kpi-rail { grid-template-columns: 1fr 1.2fr 1.18fr .78fr; font-variant-numeric: tabular-nums; }
+.car-kpi-rail > div { height: auto; min-height: 42px; display: grid; align-content: center; }
+.car-kpi-rail span { overflow: hidden; font-size: var(--ui-font-label); line-height: 1.1; text-overflow: ellipsis; white-space: nowrap; }
+.car-kpi-rail strong { overflow: hidden; font-size: var(--ui-font-data); line-height: 1.15; text-overflow: ellipsis; }
+.car-kpi-rail > div:first-child strong { font-size: clamp(17px, calc(17px * var(--ui-scale)), 21px); }
+.car-kpi-rail small { font-size: var(--ui-font-label); line-height: 1.1; }
+.vehicle-thermal { grid-template-rows: minmax(18px,auto) minmax(64px,1fr) minmax(34px,auto); }
+.vehicle-thermal__header span, .vehicle-thermal__header b, .vehicle-thermal__header small { font-size: var(--ui-font-label); line-height: 1.15; }
+.thermal-wheel small { font-size: var(--ui-font-label); line-height: 1; }
+.thermal-wheel strong { font-size: var(--ui-font-data); line-height: 1.15; font-variant-numeric: tabular-nums; }
+.brake-heat, .brake-heat b { font-size: 9px; line-height: 1; }
+.system-temperature small { font-size: var(--ui-font-label); line-height: 1.1; }
+.system-temperature strong { font-size: var(--ui-font-body); line-height: 1.1; font-variant-numeric: tabular-nums; }
+.resource-line { grid-template-columns: .9fr 1fr .72fr minmax(0,1.38fr); gap: var(--ui-space-sm); font-size: var(--ui-font-label); font-variant-numeric: tabular-nums; }
+.resource-line span { min-width: 0; overflow: hidden; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
+.resource-line strong { font-size: var(--ui-font-label); line-height: 1.2; }
+
+.energy-battery-shell > span, .energy-flow header span, .energy-flow header strong { font-size: var(--ui-font-label); line-height: 1.1; }
+.energy-battery-state { font-size: var(--ui-font-label); line-height: 1.1; }
+.energy-flow__path small, .energy-vitals small { font-size: 9px; line-height: 1.05; }
+.energy-flow__path b, .energy-vitals b { font-size: var(--ui-font-label); line-height: 1.05; }
+
+.command-driver-select { height: auto; min-height: 38px; }
+.command-driver-select b { font-size: var(--ui-font-body); line-height: 1.15; }
+.command-driver-select small, .command-link-status { font-size: var(--ui-font-label); line-height: 1.15; }
+.team-order-rail button { min-height: 30px; height: auto; font-size: var(--ui-font-body); line-height: 1; }
+.visual-control header, .pit-tyre-control header { margin-bottom: var(--ui-space-sm); font-size: var(--ui-font-label); line-height: 1.15; }
+.visual-control header b, .pit-tyre-control header b { font-size: var(--ui-font-label); line-height: 1.15; }
+.visual-control button strong, .visual-control--energy button strong { font-size: var(--ui-font-body); line-height: 1.1; }
+
+.track-radio > header span, .track-radio > header strong { font-size: var(--ui-font-label); line-height: 1.15; }
+.track-radio__speaker b { font-size: var(--ui-font-body); line-height: 1.2; }
+.track-radio__speaker small { font-size: var(--ui-font-label); line-height: 1.2; }
+.track-radio__message p, .track-radio__standby { font-size: var(--ui-font-body); line-height: 1.45; }
+.track-map__legend, .track-map__hud { font-size: var(--ui-font-label); line-height: 1.2; }
+
+@media (min-width: 1440px) {
+  .race-grid { grid-template-columns: 326px minmax(0, 1fr) clamp(360px, 21vw, 404px); }
+  .timing-head, .timing-row { grid-template-columns: 22px minmax(122px, 1fr) 28px 40px 54px 24px; gap: 3px; }
+}
+
+@media (max-width: 1200px) and (min-width: 901px) {
+  .race-grid { grid-template-columns: 245px minmax(380px, 1fr) 300px; }
+  .driver-cell small { display: none; }
+  .resource-line { grid-template-columns: .9fr 1fr minmax(0,1.35fr); }
+  .resource-line span:nth-child(3) { display: none; }
+  .car-kpi-rail > div { padding-inline: 4px; }
+}
+
+@media (max-width: 1050px) and (min-width: 901px) {
+  .race-grid { grid-template-columns: 244px minmax(0, 1fr); }
+}
+
+@media (max-width: 1050px) and (min-width: 901px) {
+  .race-grid { grid-template-columns: 245px minmax(0,1fr); }
+  .status-column { display: none; }
+  .car-kpi-rail { grid-template-columns: 1fr 1.2fr 1.15fr; }
+  .car-kpi-rail > div:nth-child(4) { display: none; }
+  .timing-head, .timing-row { grid-template-columns: 21px minmax(54px,1fr) 27px 58px 24px; }
+  .timing-head > span:nth-child(4), .timing-row .timing-tyre-life { display: none; }
+}
+
+@media (max-height: 650px) and (min-width: 901px) {
+  .map-column { grid-template-rows: 58px minmax(150px,1fr) 180px; }
+}
+
+@media (max-width: 1180px) and (min-width: 901px) {
+  .pitwall-shell { grid-template-rows: 132px minmax(0, 1fr); }
+  .topbar--telemetry { grid-template-columns: 178px minmax(0,1fr); grid-template-rows: 80px 52px; }
+  .brand-block--signal { min-height: 80px; }
+  .broadcast-strip--iconic > section { min-height: 80px; }
+  .transport--iconic { grid-column: 1 / -1; grid-row: 2; min-height: 52px; justify-content: flex-end; padding-inline: 14px; border-top: 1px solid rgba(148,177,190,.13); }
+  .speed-selector { width: 160px; }
+}
+
+@media (max-width: 800px) {
+  .timing-row { min-height: 42px; }
+}
+
+@media (max-width: 900px) {
+  .pitwall-shell { height: auto; min-height: 100dvh; grid-template-rows: auto auto; overflow: visible; }
+  .topbar--telemetry { grid-template-columns: 1fr; grid-template-rows: auto auto auto; overflow: visible; }
+  .transport--iconic { grid-column: 1; grid-row: auto; min-height: 58px; overflow-x: auto; }
+}
+
+/* 2026 timing-workstation pass: denser race tower, readable controls and visual conditions. */
+.broadcast-strip--iconic { grid-template-columns: 126px 178px minmax(290px, 1fr) 232px; }
+.conditions-cluster { grid-template-columns: minmax(104px, 1.05fr) minmax(96px, .95fr) !important; gap: 5px !important; padding-inline: 7px !important; }
+.condition-reading { gap: 6px; }
+.condition-reading + .condition-reading { padding-left: 6px; }
+.condition-glyph { position: relative; width: 34px; height: 34px; display: grid; flex: 0 0 34px; place-items: center; overflow: hidden; border: 1px solid rgba(148,177,190,.24); border-radius: 50%; color: #b9e9ef; background: radial-gradient(circle, rgba(32,215,231,.13), rgba(5,14,19,.96) 70%); box-shadow: 0 0 14px rgba(32,215,231,.08); font-style: normal; }
+.condition-glyph > svg { position: relative; z-index: 2; }
+.condition-reading--temperature .condition-glyph > b { position: absolute; right: 4px; bottom: 3px; left: 4px; z-index: 1; border-radius: 50%; background: linear-gradient(0deg, rgba(255,82,105,.62), rgba(244,211,94,.28)); opacity: .42; }
+.condition-reading > span { min-width: 0; display: grid; align-content: center; overflow: visible; }
+.condition-reading > span > small { overflow: visible; font-size: clamp(9px, .62vw, 11px) !important; letter-spacing: .055em !important; text-overflow: clip; }
+.condition-reading strong { display: flex; align-items: baseline; gap: 2px; margin-top: 2px; overflow: visible; font-size: clamp(13px, .9vw, 17px); text-overflow: clip; }
+.condition-reading strong > b { color: #f5f9fa; font: 950 clamp(17px, 1.2vw, 22px)/1 var(--font-mono); font-variant-numeric: tabular-nums; }
+.condition-reading strong > em { color: #8aa0a8; font: 900 10px/1 var(--font-mono); font-style: normal; }
+.condition-reading--weather[data-weather="LIGHT_RAIN"] .condition-glyph,
+.condition-reading--weather[data-weather="HEAVY_RAIN"] .condition-glyph,
+.condition-reading--weather[data-weather="MIXED"] .condition-glyph { color: #62b9ff; border-color: rgba(98,185,255,.45); background: radial-gradient(circle, rgba(57,140,255,.18), rgba(5,14,19,.96) 70%); }
+.condition-reading--weather > span > em { display: flex; align-items: center; gap: 3px; margin-top: 2px; color: #718a93; font: 850 8px/1 var(--font-mono); font-style: normal; white-space: nowrap; }
+
+.driver-cell { grid-template-rows: minmax(16px, 1fr); }
+.driver-cell i { grid-row: 1; }
+.driver-cell strong { grid-column: 2; align-self: center; }
+.timing-head,
+.timing-row { grid-template-columns: 22px 58px 28px 42px minmax(58px, 1fr) 24px; gap: 3px; }
+.timing-head > span:nth-child(3) { font-size: var(--ui-font-label); }
+.timing-head > span:nth-child(3)::after { content: none; }
+.timing-row { padding-inline: 4px; }
+.timing-tyre-life { font-size: clamp(12px, .76vw, 14px); }
+
+.command-console { grid-template-columns: 108px repeat(2, minmax(0, 1fr)); }
+.visual-control--pace button { width: min(100%, 64px); max-width: 64px; }
+.visual-control button strong,
+.visual-control--energy button strong { max-width: none; overflow: visible; font-size: clamp(10px, .68vw, 12px); text-overflow: clip; white-space: nowrap; }
+.pit-tyre-control__buttons { display: flex; align-items: center; justify-content: space-evenly; gap: 3px; }
+.pit-tyre-control .tyre-select-button { width: 44px; height: 44px; flex: 0 0 44px; }
+.pit-tyre-control .stay-out-control { width: 40px; height: 40px; flex: 0 0 40px; }
+
+.track-radio__message--engineer .track-radio__speaker > strong { color: var(--radio-tone); border-color: color-mix(in srgb,var(--radio-tone) 78%,transparent); background: rgba(5,15,20,.9); box-shadow: inset 0 0 12px color-mix(in srgb,var(--radio-tone) 10%,transparent), 0 0 12px color-mix(in srgb,var(--radio-tone) 16%,transparent); }
+.track-radio__message--engineer .track-radio__speaker small { overflow: visible; color: #20d7e7; line-height: 1.28; text-overflow: clip; white-space: normal; }
+.track-radio__message--engineer p { padding-left: 10px; border-left: 2px solid #20d7e7; }
+.track-radio__message--driver .track-radio__speaker > strong { color: #071014; background: var(--radio-tone); }
+.track-radio__message--driver p { padding-left: 10px; border-left: 2px solid var(--radio-tone); }
+.team-order-rail button { min-height: 40px; height: 40px; display: grid; grid-template-rows: 15px auto; place-items: center; gap: 2px; padding: 4px 1px; border-radius: 9px; font-size: 10px; line-height: 1; }
+.team-order-rail button svg { display: block; }
+.team-order-rail button span { display: block; line-height: 1; }
+
+@media (min-width: 1440px) {
+  .race-grid { grid-template-columns: 286px minmax(0, 1fr) clamp(360px, 21vw, 404px); }
+  .timing-head,
+  .timing-row { grid-template-columns: 22px 54px 36px 42px minmax(70px, 1fr) 24px; gap: 2px; }
+}
+
+@media (min-width: 1201px) and (max-width: 1439px) {
+  .race-grid { grid-template-columns: 252px minmax(0, 1fr) 320px; }
+  .timing-head,
+  .timing-row { grid-template-columns: 21px 46px 34px 40px minmax(61px, 1fr) 22px; gap: 2px; }
+}
+
+@media (max-width: 1380px) and (min-width: 901px) {
+  .broadcast-strip--iconic { grid-template-columns: 108px 142px minmax(215px, 1fr) 232px; }
+  .broadcast-strip--iconic .conditions-cluster { display: grid !important; }
+}
+
+@media (min-width: 1800px) and (min-height: 760px) {
+  .command-console { grid-template-columns: 110px minmax(250px, 1.35fr) minmax(220px, 1.08fr) minmax(190px, .94fr) minmax(300px, 1.35fr); grid-template-rows: minmax(0, 1fr); grid-template-areas: "target pace energy tyre pit"; }
+}
+
+@media (max-width: 1200px) and (min-width: 901px) {
+  .race-grid { grid-template-columns: 244px minmax(380px, 1fr) 300px; }
+  .timing-head,
+  .timing-row { grid-template-columns: 20px 44px 33px 39px minmax(58px, 1fr) 22px; gap: 2px; }
 }

@@ -37,7 +37,7 @@ describe("race simulation", () => {
     expect(state.events).toEqual([]);
     expect(state.cars.every((car) => car.incidentStatus === "RUNNING" && car.damageLevel === 0)).toBe(true);
     expect(state.cars.every((car) => car.batteryPercent >= 70 && car.energyMode === "BALANCED" && car.battleStatus === "CLEAR")).toBe(true);
-    expect(state.cars.every((car) => car.tyreSets.length === 12 && new Set(car.tyreSets.map((set) => set.id)).size === 12)).toBe(true);
+    expect(state.cars.every((car) => car.tyreSets.length === 16 && new Set(car.tyreSets.map((set) => set.id)).size === 16)).toBe(true);
     expect(state.cars.every((car) => car.tyreSets.filter((set) => set.status === "FITTED").length === 1)).toBe(true);
     expect(state.cars.every((car) => car.tyreSets.find((set) => set.id === car.activeTyreSetId)?.status === "FITTED")).toBe(true);
     expect(Math.abs(state.cars.at(-1)!.totalDistance)).toBeLessThan(150);
@@ -757,18 +757,18 @@ describe("race simulation", () => {
     expect(stayingOut.radioMessages.some((message) => message.message.includes("Stay out") || message.message.includes("Staying out"))).toBe(true);
   });
 
-  it("rejects a pit call when no fresh set of the requested compound remains", () => {
+  it("rejects a pit call only when no usable set of the requested compound remains", () => {
     const carId = "ferrari-1";
     const initial = createInitialSnapshot(92);
     const exhausted: RaceSnapshot = {
       ...initial,
-      cars: initial.cars.map((car) => car.carId === carId ? { ...car, tyreSets: car.tyreSets.map((set) => set.compound === "SOFT" ? { ...set, status: "USED" as const } : set) } : car),
+      cars: initial.cars.map((car) => car.carId === carId ? { ...car, tyreSets: car.tyreSets.map((set) => set.compound === "SOFT" ? { ...set, status: "FITTED" as const } : set) } : car),
     };
     const result = setCarPit(exhausted, carId, "SOFT");
     const car = result.cars.find((candidate) => candidate.carId === carId)!;
     expect(car.scheduledPitCompound).toBeNull();
     expect(car.scheduledPitTyreSetId).toBeNull();
-    expect(result.radioMessages.some((message) => message.message.includes("No fresh SOFT set"))).toBe(true);
+    expect(result.radioMessages.some((message) => message.message.includes("No usable SOFT set"))).toBe(true);
   });
 
   it("holds every car until its launch reaction time", () => {
