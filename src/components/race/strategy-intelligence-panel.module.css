@@ -163,24 +163,74 @@
 .planBoard > footer { min-width: 0; display: grid; grid-template-columns: 54px minmax(0,1fr); align-items: center; gap: 8px; margin-top: 7px; padding: 5px 8px 0; color: #91a5ac; font: 9px/1.35 var(--font-mono); }
 .planBoard > footer strong { color: var(--team-color); }
 
-.scenarioGrid {
+/*
+ * The recommendation keeps its full card; alternatives sit beside it as
+ * comparison rows so the cost of each is readable without hunting through four
+ * identical layouts.
+ */
+.scenarioLayout {
   min-height: 0;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
+  grid-template-columns: minmax(300px, .82fr) minmax(0, 1.18fr);
+  gap: 10px;
   padding: 10px;
-  overflow: auto;
-  scrollbar-color: #294049 transparent;
+  overflow: hidden;
 }
+.alternativeList { min-width: 0; min-height: 0; display: grid; grid-auto-rows: minmax(0, 1fr); gap: 7px; overflow-y: auto; scrollbar-width: thin; }
+.alternativeRow {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(120px, 1.1fr) 82px minmax(96px, .9fr) minmax(112px, .9fr) minmax(0, 1.7fr) 62px;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid rgba(148, 177, 190, .16);
+  background: linear-gradient(100deg, rgba(12, 24, 30, .9), rgba(6, 14, 19, .82));
+}
+.alternativeRow[data-feasible="false"] { opacity: .58; filter: grayscale(.4); }
+.alternativeIdentity { min-width: 0; display: flex; align-items: center; gap: 8px; }
+.alternativeIdentity > span { min-width: 0; display: grid; gap: 2px; }
+.alternativeIdentity strong { min-width: 0; overflow: hidden; color: #eef5f7; font: 900 13px/1.1 var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
+.alternativeIdentity small { color: #7f939b; font: 800 9px/1 var(--font-mono); letter-spacing: .05em; }
+.alternativeCost { min-width: 0; display: grid; gap: 2px; }
+.alternativeCost small { color: #7d9099; font: 800 9px/1 var(--font-mono); letter-spacing: .06em; }
+.alternativeCost strong { min-width: 0; overflow: hidden; color: #4bde95; font: 950 14px/1 var(--font-mono); font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
+/* Anything slower or further back than the recommended call reads as a cost. */
+.alternativeCost[data-worse="true"] strong { color: #ff8e57; }
+.alternativeRisks { min-width: 0; display: grid; gap: 3px; }
+.alternativeRisks b { --risk: #4bde95; min-width: 0; overflow: hidden; padding: 2px 5px; color: var(--risk); border-left: 2px solid var(--risk); background: color-mix(in srgb, var(--risk) 8%, transparent); font: 800 9px/1.25 var(--font-mono); letter-spacing: .04em; text-overflow: ellipsis; white-space: nowrap; }
+.alternativeRisks b[data-level="medium"] { --risk: #f4d35e; }
+.alternativeRisks b[data-level="high"] { --risk: #ff5269; }
+.alternativeVerdict { min-width: 0; overflow: hidden; color: #a9bbc1; font: 800 11px/1.35 var(--font-mono); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.alternativeAction {
+  min-width: 0;
+  min-height: 34px;
+  padding: 0 8px;
+  color: #041014;
+  border: 0;
+  border-radius: 999px;
+  background: var(--accent);
+  font: 950 11px/1 var(--font-mono);
+  letter-spacing: .06em;
+  cursor: pointer;
+}
+.alternativeAction:disabled { color: #6b7d85; background: rgba(148, 177, 190, .14); cursor: not-allowed; }
 
 .scenarioCard {
   position: relative;
   min-width: 0;
-  min-height: 420px;
+  /*
+   * Fits the height the dialog has rather than demanding 420px. The old floor
+   * dated from the four-card grid and now pushes the card past the dialog's
+   * bottom edge, clipping its action button.
+   */
+  min-height: 0;
   display: flex;
   flex-direction: column;
   padding: 13px;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: thin;
   border: 1px solid rgba(148, 177, 190, .16);
   background: linear-gradient(160deg, rgba(14, 29, 37, .88), rgba(6, 13, 18, .94));
   box-shadow: 0 12px 30px rgba(0, 0, 0, .2);
@@ -270,7 +320,10 @@
 
 @media (max-width: 1050px) {
   .dialog { height: calc(100dvh - 24px); }
-  .scenarioGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  /* Stack the recommendation above its alternatives on a narrow dialog. */
+  .scenarioLayout { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); overflow-y: auto; }
+  .alternativeRow { grid-template-columns: minmax(110px, 1fr) 74px minmax(88px, .8fr) minmax(0, 1.4fr) 58px; }
+  .alternativeRisks { display: none; }
   .recommendationBanner { grid-template-columns: auto minmax(180px, 1fr) auto 90px 58px auto; }
   .recommendationMetric + .recommendationMetric { display: none; }
   .sessionMeta span:nth-child(3) { display: none; }
@@ -288,8 +341,8 @@
   .recommendationMetric, .confidenceDial { display: none; }
   .recommendationBanner > div:nth-child(2) > small { max-width: 46vw; }
   .primaryAction { min-width: 88px; padding: 0 8px; font-size: 7px; }
-  .scenarioGrid { grid-template-columns: 1fr; padding: 8px; }
-  .scenarioCard { min-height: 370px; }
+  .scenarioLayout { padding: 8px; }
+  .scenarioCard { min-height: 0; }
   .dialogFooter { grid-template-columns: 1fr auto; }
   .dialogFooter span:nth-child(2) { display: none; }
   .planBoard { padding-inline: 9px; }

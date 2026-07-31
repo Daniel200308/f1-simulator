@@ -4,10 +4,8 @@ import { memo } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import {
   ArrowDownToLine,
-  BatteryCharging,
   Clock3,
   Flag,
-  Gauge,
   Pause,
   Play,
   RotateCcw,
@@ -33,7 +31,6 @@ import {
   qualifyingDisplayStatus,
   qualifyingReleaseForecast,
   type QualifyingAttackMode,
-  type QualifyingEnergyMode,
   type QualifyingFuelPlan,
   type QualifyingOutLapMode,
   type QualifyingSimulationSpeed,
@@ -45,9 +42,9 @@ import {
 import styles from "./qualifying-race-view.module.css";
 
 const OUT_LAP_MODES: readonly { mode: QualifyingOutLapMode; label: string; compact: string; hint: string }[] = [
-  { mode: "SLOW", label: "Gentle", compact: "GTL", hint: "Protect the tyre, with a cold-tyre risk" },
-  { mode: "BALANCED", label: "Balanced", compact: "BAL", hint: "Target the normal tyre preparation window" },
-  { mode: "FAST", label: "Aggressive Warm-up", compact: "WARM", hint: "Heat the tyre quickly at higher overheating and traffic risk" },
+  { mode: "SLOW", label: "Gentle", compact: "GENTLE", hint: "Protect the tyre, with a cold-tyre risk" },
+  { mode: "BALANCED", label: "Balanced", compact: "BALANCE", hint: "Target the normal tyre preparation window" },
+  { mode: "FAST", label: "Aggressive Warm-up", compact: "WARM-UP", hint: "Heat the tyre quickly at higher overheating and traffic risk" },
 ];
 const ATTACK_MODES: readonly { mode: QualifyingAttackMode; label: string; compact: string; hint: string }[] = [
   { mode: "SAFE", label: "Safe", compact: "SAFE", hint: "Leave margin for traffic and track limits" },
@@ -56,18 +53,16 @@ const ATTACK_MODES: readonly { mode: QualifyingAttackMode; label: string; compac
   { mode: "MAXIMUM", label: "Maximum", compact: "MAX", hint: "Maximum pace with the highest lock-up and deletion risk" },
 ];
 const FUEL_PLANS: readonly { plan: QualifyingFuelPlan; label: string; compact: string; hint: string }[] = [
-  { plan: "ONE_LAP", label: "1 Flying Lap", compact: "1L", hint: "Lowest fuel mass and no second attempt" },
-  { plan: "TWO_LAPS", label: "2 Flying Laps", compact: "2L", hint: "Two attempts with a cool-down lap between" },
-  { plan: "TWO_LAPS_MARGIN", label: "2 Laps + Margin", compact: "2+", hint: "Extra fuel for traffic or a delayed attempt" },
-];
-const ENERGY_MODES: readonly { mode: QualifyingEnergyMode; label: string; hint: string }[] = [
-  { mode: "CHARGE", label: "CHG", hint: "Recover energy and prepare the next attempt" },
-  { mode: "BALANCED", label: "BAL", hint: "Balance recovery and deployment" },
-  { mode: "QUALI", label: "QUALI", hint: "Maximum automatic deployment on the flying lap" },
+  { plan: "ONE_LAP", label: "1 Flying Lap", compact: "1 LAP", hint: "Lowest fuel mass and no second attempt" },
+  { plan: "TWO_LAPS", label: "2 Flying Laps", compact: "2 LAPS", hint: "Two attempts with a cool-down lap between" },
+  { plan: "TWO_LAPS_MARGIN", label: "2 Laps + Margin", compact: "MARGIN", hint: "Extra fuel for traffic or a delayed attempt" },
 ];
 const QUALIFYING_SPEEDS: readonly QualifyingSimulationSpeed[] = [1, 2, 4, 8, 16];
 const QUALIFYING_COMPOUNDS: readonly TyreCompound[] = ["SOFT", "MEDIUM", "HARD", "INTERMEDIATE", "WET"];
 const TYRE_SHORT: Readonly<Record<TyreCompound, string>> = { SOFT: "S", MEDIUM: "M", HARD: "H", INTERMEDIATE: "I", WET: "W" };
+/* "INTERMEDIATE" does not fit a five-across control, so the selector uses the
+   broadcast-standard abbreviation for that compound only. */
+const TYRE_NAME: Readonly<Record<TyreCompound, string>> = { SOFT: "SOFT", MEDIUM: "MEDIUM", HARD: "HARD", INTERMEDIATE: "INTER", WET: "WET" };
 
 interface QualifyingRaceViewProps {
   state: WeekendState;
@@ -77,15 +72,12 @@ interface QualifyingRaceViewProps {
   onSelectCar: (carId: string) => void;
   onStart: () => void;
   onRelease: (carId: string) => void;
-  onWaitForGap: (carId: string) => void;
-  onHoldInGarage: (carId: string) => void;
   onAbortLap: (carId: string) => void;
   onCoolDown: (carId: string) => void;
   onReturnToPits: (carId: string) => void;
   onOutLapModeChange: (carId: string, mode: QualifyingOutLapMode) => void;
   onAttackModeChange: (carId: string, mode: QualifyingAttackMode) => void;
   onFuelPlanChange: (carId: string, plan: QualifyingFuelPlan) => void;
-  onEnergyModeChange: (carId: string, mode: QualifyingEnergyMode) => void;
   onTyreSetChange: (carId: string, tyreSetId: string) => void;
   onSpeedChange: (speed: QualifyingSimulationSpeed) => void;
   onPause: () => void;
@@ -109,15 +101,28 @@ function QualifyingTopbar({ state, onStart, onSpeedChange, onPause, onReset, onS
   const live = state.qualifyingLive!;
   const cut = qualifyingCutPosition(state);
   const carsOnTrack = Object.values(live.cars).filter((car) => car.phase !== "GARAGE").length;
-  const flagLabel = live.status === "READY" ? "PIT OPEN" : live.status === "CHECKERED" ? "CHEQUERED" : "GREEN";
+  const chequered = live.status === "CHECKERED";
+  const flagLabel = live.status === "READY" ? "PIT OPEN" : chequered ? "CHEQUERED" : "GREEN";
+  const controlHeadline = chequered ? "CHEQUERED FLAG" : cut ? `ELIMINATION LINE · P${cut}` : "POLE POSITION SHOOTOUT";
+  const controlDetail = chequered
+    ? "FLYING LAPS ALREADY STARTED MAY BE COMPLETED"
+    : live.status === "READY"
+      ? `${live.session} ready · pit exit open`
+      : `${carsOnTrack} cars circulating · pit exit open`;
   return (
     <header className={`topbar topbar--telemetry ${styles.topbar}`} aria-label={`${live.session} qualifying header`}>
       <div className="brand-block brand-block--signal"><div className="brand-copy"><strong>PROJECT PITWALL</strong><small>SILVERSTONE QUALIFYING</small></div></div>
       <div className={`broadcast-strip broadcast-strip--iconic ${styles.broadcast}`}>
         <section className="broadcast-session session-copy-panel"><div className="hud-stat-copy"><span>ROUND 09</span><strong>{live.session}</strong><small>QUALIFYING</small></div></section>
-        <section className="broadcast-status track-flag-panel condition--green"><div className="hud-stat-copy"><strong>{flagLabel}</strong><small>{carsOnTrack} CARS ON TRACK</small></div></section>
+        <section
+          aria-label={chequered ? "Chequered flag" : flagLabel}
+          aria-live="polite"
+          className={`broadcast-status track-flag-panel condition--${chequered ? "chequered" : "green"} status--${chequered ? "chequered" : "green"} ${chequered ? "is-chequered" : ""}`}
+        >
+          <div className="hud-stat-copy"><strong>{flagLabel}</strong><small>{chequered ? "FLYING LAPS COMPLETE" : `${carsOnTrack} CARS ON TRACK`}</small></div>
+        </section>
         <section className={styles.timerPanel} aria-label={`${formatClock(live.remainingSeconds)} remaining`}><Clock3 aria-hidden="true" size={27} /><span><small>SESSION TIME</small><strong>{formatClock(live.remainingSeconds)}</strong></span><i><b style={{ width: `${(live.remainingSeconds / live.durationSeconds) * 100}%` }} /></i></section>
-        <section className="broadcast-control-message flag--green"><div className="control-message-meta"><span>FIA QUALIFYING CONTROL</span></div><strong className="control-message-title">{cut ? `ELIMINATION LINE · P${cut}` : "POLE POSITION SHOOTOUT"}</strong><p className="control-message-detail">{live.status === "READY" ? `${live.session} ready · pit exit open` : live.status === "CHECKERED" ? "Chequered flag · active flying laps may be completed" : `${carsOnTrack} cars circulating · pit exit open`}</p></section>
+        <section aria-live="polite" className={`broadcast-control-message flag--${chequered ? "chequered" : "green"} ${styles.controlMessage}`}><div className="control-message-meta"><span>FIA QUALIFYING CONTROL</span></div><strong className="control-message-title" title={controlHeadline}>{controlHeadline}</strong><p className="control-message-detail" title={controlDetail}>{controlDetail}</p></section>
       </div>
       <nav className={`transport transport--iconic ${styles.transport}`} aria-label="Qualifying playback controls">
         {live.status === "READY"
@@ -174,7 +179,7 @@ function QualifyingTower({ state, playerCars, onSelectCar }: { state: WeekendSta
   const entries = liveQualifyingClassification(state);
   const cut = qualifyingCutPosition(state);
   return <aside className={styles.tower} aria-label="Qualifying leaderboard">
-    <div aria-label="Qualifying leaderboard columns" className={styles.towerHead}><span aria-hidden="true" /><span>Driver</span><span>Tyre</span><span>Gap</span><span>Best</span></div>
+    <div aria-label="Qualifying leaderboard columns" className={styles.towerHead}><span aria-hidden="true" /><span>Driver</span><span><abbr title="Tyre compound">Tyre</abbr></span><span>Gap</span><span>Best</span></div>
     <div className={styles.towerRows}>
       {entries.map((entry) => {
         const driver = DRIVER_BY_ID.get(entry.carId)!;
@@ -204,6 +209,7 @@ function QualifyingTower({ state, playerCars, onSelectCar }: { state: WeekendSta
           <span className={styles.intervalCell}><strong>{noTime ? "—" : entry.position === 1 ? "—" : `+${entry.gapSeconds?.toFixed(3)}`}</strong><small>{status}</small></span>
           <span className={styles.lapTimeCell}><strong data-tone={car.timing.currentSectorTones.find((tone) => tone === "PURPLE" || tone === "GREEN") ?? "NEUTRAL"}>{entry.bestLapSeconds === null ? "—:—.---" : formatLapTime(entry.bestLapSeconds)}</strong><small>{car.lastLapSeconds === null ? "NO LAP" : formatLapTime(car.lastLapSeconds)}</small></span>
           <TowerSectorTimes car={car} />
+          {entry.position === cut && <span className={styles.cutLineLabel}>TOP {cut} ADVANCE</span>}
         </div>;
       })}
     </div>
@@ -236,13 +242,6 @@ function tyreTemperatureLabel(temperature: number): "COLD" | "OPTIMAL" | "HOT" {
   return tone === "WINDOW" ? "OPTIMAL" : tone;
 }
 
-function tyreConditionLabel(condition: number): "FRESH" | "GOOD" | "WORN" | "CRITICAL" {
-  if (condition >= 90) return "FRESH";
-  if (condition >= 70) return "GOOD";
-  if (condition >= 40) return "WORN";
-  return "CRITICAL";
-}
-
 function tyreLifeTone(condition: number): "NOMINAL" | "CAUTION" | "CRITICAL" {
   if (condition < 30) return "CRITICAL";
   if (condition < 55) return "CAUTION";
@@ -262,14 +261,19 @@ function TyreTelemetry({ car }: { car: QualifyingCarState }) {
       {tyres.map(([label, name, temperature]) => {
         const tone = tyreTemperatureTone(temperature);
         const stateLabel = tyreTemperatureLabel(temperature);
+        const temperatureProgress = `${Math.round(Math.max(0, Math.min(1, (temperature - 60) / 60)) * 100)}%`;
         return <span
           aria-label={`${name} tyre, ${temperature.toFixed(0)} degrees Celsius, ${stateLabel.toLowerCase()}`}
+          aria-valuemax={120}
+          aria-valuemin={60}
+          aria-valuenow={Math.round(temperature)}
           data-temperature={tone}
           data-tyre-position={label}
           key={label}
+          role="meter"
+          style={{ "--temperature-progress": temperatureProgress } as CSSProperties}
           title={`${label} — ${name}: ${temperature.toFixed(0)} degrees Celsius · ${stateLabel}`}
         >
-          <i aria-hidden="true"><Thermometer size={11} /></i>
           <b><abbr title={name}>{label}</abbr></b>
           <strong>{temperature.toFixed(0)}<small>°C</small></strong>
           <em>{stateLabel}</em>
@@ -279,8 +283,8 @@ function TyreTelemetry({ car }: { car: QualifyingCarState }) {
   </section>;
 }
 
-function ControlSection({ children, title, value, control }: { children: ReactNode; title: string; value: string; control: string }) {
-  return <section className={styles.controlSection} data-control={control}><header><span>{title}</span><b title={value}>{value}</b></header>{children}</section>;
+function ControlSection({ children, title, value, control, priority = false }: { children: ReactNode; title: string; value: string; control: string; priority?: boolean }) {
+  return <section className={styles.controlSection} data-control={control} data-priority={priority}><header><span>{title}</span><b title={value}>{value}</b></header>{children}</section>;
 }
 
 function QualifyingCommandDock({
@@ -289,16 +293,14 @@ function QualifyingCommandDock({
   playerCars,
   onSelectCar,
   onRelease,
-  onHoldInGarage,
   onAbortLap,
   onCoolDown,
   onReturnToPits,
   onOutLapModeChange,
   onAttackModeChange,
   onFuelPlanChange,
-  onEnergyModeChange,
   onTyreSetChange,
-}: Pick<QualifyingRaceViewProps, "state" | "selectedCarId" | "onSelectCar" | "onRelease" | "onHoldInGarage" | "onAbortLap" | "onCoolDown" | "onReturnToPits" | "onOutLapModeChange" | "onAttackModeChange" | "onFuelPlanChange" | "onEnergyModeChange" | "onTyreSetChange"> & { playerCars: readonly string[] }) {
+}: Pick<QualifyingRaceViewProps, "state" | "selectedCarId" | "onSelectCar" | "onRelease" | "onAbortLap" | "onCoolDown" | "onReturnToPits" | "onOutLapModeChange" | "onAttackModeChange" | "onFuelPlanChange" | "onTyreSetChange"> & { playerCars: readonly string[] }) {
   const live = state.qualifyingLive!;
   const carId = live.cars[selectedCarId] ? selectedCarId : playerCars.find((candidate) => live.cars[candidate]);
   if (!carId) return <aside className={`${styles.controlRail} ${styles.eliminatedRail}`} aria-label="Team qualifying status" data-team-eliminated="true">
@@ -321,10 +323,41 @@ function QualifyingCommandDock({
   const hasValidTyreSet = Boolean(selectedTyreSet && (selectedTyreSet.status === "NEW" || selectedTyreSet.status === "USED"));
   const displayedTyreSets = (compound: TyreCompound) => raceStartTyreInventory(carId, state.tyreInventory)
     .filter((set) => set.compound === compound && (set.status === "NEW" || set.status === "USED" || set.id === car.selectedTyreSetId));
+  const compactTyreOptions = QUALIFYING_COMPOUNDS.map((compound) => {
+    const sets = displayedTyreSets(compound);
+    const selectedIndex = sets.findIndex((set) => set.id === car.selectedTyreSetId);
+    const selectedSet = selectedIndex >= 0 ? sets[selectedIndex] : null;
+    const suggestedSet = selectedSet ?? [...sets].sort((left, right) => (
+      right.condition - left.condition
+      || (left.freshness === right.freshness ? 0 : left.freshness === "NEW" ? -1 : 1)
+      || left.setNumber - right.setNumber
+    ))[0] ?? null;
+    const nextSet = selectedIndex >= 0 && sets.length > 1 ? sets[(selectedIndex + 1) % sets.length] : suggestedSet;
+    return { compound, sets, selectedSet, suggestedSet, nextSet };
+  });
+  const visibleTyreSets = displayedTyreSets(car.selectedCompound);
   const remainingTyreLife = selectedTyreOption?.condition ?? (selectedTyreSet ? Math.round(100 - selectedTyreSet.wearPercent) : null);
-  const activeTyreCondition = remainingTyreLife === null ? null : tyreConditionLabel(remainingTyreLife);
-  const canRelease = car.phase === "GARAGE" && live.status === "RUNNING" && hasValidTyreSet && Boolean(forecast?.canFinishBeforeChequered && forecast.mergeSafe);
-  return <aside className={styles.controlRail} aria-label="Qualifying driver control" data-car-id={carId} data-lap-status={status} style={{ "--team-color": teamTone(carId) } as CSSProperties}>
+  // A player may make a late-session gamble. Crossing the timing line after
+  // the chequered flag still invalidates the attempt in the simulation, but
+  // the pit-wall control remains available until the clock reaches zero.
+  const canRelease = car.phase === "GARAGE" && live.status === "RUNNING" && hasValidTyreSet;
+  const releaseRisk = !forecast?.canFinishBeforeChequered ? "TIME" : !forecast.mergeSafe ? "TRAFFIC" : "CLEAR";
+  const speedProgress = `${Math.round(Math.max(0, Math.min(1, car.currentSpeedKph / 340)) * 300)}deg`;
+  const releaseStatus = canRelease
+    ? releaseRisk === "TIME" ? "FINAL SHOT" : releaseRisk === "TRAFFIC" ? "BUSY" : `${forecast?.expectedGapSeconds.toFixed(1)}s`
+    : !hasValidTyreSet && car.phase === "GARAGE"
+      ? "TYRE"
+      : car.phase === "GARAGE" && forecast && !forecast.mergeSafe
+        ? "BLOCKED"
+        : car.phase === "GARAGE" ? "GARAGE" : "TRACK";
+  const releaseHint = canRelease
+    ? releaseRisk === "TIME" ? "LINE AT RISK" : releaseRisk === "TRAFFIC" ? "TRAFFIC AHEAD" : "WINDOW CLEAR"
+    : !hasValidTyreSet && car.phase === "GARAGE"
+      ? "SELECT TYRE"
+      : car.phase === "GARAGE" && forecast && !forecast.mergeSafe
+        ? "FLYING CAR"
+        : car.phase === "GARAGE" ? "AWAIT SESSION" : "CAR RELEASED";
+  return <aside className={styles.controlRail} aria-label="Qualifying driver control" data-car-id={carId} data-lap-status={status} data-selected-tyre-set={car.selectedTyreSetId ?? ""} style={{ "--team-color": teamTone(carId) } as CSSProperties}>
     <nav className={styles.driverTabs} aria-label="Player driver selection">
       {playerCars.map((candidateId) => {
         const candidate = DRIVER_BY_ID.get(candidateId)!;
@@ -338,51 +371,90 @@ function QualifyingCommandDock({
       <span className={styles.driverIdentity}><b>{entry ? `P${entry.position}` : "NC"}</b><span><strong>{driver.shortName}</strong><small>#{driver.number} · {driver.name}</small></span></span>
       <span className={styles.phaseBeacon} data-phase={car.phase}><i />{status}</span>
       <div className={styles.liveDials}>
-        <span><Gauge aria-hidden="true" size={14} /><small>SPEED</small><strong>{Math.round(car.currentSpeedKph)}</strong><em>km/h</em></span>
-        <span><TimerReset aria-hidden="true" size={14} /><small>TRAFFIC</small><strong className={styles[`traffic${car.trafficLevel}`]}>{car.trafficLevel}</strong><em>{forecast ? `${forecast.expectedGapSeconds.toFixed(1)}s gap` : "—"}</em></span>
+        <section
+          aria-label={`Live speed ${Math.round(car.currentSpeedKph)} kilometres per hour`}
+          aria-valuemax={340}
+          aria-valuemin={0}
+          aria-valuenow={Math.round(car.currentSpeedKph)}
+          className={styles.speedInstrument}
+          data-speed-gauge="true"
+          role="meter"
+          style={{ "--speed-progress": speedProgress } as CSSProperties}
+        >
+          <span className={styles.speedRing}>
+            <strong>{Math.round(car.currentSpeedKph)}</strong>
+            <small>KM/H</small>
+          </span>
+          <span className={styles.trafficReadout}><TimerReset aria-hidden="true" size={11} /><small>TRAFFIC</small><strong className={styles[`traffic${car.trafficLevel}`]}>{car.trafficLevel}</strong><em>{forecast ? `${forecast.expectedGapSeconds.toFixed(1)}s` : "—"}</em></span>
+        </section>
+        <TyreTelemetry car={car} />
       </div>
-      <TyreTelemetry car={car} />
       {car.trafficDecisionMessage && <p className={styles.trafficDecision} data-decision={car.trafficDecisionState}><b>{car.trafficDecisionState}</b><span>{car.trafficDecisionMessage}</span></p>}
     </section>
 
     <div className={styles.controlStack}>
-      <ControlSection control="release" title="PIT RELEASE" value={canRelease ? `${forecast?.expectedGapSeconds.toFixed(1)}s CLEAR` : !hasValidTyreSet && car.phase === "GARAGE" ? "SELECT TYRE SET" : car.phase === "GARAGE" && forecast && !forecast.mergeSafe ? "HOLD · FLYING CAR" : car.phase === "GARAGE" ? "GARAGE" : "ON TRACK"}><div aria-label={`${driver.shortName} pit release controls`} className={`${styles.orbOptions} ${styles.releaseOptions}`} role="group">
-        <button aria-label={`${driver.shortName} Release Now`} disabled={!canRelease} onClick={() => onRelease(carId)} title="Release the car immediately" type="button"><i><Play aria-hidden="true" fill="currentColor" size={16} /></i><span>Release Now</span></button>
-        <button aria-label={`${driver.shortName} Hold in Garage`} aria-pressed={car.releaseRequest === "HOLD"} disabled={car.phase !== "GARAGE"} onClick={() => onHoldInGarage(carId)} title="Hold the car in the garage" type="button"><i><Flag aria-hidden="true" size={16} /></i><span>Hold</span></button>
-      </div></ControlSection>
-      <ControlSection control="out-lap" title="OUT LAP PACE" value={car.outLapMode}><div className={styles.segmentOptions}>{OUT_LAP_MODES.map((option) => <button aria-label={`${driver.shortName} set out lap pace ${option.label}`} aria-pressed={car.outLapMode === option.mode} disabled={car.phase === "PUSH_LAP"} key={option.mode} onClick={() => onOutLapModeChange(carId, option.mode)} title={option.hint} type="button"><span>{option.compact}</span></button>)}</div></ControlSection>
-      <ControlSection control="attack" title="FLYING ATTACK" value={car.attackMode}><div className={styles.segmentOptions}>{ATTACK_MODES.map((option) => <button aria-label={`${driver.shortName} set flying lap attack ${option.label}`} aria-pressed={car.attackMode === option.mode} disabled={car.phase === "PUSH_LAP"} key={option.mode} onClick={() => onAttackModeChange(carId, option.mode)} title={option.hint} type="button"><span>{option.compact}</span></button>)}</div></ControlSection>
-      <ControlSection control="fuel" title="FUEL PLAN" value={`${car.fuelLoadKg.toFixed(1)} kg`}><div className={styles.segmentOptions}>{FUEL_PLANS.map((option) => <button aria-label={`${driver.shortName} set fuel plan ${option.label}`} aria-pressed={car.fuelPlan === option.plan} disabled={car.phase !== "GARAGE"} key={option.plan} onClick={() => onFuelPlanChange(carId, option.plan)} title={option.hint} type="button"><span>{option.compact}</span></button>)}</div></ControlSection>
-      <ControlSection control="energy" title="ENERGY MODE" value={`${Math.round(car.energyPercent)}%`}><div className={styles.segmentOptions}>{ENERGY_MODES.map((option, index) => <button aria-label={`${driver.shortName} set energy mode ${option.mode}`} aria-pressed={car.energyMode === option.mode} key={option.mode} onClick={() => onEnergyModeChange(carId, option.mode)} title={option.hint} type="button">{index === 0 ? <BatteryCharging aria-hidden="true" size={12} /> : index === 1 ? <Gauge aria-hidden="true" size={12} /> : <Zap aria-hidden="true" size={12} />}<span>{option.label}</span></button>)}</div></ControlSection>
-      <ControlSection control="lap-action" title="LAP ACTION" value={status}><div aria-label={`${driver.shortName} lap actions`} className={styles.orbOptions} role="group">
-        <button aria-label={`${driver.shortName} Abort Lap`} disabled={car.phase !== "PUSH_LAP"} onClick={() => onAbortLap(carId)} title="Abort this flying lap" type="button"><i><Target aria-hidden="true" size={16} /></i><span>Abort</span></button>
-        <button aria-label={`${driver.shortName} Cool Down`} disabled={car.phase !== "PUSH_LAP" && car.phase !== "OUT_LAP"} onClick={() => onCoolDown(carId)} title="Convert this lap to a cool-down lap" type="button"><i><Snowflake aria-hidden="true" size={16} /></i><span>Cool Down</span></button>
-        <button aria-label={`${driver.shortName} Return to Pits`} disabled={car.phase !== "OUT_LAP" && car.phase !== "COOL_DOWN" && car.phase !== "IN_LAP"} onClick={() => onReturnToPits(carId)} title="Return to the garage" type="button"><i><ArrowDownToLine aria-hidden="true" size={16} /></i><span>Return</span></button>
-      </div></ControlSection>
-      <ControlSection control="tyres" title="TYRE SELECTION" value={selectedTyreSet && selectedTyreOption && remainingTyreLife !== null ? `${TYRE_SHORT[selectedTyreSet.compound]} · ${selectedTyreOption.freshness} · ${remainingTyreLife}%` : "SET REQUIRED"}>
-        <div className={styles.tyreConsole}>
-          <div aria-label={`${driver.shortName} tyre compounds`} className={styles.compoundSelector} role="group">{QUALIFYING_COMPOUNDS.map((compound) => {
-            const sets = displayedTyreSets(compound);
-            const newCount = sets.filter((set) => set.status === "NEW").length;
-            const usedCount = sets.filter((set) => set.status === "USED").length;
-            return <button aria-label={`${driver.shortName} ${compound}, ${newCount} new and ${usedCount} used sets`} aria-pressed={car.selectedCompound === compound} data-compound={compound} disabled={car.phase !== "GARAGE" || sets.length === 0} key={compound} onClick={() => sets[0] && onTyreSetChange(carId, sets[0].id)} title={`${compound} · ${newCount} new · ${usedCount} used`} type="button"><TyreBadge compound={compound} size="medium" /><span><b>{TYRE_SHORT[compound]}</b><small>{newCount}N · {usedCount}U</small></span></button>;
-          })}</div>
-          <div className={styles.tyreSetList} aria-label={`${car.selectedCompound} physical tyre sets`} role="group">
-            {displayedTyreSets(car.selectedCompound).map((set) => <button aria-label={`Select ${car.selectedCompound} set ${set.setNumber}, ${set.freshness}, ${set.condition}% life`} aria-pressed={car.selectedTyreSetId === set.id} data-compound={set.compound} data-life-tone={tyreLifeTone(set.condition)} data-status={set.freshness} disabled={car.phase !== "GARAGE" || (set.status !== "NEW" && set.status !== "USED")} key={set.id} onClick={() => onTyreSetChange(carId, set.id)} title={`Set ${set.setNumber} · ${set.freshness} · ${set.condition}% life`} type="button"><i aria-hidden="true" data-compound={set.compound} style={{ "--wear": `${set.condition}%` } as CSSProperties} /><span><b>{set.setNumber.toString().padStart(2, "0")}</b><strong>{set.condition}%</strong><small>{set.freshness}</small></span></button>)}
+      <div className={styles.controlCore}>
+        <ControlSection control="release" priority={car.phase === "GARAGE"} title="PIT RELEASE" value={releaseStatus}><div aria-label={`${driver.shortName} pit release controls`} className={`${styles.orbOptions} ${styles.releaseOptions}`} role="group">
+          <button aria-label={`${driver.shortName} Release Now`} data-ready={canRelease} data-risk={releaseRisk} disabled={!canRelease} onClick={() => onRelease(carId)} title="Release the car into the current track window" type="button"><i><Play aria-hidden="true" fill="currentColor" size={17} /></i><span><strong>RELEASE</strong><small>{releaseHint}</small></span></button>
+        </div></ControlSection>
+        <ControlSection control="fuel" priority={car.phase === "GARAGE"} title="FUEL PLAN" value={`${car.fuelLoadKg.toFixed(1)} kg`}><div className={styles.segmentOptions}>{FUEL_PLANS.map((option) => <button aria-label={`${driver.shortName} set fuel plan ${option.label}`} aria-pressed={car.fuelPlan === option.plan} disabled={car.phase !== "GARAGE"} key={option.plan} onClick={() => onFuelPlanChange(carId, option.plan)} title={option.hint} type="button"><span>{option.compact}</span></button>)}</div></ControlSection>
+        <ControlSection control="out-lap" priority={car.phase === "OUT_LAP"} title="OUT LAP PACE" value={car.outLapMode}><div className={styles.segmentOptions}>{OUT_LAP_MODES.map((option) => <button aria-label={`${driver.shortName} set out lap pace ${option.label}`} aria-pressed={car.outLapMode === option.mode} disabled={car.phase === "PUSH_LAP"} key={option.mode} onClick={() => onOutLapModeChange(carId, option.mode)} title={option.hint} type="button"><span>{option.compact}</span></button>)}</div></ControlSection>
+        <ControlSection control="attack" priority={car.phase === "PUSH_LAP"} title="FLYING ATTACK" value={car.attackMode}><div className={styles.segmentOptions}>{ATTACK_MODES.map((option) => <button aria-label={`${driver.shortName} set flying lap attack ${option.label}`} aria-pressed={car.attackMode === option.mode} disabled={car.phase === "PUSH_LAP"} key={option.mode} onClick={() => onAttackModeChange(carId, option.mode)} title={option.hint} type="button"><span>{option.compact}</span></button>)}</div></ControlSection>
+        <ControlSection control="lap-action" priority={car.phase !== "GARAGE"} title="LAP ACTION" value={status}><div aria-label={`${driver.shortName} lap actions`} className={styles.orbOptions} role="group">
+          <button aria-label={`${driver.shortName} Abort Lap`} disabled={car.phase !== "PUSH_LAP"} onClick={() => onAbortLap(carId)} title="Abort this flying lap" type="button"><i><Target aria-hidden="true" size={16} /></i><span>Abort</span></button>
+          <button aria-label={`${driver.shortName} In Lap`} disabled={car.phase !== "PUSH_LAP" && car.phase !== "OUT_LAP"} onClick={() => onCoolDown(carId)} title="Give up this attempt and recover on an in lap" type="button"><i><Snowflake aria-hidden="true" size={16} /></i><span>In Lap</span></button>
+          <button aria-label={`${driver.shortName} Return to Pits`} disabled={car.phase !== "OUT_LAP" && car.phase !== "IN_LAP"} onClick={() => onReturnToPits(carId)} title="Return to the garage" type="button"><i><ArrowDownToLine aria-hidden="true" size={16} /></i><span>Return</span></button>
+        </div></ControlSection>
+      </div>
+      <ControlSection control="tyres" priority={car.phase === "GARAGE"} title="TYRE SELECTION" value={selectedTyreSet && selectedTyreOption && remainingTyreLife !== null ? `${TYRE_SHORT[selectedTyreSet.compound]} · ${selectedTyreOption.freshness} · ${remainingTyreLife}%` : "SET REQUIRED"}>
+        <div className={styles.tyreSelectorConsole}>
+          <div aria-label={`${driver.shortName} combined tyre selection`} className={styles.combinedTyreSelector} role="group">
+            {compactTyreOptions.map(({ compound, sets, selectedSet, suggestedSet, nextSet }) => {
+              const displayedSet = selectedSet ?? suggestedSet;
+              const selected = Boolean(selectedSet);
+              const available = Boolean(displayedSet && nextSet);
+              const actionHint = selected && sets.length > 1 ? `Select next ${compound} set` : `Select ${compound}`;
+              return <button
+                aria-label={displayedSet ? `${driver.shortName} ${compound}, set ${displayedSet.setNumber}, ${displayedSet.freshness}, ${displayedSet.condition}% life, ${sets.length} available. ${actionHint}` : `${driver.shortName} ${compound}, no available sets`}
+                aria-pressed={selected}
+                data-compound={compound}
+                data-life-tone={displayedSet ? tyreLifeTone(displayedSet.condition) : "CRITICAL"}
+                data-set-id={displayedSet?.id ?? ""}
+                data-set-number={displayedSet?.setNumber ?? ""}
+                data-set-count={sets.length}
+                data-status={displayedSet?.freshness ?? "UNAVAILABLE"}
+                data-tyre-choice="true"
+                disabled={car.phase !== "GARAGE" || !available}
+                key={compound}
+                onClick={() => nextSet && onTyreSetChange(carId, nextSet.id)}
+                title={displayedSet ? `${compound} · Set ${displayedSet.setNumber} ${displayedSet.freshness} · ${displayedSet.condition}% life${sets.length > 1 ? " · click again to cycle sets" : ""}` : `${compound} · no usable sets`}
+                type="button"
+              >
+                <TyreBadge compound={compound} size="small" />
+                {/* Compound identity only. Remaining life belongs to the
+                    physical-set row below, where a set is actually chosen. */}
+                <span><strong>{TYRE_NAME[compound]}</strong></span>
+                {sets.length > 1 && <em aria-hidden="true">×{sets.length}</em>}
+              </button>;
+            })}
           </div>
-          {selectedTyreSet && selectedTyreOption && remainingTyreLife !== null && activeTyreCondition && <section
-            aria-label={`Active ${selectedTyreSet.compound} tyre set ${selectedTyreOption.setNumber}, ${selectedTyreOption.freshness}, ${remainingTyreLife}% life, ${activeTyreCondition.toLowerCase()}`}
-            className={styles.activeSet}
-            data-compound={selectedTyreSet.compound}
-            data-life-tone={tyreLifeTone(remainingTyreLife)}
-            key={selectedTyreSet.id}
-            role="status"
-          >
-            <TyreBadge compound={selectedTyreSet.compound} size="large" />
-            <span className={styles.activeSetIdentity}><small>ACTIVE SET <b>{selectedTyreOption.freshness}</b></small><strong>{selectedTyreSet.compound}<em>SET {selectedTyreOption.setNumber.toString().padStart(2, "0")}</em></strong><i>{activeTyreCondition}</i></span>
-            <span className={styles.activeSetLife}><strong>{remainingTyreLife}</strong><small>% LIFE</small></span>
-          </section>}
-          {!hasValidTyreSet && car.phase === "GARAGE" && <div className={styles.tyreWarning}><TyreBadge compound={car.selectedCompound} size="small" /><span><b>RELEASE LOCKED</b><small>Select a tyre set before release</small></span></div>}
+          <div aria-label={`${driver.shortName} ${car.selectedCompound} physical tyre sets`} className={styles.physicalTyreSets} role="group">
+            {visibleTyreSets.map((set) => <button
+              aria-label={`Select ${car.selectedCompound} set ${set.setNumber}, ${set.freshness}, ${set.condition}% life`}
+              aria-pressed={car.selectedTyreSetId === set.id}
+              data-compound={set.compound}
+              data-life-tone={tyreLifeTone(set.condition)}
+              data-set-id={set.id}
+              data-set-number={set.setNumber}
+              data-status={set.freshness}
+              data-tyre-set-choice="true"
+              disabled={car.phase !== "GARAGE" || (set.status !== "NEW" && set.status !== "USED")}
+              key={set.id}
+              onClick={() => onTyreSetChange(carId, set.id)}
+              title={`${car.selectedCompound} set ${set.setNumber} · ${set.freshness} · ${set.condition}% life`}
+              type="button"
+            ><span><b>#{set.setNumber.toString().padStart(2, "0")}</b><strong>{set.condition}%</strong></span><small>{set.freshness}</small></button>)}
+          </div>
         </div>
       </ControlSection>
     </div>
@@ -396,7 +468,7 @@ export function QualifyingRaceView(props: QualifyingRaceViewProps) {
   const selectedCarId = live.cars[props.selectedCarId] ? props.selectedCarId : playerCars.find((carId) => live.cars[carId]) ?? props.selectedCarId;
   const reportClassification = props.activeReport?.session.startsWith("Q") ? props.state.results.find((result) => result.session === props.activeReport?.session) ?? null : null;
   const nextQualifyingSession = props.activeReport?.session === "FP3" ? "Q1" : props.activeReport?.session === "Q1" ? "Q2" : props.activeReport?.session === "Q2" ? "Q3" : null;
-  return <main className={`pitwall-shell ${styles.shell}`} data-qualifying-session={live.session} data-qualifying-status={live.status}>
+  return <main className={`pitwall-shell ${styles.shell}`} data-qualifying-paused={live.paused} data-qualifying-session={live.session} data-qualifying-status={live.status}>
     <QualifyingTopbar onPause={props.onPause} onReset={props.onReset} onSkipSession={props.onSkipSession} onSpeedChange={props.onSpeedChange} onStart={props.onStart} state={props.state} />
     <section className={`race-grid ${styles.grid}`}>
       <MemoQualifyingTower onSelectCar={props.onSelectCar} playerCars={playerCars} state={props.state} />

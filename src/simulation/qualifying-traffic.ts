@@ -13,6 +13,8 @@ export interface QualifyingTrafficTarget {
   progress: number;
   pitLane: boolean;
   phase: QualifyingCarPhase;
+  /** An in-lap used to recover between two flying laps rather than to pit. */
+  recoveryLap: boolean;
   yielding: boolean;
   decisionState: QualifyingTrafficDecisionState;
   conflictCarId: string | null;
@@ -28,6 +30,9 @@ export function normalizeTrackProgress(value: number): number {
 }
 
 function phaseProgress(car: QualifyingCarState): number {
+  // Mirrors the engine: a held phase keeps its pinned fraction so the marker
+  // does not rewind while the car waits.
+  if (car.phaseHoldProgress !== undefined) return clamp01(car.phaseHoldProgress);
   if (car.phaseDurationSeconds <= 0) return 0;
   return clamp01(1 - car.phaseRemainingSeconds / car.phaseDurationSeconds);
 }
@@ -49,12 +54,12 @@ export function qualifyingTrafficTarget(car: QualifyingCarState): QualifyingTraf
   } else if (car.phase === "OUT_LAP") {
     const trackProgress = (progress - 0.12) / 0.88;
     normalizedProgress = (PIT_EXIT_END + (SILVERSTONE_CIRCUIT.lengthMeters - PIT_EXIT_END) * trackProgress) / SILVERSTONE_CIRCUIT.lengthMeters;
-  } else if (car.phase === "COOL_DOWN") {
-    const trackProgress = car.phaseStartProgress + (1 - car.phaseStartProgress) * progress;
-    normalizedProgress = trackProgress;
   } else if (car.phase === "PIT_ENTRY") {
     pitLane = true;
     normalizedProgress = QUALIFYING_PIT_BOX_PROGRESS * progress;
+  } else if (car.phase === "IN_LAP" && car.flyingLapsRemaining > 0) {
+    // Recovery in-lap: the car keeps circulating to the timing line.
+    normalizedProgress = car.phaseStartProgress + (1 - car.phaseStartProgress) * progress;
   } else if (car.phase === "IN_LAP" || car.phase === "ABORTED_LAP") {
     const entryProgress = PIT_ENTRY_START / SILVERSTONE_CIRCUIT.lengthMeters;
     const distanceToEntry = normalizeTrackProgress(entryProgress - car.phaseStartProgress);
@@ -68,6 +73,7 @@ export function qualifyingTrafficTarget(car: QualifyingCarState): QualifyingTraf
     progress: pitLane ? clamp01(normalizedProgress) : normalizeTrackProgress(normalizedProgress),
     pitLane,
     phase: car.phase,
+    recoveryLap: car.phase === "IN_LAP" && car.flyingLapsRemaining > 0,
     yielding: car.yielding,
     decisionState: car.trafficDecisionState,
     conflictCarId: car.trafficConflictCarId,

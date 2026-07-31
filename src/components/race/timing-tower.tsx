@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import type { CSSProperties } from "react";
 import { CircleAlert, X } from "lucide-react";
 
 import { DRIVER_BY_ID, TEAM_BY_ID } from "@/fixtures/grid";
@@ -37,11 +38,23 @@ export function TimingTower() {
 
   return (
     <aside className="panel timing-panel" data-gap-revision={timingGapRevision}>
-      <header className="panel__header panel__header--leader"><h2>Leader Board</h2></header>
-      <div className="timing-session-summary">
-        <span><small>LAP</small><strong>{currentLap}<em>/ 52</em></strong></span>
-        <span><small>RACE TIME</small><strong>{sessionTime(snapshot?.elapsedTime ?? 0)}</strong></span>
-      </div>
+      {/*
+        * One centred masthead instead of a plain title above a two-cell strip:
+        * the lap counter is the headline number of a race broadcast, so it leads
+        * and the clock sits under it.
+        */}
+      <header className="timing-masthead">
+        <span className="timing-masthead__label">LEADER BOARD</span>
+        <div className="timing-masthead__lap">
+          <strong>{currentLap}</strong>
+          <span><small>LAP</small><em>/ 52</em></span>
+        </div>
+        <div className="timing-masthead__clock">
+          <small>RACE TIME</small>
+          <strong>{sessionTime(snapshot?.elapsedTime ?? 0)}</strong>
+        </div>
+        <i aria-hidden="true" style={{ "--race-progress": `${Math.min(100, (currentLap / 52) * 100)}%` } as CSSProperties} />
+      </header>
       <div className="timing-head"><span title="Position">P</span><span title="Driver">DRIVER</span><span title="Tyre compound">TYRE</span><span title="Tyre life">LIFE</span><span title="Gap to the car ahead">GAP</span><span aria-hidden="true" /></div>
       {activeSportingNotice && <section aria-live="polite" className={`sporting-explainer ${noticePenalty ? "is-penalty" : "is-investigation"}`}>
         <header>

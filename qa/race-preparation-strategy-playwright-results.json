@@ -2,11 +2,15 @@
   "passed": [
     "1440x900 renders all 22 grid cars",
     "1440x900 keeps P22 visible",
+    "1440x900 gives each player car its own compound tabs",
     "1440x900 exposes five compounds for both player cars",
     "1440x900 allows a Soft race start",
     "1440x900 applies the Soft selection immediately",
-    "1440x900 separates new and qualifying-used sets",
-    "1440x900 can select a used qualifying set",
+    "1440x900 lists the selected compound's sets",
+    "1440x900 reports remaining life on every selectable set",
+    "1440x900 can select an exact starting set",
+    "1440x900 shows the conditions the race starts in",
+    "1440x900 shows a plan block for each player car",
     "1440x900 displays Plan A, Plan B and Plan C",
     "1440x900 plans show legal multi-compound stint graphics and stop counts",
     "1440x900 keeps P22, car two, Plan C and START RACE inside the viewport",
@@ -19,11 +23,15 @@
     "1440x900 race HUD has no document overflow",
     "1280x720 renders all 22 grid cars",
     "1280x720 keeps P22 visible",
+    "1280x720 gives each player car its own compound tabs",
     "1280x720 exposes five compounds for both player cars",
     "1280x720 allows a Soft race start",
     "1280x720 applies the Soft selection immediately",
-    "1280x720 separates new and qualifying-used sets",
-    "1280x720 can select a used qualifying set",
+    "1280x720 lists the selected compound's sets",
+    "1280x720 reports remaining life on every selectable set",
+    "1280x720 can select an exact starting set",
+    "1280x720 shows the conditions the race starts in",
+    "1280x720 shows a plan block for each player car",
     "1280x720 displays Plan A, Plan B and Plan C",
     "1280x720 plans show legal multi-compound stint graphics and stop counts",
     "1280x720 keeps P22, car two, Plan C and START RACE inside the viewport",
@@ -58,29 +66,29 @@
         {
           "selector": "[class*='gridPair']:last-child article:last-child",
           "left": 252.78125,
-          "top": 581.125,
+          "top": 732.4375,
           "right": 463.5625,
-          "bottom": 609.125,
+          "bottom": 760.4375,
           "width": 210.78125,
           "height": 28
         },
         {
-          "selector": "[class*='startTyreCards'] article:nth-child(2)",
-          "left": 956.78125,
-          "top": 235,
+          "selector": "[class*='driverStrategyRow']:last-of-type",
+          "left": 495.5625,
+          "top": 537.65625,
           "right": 1410,
-          "bottom": 395.46875,
-          "width": 453.21875,
-          "height": 160.46875
+          "bottom": 772.3125,
+          "width": 914.4375,
+          "height": 234.65625
         },
         {
           "selector": "[class*='preRacePlanRows'] > article:nth-child(3)",
-          "left": 503.5625,
-          "top": 555.46875,
-          "right": 1402,
-          "bottom": 603.46875,
-          "width": 898.4375,
-          "height": 48
+          "left": 507.5625,
+          "top": 478.765625,
+          "right": 1399,
+          "bottom": 520.65625,
+          "width": 891.4375,
+          "height": 41.890625
         },
         {
           "selector": "[class*='raceDebriefArea'] button",
@@ -94,17 +102,17 @@
       ],
       "planFacts": [
         {
-          "label": "PLAN AATTACK TWO-STOPSL1–16BOX L16HL17–35BOX L35ML36–522 STOPSRECOMMENDED · LOW RISK",
+          "label": "PLAN ABALANCED ONE-STOPSL1–19BOX L19HL20–521 STOPRECOMMENDED · LOW RISK",
+          "stints": 2,
+          "compounds": 2
+        },
+        {
+          "label": "PLAN BATTACK TWO-STOPSL1–16BOX L16HL17–35BOX L35ML36–522 STOPS+18.7s · LOW RISK",
           "stints": 3,
           "compounds": 3
         },
         {
-          "label": "PLAN BBALANCED TWO-STOPSL1–17BOX L17HL18–49BOX L49SL50–522 STOPS+1.6s · MEDIUM RISK",
-          "stints": 3,
-          "compounds": 2
-        },
-        {
-          "label": "PLAN CLONG-STINT ONE-STOPSL1–21BOX L21HL22–521 STOP+21.9s · HIGH RISK",
+          "label": "PLAN CLONG-STINT ONE-STOPSL1–23BOX L23HL24–521 STOP+40.0s · HIGH RISK",
           "stints": 2,
           "compounds": 2
         }
@@ -202,29 +210,29 @@
         {
           "selector": "[class*='gridPair']:last-child article:last-child",
           "left": 225.578125,
-          "top": 521.84375,
+          "top": 573.171875,
           "right": 413.15625,
-          "bottom": 545.84375,
+          "bottom": 597.171875,
           "width": 187.578125,
           "height": 24
         },
         {
-          "selector": "[class*='startTyreCards'] article:nth-child(2)",
-          "left": 850.5625,
-          "top": 205,
+          "selector": "[class*='driverStrategyRow']:last-of-type",
+          "left": 438.15625,
+          "top": 440.59375,
           "right": 1254.984375,
-          "bottom": 348.21875,
-          "width": 404.421875,
-          "height": 143.21875
+          "bottom": 627,
+          "width": 816.828125,
+          "height": 186.40625
         },
         {
           "selector": "[class*='preRacePlanRows'] > article:nth-child(3)",
-          "left": 446.15625,
-          "top": 496.21875,
-          "right": 1246.984375,
-          "bottom": 540.21875,
-          "width": 800.828125,
-          "height": 44
+          "left": 448.15625,
+          "top": 397.125,
+          "right": 1245.984375,
+          "bottom": 427.59375,
+          "width": 797.828125,
+          "height": 30.46875
         },
         {
           "selector": "[class*='raceDebriefArea'] button",
@@ -238,17 +246,17 @@
       ],
       "planFacts": [
         {
-          "label": "PLAN AATTACK TWO-STOPSL1–16BOX L16HL17–35BOX L35ML36–522 STOPSRECOMMENDED · LOW RISK",
+          "label": "PLAN ABALANCED ONE-STOPSL1–19BOX L19HL20–521 STOPRECOMMENDED · LOW RISK",
+          "stints": 2,
+          "compounds": 2
+        },
+        {
+          "label": "PLAN BATTACK TWO-STOPSL1–16BOX L16HL17–35BOX L35ML36–522 STOPS+18.7s · LOW RISK",
           "stints": 3,
           "compounds": 3
         },
         {
-          "label": "PLAN BBALANCED TWO-STOPSL1–17BOX L17HL18–49BOX L49SL50–522 STOPS+1.6s · MEDIUM RISK",
-          "stints": 3,
-          "compounds": 2
-        },
-        {
-          "label": "PLAN CLONG-STINT ONE-STOPSL1–21BOX L21HL22–521 STOP+21.9s · HIGH RISK",
+          "label": "PLAN CLONG-STINT ONE-STOPSL1–23BOX L23HL24–521 STOP+40.0s · HIGH RISK",
           "stints": 2,
           "compounds": 2
         }

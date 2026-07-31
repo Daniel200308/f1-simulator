@@ -160,7 +160,9 @@ describe("2026 electrical energy system", () => {
     const low = createEnergySystemState(0.12);
     const neutralised = chooseAiEnergyMode(low, context({ safetyCarActive: true, currentSoc: 0.12 }));
     const pass = chooseAiEnergyMode({ ...createEnergySystemState(0.78), overtakeEligible: true }, context({ gapAheadSeconds: 0.5 }));
-    expect(neutralised.mode).toBe("HARVEST");
+    // The AI picks from the same three usage levels the player has, so a
+    // neutralised lap takes the saving level rather than a separate map.
+    expect(neutralised.mode).toBe("CONSERVE");
     expect(pass.mode).toBe("OVERTAKE");
   });
 
@@ -170,8 +172,8 @@ describe("2026 electrical energy system", () => {
     const flyingLap = chooseAiEnergyMode(state, context({ sessionType: "QUALIFYING", lapProgress: 0.52 }));
     const outLapState = updateEnergySystem({ state, requestedMode: outLap.mode, context: context({ sessionType: "QUALIFYING", lapProgress: 0.08, currentSegmentType: "SLOW" }), deltaTimeSeconds: 1 }).state;
     const flyingLapState = updateEnergySystem({ state, requestedMode: flyingLap.mode, context: context({ sessionType: "QUALIFYING", lapProgress: 0.52 }), deltaTimeSeconds: 1 }).state;
-    expect(outLap.mode).toBe("HARVEST");
-    expect(flyingLap.mode).toBe("BOOST");
+    expect(outLap.mode).toBe("CONSERVE");
+    expect(flyingLap.mode).toBe("ATTACK");
     expect(outLapState.targetSocAtLapEnd).toBe(0.88);
     expect(flyingLapState.targetSocAtLapEnd).toBe(0.1);
     expect(flyingLapState.currentDeployPowerKW).toBeGreaterThan(outLapState.currentDeployPowerKW);

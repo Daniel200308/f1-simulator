@@ -1,13 +1,75 @@
+/*
+ * Qualifying workstation layout system.
+ *
+ * `--q-*` tokens below are the single source of truth for control sizing so a
+ * viewport or container change moves every target together instead of letting
+ * individual buttons drift under 44px. Sizes are expressed as fluid `clamp()`
+ * values keyed off the rail's own container width, which keeps labels inside
+ * their buttons at every width instead of relying on viewport breakpoints.
+ */
 .shell {
+  /* Touch/pointer target floor. 44px is the accessible minimum; the comfort
+     step is used wherever the rail has room for a calmer rhythm. */
+  --q-target-min: 44px;
+  --q-target-comfort: 48px;
+  --q-target-lead: 56px;
+
+  /* Type scale. The floor is 11px so no label drops into the unreadable
+     6-10px range the previous layout produced. */
+  --q-font-micro: 11px;
+  --q-font-label: 12px;
+  --q-font-body: 13px;
+  --q-font-data: 15px;
+
+  --q-space-2xs: 4px;
+  --q-space-xs: 6px;
+  --q-space-sm: 8px;
+  --q-space-md: 12px;
+  --q-space-lg: 16px;
+  --q-radius-control: 999px;
+  --q-radius-surface: 12px;
+
   min-width: 0;
   height: 100dvh;
   overflow: hidden;
   background: #040a10;
 }
 
-.topbar { grid-template-columns: clamp(184px, 12.5vw, 212px) minmax(0, 1fr) clamp(380px, 29vw, 500px); }
+/* `auto` on the transport column lets the playback cluster claim exactly what
+   its 44px targets need, which is what removed the 6px topbar overflow. */
+.topbar { grid-template-columns: clamp(184px, 12.5vw, 212px) minmax(0, 1fr) auto; overflow: hidden; }
 .broadcast { grid-template-columns: minmax(98px, .62fr) minmax(132px, .78fr) minmax(190px, 1.05fr) minmax(250px, 1.5fr); }
-.transport { min-width: 0; gap: 8px; padding-inline: 9px; }
+.transport { min-width: 0; display: flex; align-items: center; gap: var(--q-space-sm); padding-inline: var(--q-space-sm); }
+/*
+ * Playback controls are hit targets first. The sim-rate pips and the reset icon
+ * previously rendered at 27px and 31px; the rules below raise every one of them
+ * to the 44px floor while keeping the compact pip visual.
+ */
+.transport :global(.speed-selector) { width: auto; min-width: 178px; gap: var(--q-space-2xs); }
+.transport :global(.speed-selector-label) { font-size: var(--q-font-micro); letter-spacing: .06em; }
+.transport :global(.speed-rail) { height: auto; gap: 0; }
+.transport :global(.speed-step) {
+  width: var(--q-target-min) !important;
+  height: var(--q-target-min) !important;
+  align-content: center;
+  place-items: center;
+  gap: var(--q-space-2xs);
+}
+.transport :global(.speed-step span) { font-size: var(--q-font-micro); }
+.transport :global(.speed-rail-line) { top: 17px; right: 22px; left: 22px; }
+.transport :global(.reset-button--icon) { width: var(--q-target-min); height: var(--q-target-min); flex: 0 0 auto; }
+.controlMessage { min-width: 0; }
+.controlMessage :global(.control-message-title),
+.controlMessage :global(.control-message-detail) {
+  max-width: 100%;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  -webkit-box-orient: initial;
+  -webkit-line-clamp: initial;
+}
+.controlMessage :global(.control-message-title) { font-size: clamp(13px, .9vw, 16px); line-height: 1.12; }
+.controlMessage :global(.control-message-detail) { display: block; font-size: clamp(11px, .72vw, 13px); line-height: 1.16; }
 
 .timerPanel {
   min-width: 0;
@@ -28,59 +90,68 @@
 
 .startButton,
 .skipButton {
-  min-height: 39px;
+  min-height: var(--q-target-min);
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 7px;
-  padding: 0 12px;
+  gap: var(--q-space-xs);
+  padding: 0 var(--q-space-md);
   border: 1px solid rgba(32, 215, 231, .45);
-  border-radius: 999px;
+  border-radius: var(--q-radius-control);
   color: #20d7e7;
   background: #08151b;
-  font: 950 clamp(11px, .68vw, 13px)/1.1 var(--font-mono);
+  font: 950 var(--q-font-label)/1.15 var(--font-mono);
   white-space: nowrap;
   cursor: pointer;
 }
 .startButton { color: #031014; border-color: #20d7e7; background: #20d7e7; }
 .skipButton:hover { color: #f4d35e; border-color: #f4d35e; }
-.pauseButton { width: 39px; height: 39px; flex: 0 0 auto; display: grid; place-items: center; padding: 0; border: 1px solid rgba(32, 215, 231, .48); border-radius: 50%; color: #20d7e7; background: #08171d; cursor: pointer; }
+.pauseButton { width: var(--q-target-min); height: var(--q-target-min); flex: 0 0 auto; display: grid; place-items: center; padding: 0; border: 1px solid rgba(32, 215, 231, .48); border-radius: 50%; color: #20d7e7; background: #08171d; cursor: pointer; }
 .pauseButton:hover,
 .pauseButton[aria-pressed="true"] { color: #f4d35e; border-color: currentColor; box-shadow: 0 0 13px color-mix(in srgb, currentColor 32%, transparent); }
 
 .grid {
   min-width: 0;
   min-height: 0;
-  grid-template-columns: clamp(318px, 22vw, 350px) minmax(500px, 1fr) clamp(352px, 25vw, 386px) !important;
+  grid-template-columns: clamp(292px, 20vw, 322px) minmax(520px, 1fr) clamp(402px, 25vw, 430px) !important;
+  gap: 10px;
+  padding: 10px;
 }
 
 .tower {
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-rows: 38px minmax(0, 1fr);
+  grid-template-rows: 40px minmax(0, 1fr);
   overflow: hidden;
   border: 1px solid rgba(148, 177, 190, .18);
   background: #050b12;
 }
+/*
+ * Fixed track widths plus gaps previously summed past the tower's own width at
+ * 1440 and on tablet. Every track is now flexible or minmax-bounded so the row
+ * fits its container instead of overflowing it.
+ */
 .towerHead,
 .towerRow {
   display: grid;
-  grid-template-columns: 25px 72px 36px 64px minmax(86px, 1fr);
+  /* The tyre track fits the 24px badge and its "Tyre" column label. */
+  grid-template-columns: 24px minmax(0, .8fr) 34px minmax(0, .72fr) minmax(0, 1.1fr);
   align-items: center;
-  gap: 5px;
+  gap: var(--q-space-2xs);
   font-variant-numeric: tabular-nums;
 }
-.towerHead { padding: 0 9px; color: #77838e; border-bottom: 1px solid #222c38; font: 850 10px/1 var(--font-geist); letter-spacing: .065em; text-transform: uppercase; }
+.towerHead { padding: 0 9px; color: #84939d; border-bottom: 1px solid #26323d; background: linear-gradient(90deg, rgba(32,215,231,.035), transparent 72%); font: 850 clamp(10px, .72vw, 11px)/1 var(--font-geist); letter-spacing: .07em; text-transform: uppercase; }
 .towerHead > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.towerHead abbr { text-decoration: none; }
 .towerHead > span:nth-child(3) { text-align: center; }
 .towerHead > span:nth-child(4) { text-align: right; }
 .towerHead > span:nth-child(5) { text-align: right; }
 .towerRows { min-height: 0; overflow: auto; scrollbar-width: thin; scrollbar-color: #293743 transparent; }
 .towerRow {
   position: relative;
-  min-height: 56px;
-  grid-template-rows: 27px 19px;
+  min-height: 59px;
+  grid-template-rows: 29px 20px;
   align-content: center;
   padding: 4px 8px;
   color: #aab3bd;
@@ -92,26 +163,27 @@
 .towerRow[data-player="true"]:hover { background: color-mix(in srgb, var(--team-tone) 10%, #050b12); }
 .towerRow[data-cut-line="true"] { margin-bottom: 3px; }
 .towerRow[data-cut-line="true"]::after { position: absolute; right: 0; bottom: -3px; left: 0; z-index: 5; height: 3px; background: #ff2947; box-shadow: 0 0 11px rgba(255, 41, 71, .7); content: ""; }
+.cutLineLabel { position: absolute; right: 7px; bottom: -9px; z-index: 6; padding: 2px 6px; color: #fff; background: #ff2947; box-shadow: 0 0 11px rgba(255,41,71,.34); font: 950 8px/1 var(--font-mono); letter-spacing: .05em; pointer-events: none; }
 .towerRow[data-eliminated="true"] { color: #58616c; background: #080d13; opacity: .52; filter: grayscale(.85); }
 .position { grid-row: 1 / 3; color: #f4f6f8; font: 900 clamp(17px, 1.18vw, 21px)/1 var(--font-geist); }
 .driverCell { min-width: 0; display: grid; grid-template-columns: 5px minmax(0, 1fr); align-items: center; gap: 7px; }
 .driverCell i { width: 5px; height: 25px; border-radius: 999px; background: var(--team-tone); box-shadow: 0 0 8px color-mix(in srgb, var(--team-tone) 50%, transparent); }
-.driverCell strong { min-width: 0; overflow: hidden; color: #f4f6f8; font: 950 clamp(15px, .98vw, 18px)/1 var(--font-geist); text-overflow: ellipsis; white-space: nowrap; }
+.driverCell strong { min-width: 0; overflow: hidden; color: #f4f6f8; font: 950 clamp(16px, 1.02vw, 19px)/1 var(--font-geist); text-overflow: ellipsis; white-space: nowrap; }
 .towerTyre { min-width: 0; display: grid; place-items: center; }
 .intervalCell,
 .lapTimeCell { min-width: 0; display: grid; gap: 3px; }
 .intervalCell { text-align: right; }
 .lapTimeCell { text-align: right; }
 .intervalCell strong,
-.lapTimeCell strong { min-width: 0; overflow: hidden; color: #dce3e7; font: 900 clamp(11px, .78vw, 14px)/1 var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
+.lapTimeCell strong { min-width: 0; overflow: hidden; color: #edf3f5; font: 900 clamp(12px, .82vw, 15px)/1 var(--font-mono); font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
 .intervalCell small,
-.lapTimeCell small { min-width: 0; overflow: hidden; color: #82909b; font: 800 clamp(9px, .65vw, 11px)/1 var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
+.lapTimeCell small { min-width: 0; overflow: hidden; color: #8d9ba5; font: 850 clamp(9px, .68vw, 11px)/1 var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
 .lapTimeCell strong[data-tone="PURPLE"] { color: #bd5dff; }
 .lapTimeCell strong[data-tone="GREEN"] { color: #16c88f; }
 .towerSectorTimes { grid-column: 2 / -1; grid-row: 2; min-width: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; align-items: center; }
-.towerSectorCell { --sector-color: #657781; min-width: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: baseline; gap: 4px; padding: 2px 5px; overflow: hidden; border-left: 2px solid color-mix(in srgb, var(--sector-color) 75%, transparent); color: var(--sector-color); background: color-mix(in srgb, var(--sector-color) 5%, transparent); }
+.towerSectorCell { --sector-color: #6f828b; min-width: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: baseline; gap: 4px; padding: 2px 5px; overflow: hidden; border-left: 2px solid color-mix(in srgb, var(--sector-color) 75%, transparent); color: var(--sector-color); background: color-mix(in srgb, var(--sector-color) 6%, transparent); }
 .towerSectorCell small { font: 900 9px/1 var(--font-mono); }
-.towerSectorCell strong { min-width: 0; overflow: hidden; color: currentColor; font: 900 clamp(10px, .7vw, 12px)/1 var(--font-mono); font-variant-numeric: tabular-nums; text-align: right; text-overflow: ellipsis; white-space: nowrap; }
+.towerSectorCell strong { min-width: 0; overflow: hidden; color: currentColor; font: 900 clamp(10px, .73vw, 12px)/1 var(--font-mono); font-variant-numeric: tabular-nums; text-align: right; text-overflow: ellipsis; white-space: nowrap; }
 .towerSectorCell[data-tone="PURPLE"] { --sector-color: #b956ff; }
 .towerSectorCell[data-tone="GREEN"] { --sector-color: #10ce92; }
 .towerSectorCell[data-tone="YELLOW"] { --sector-color: #f2cb27; }
@@ -134,109 +206,274 @@
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-rows: 52px 190px minmax(0, 1fr);
+  /* Tabs and telemetry size to content; the control stack takes the remainder
+     and scrolls, so short viewports never compress the targets inside it. */
+  grid-template-rows: auto auto minmax(0, 1fr);
   overflow: hidden;
   border: 1px solid rgba(145, 177, 188, .18);
-  border-top: 2px solid var(--team-color);
+  border-top: 1px solid var(--team-color);
   background:
     linear-gradient(135deg, color-mix(in srgb, var(--team-color) 5%, transparent), transparent 31%),
-    radial-gradient(circle at 100% 0, color-mix(in srgb, var(--team-color) 10%, transparent), transparent 34%),
+    radial-gradient(circle at 100% 0, color-mix(in srgb, var(--team-color) 8%, transparent), transparent 34%),
     #050d12;
-  box-shadow: inset 0 1px rgba(255,255,255,.025), -12px 0 32px rgba(0,0,0,.16);
+  box-shadow: inset 0 1px rgba(255,255,255,.025), -10px 0 28px rgba(0,0,0,.14);
 }
 .driverTabs { min-width: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-bottom: 1px solid rgba(145, 177, 188, .16); background: rgba(2,8,12,.55); }
-.driverTabs button { position: relative; min-width: 0; display: grid; grid-template-columns: 5px minmax(0, 1fr); align-items: center; gap: 9px; padding: 7px 12px; overflow: hidden; border: 0; color: #758991; background: transparent; cursor: pointer; text-align: left; transition: color .18s ease, background .18s ease; }
+.driverTabs button { position: relative; min-width: 0; min-height: var(--q-target-lead); display: grid; grid-template-columns: 5px minmax(0, 1fr); align-items: center; gap: var(--q-space-sm); padding: var(--q-space-sm) var(--q-space-md); overflow: hidden; border: 0; color: #758991; background: transparent; cursor: pointer; text-align: left; transition: color .18s ease, background .18s ease; }
 .driverTabs button::after { position: absolute; right: 11px; bottom: 0; left: 11px; height: 2px; background: transparent; content: ""; transform: scaleX(.25); transition: transform .18s ease, background .18s ease, box-shadow .18s ease; }
 .driverTabs button + button { border-left: 1px solid rgba(145, 177, 188, .13); }
 .driverTabs button > i { width: 4px; height: 25px; border-radius: 99px; opacity: .54; }
 .driverTabs button > span { min-width: 0; display: grid; gap: 3px; }
 .driverTabs strong,
 .driverTabs small { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.driverTabs strong { color: #c7d2d5; font: 950 clamp(15px, 1vw, 17px)/1 var(--font-mono); }
-.driverTabs small { color: #73868e; font: 850 9px/1 var(--font-mono); letter-spacing: .04em; }
+.driverTabs strong { color: #c7d2d5; font: 900 17px/1.1 var(--font-geist); letter-spacing: .01em; }
+.driverTabs small { color: #80939b; font: 800 var(--q-font-micro)/1.2 var(--font-mono); letter-spacing: .03em; }
 .driverTabs button[aria-pressed="true"] { color: #20d7e7; background: linear-gradient(180deg, color-mix(in srgb, var(--team-color) 11%, transparent), transparent); }
 .driverTabs button[aria-pressed="true"]::after { background: var(--team-color); box-shadow: 0 0 10px var(--team-color); transform: scaleX(1); }
 .driverTabs button[aria-pressed="true"] > i { opacity: 1; box-shadow: 0 0 9px var(--team-color); }
 .driverTabs button[aria-pressed="true"] strong { color: #fff; }
 .driverTabs button:disabled { cursor: not-allowed; filter: grayscale(.8); opacity: .45; }
 
-.driverTelemetry { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: 40px 42px 58px auto; gap: 5px 8px; padding: 7px 11px 6px; border-bottom: 1px solid rgba(181, 205, 212, .14); background: linear-gradient(180deg, rgba(255,255,255,.016), transparent); }
+.driverTelemetry { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-auto-rows: min-content; gap: var(--q-space-sm) var(--q-space-md); padding: var(--q-space-md) var(--q-space-lg); border-bottom: 1px solid rgba(181, 205, 212, .14); background: linear-gradient(180deg, rgba(255,255,255,.018), transparent); }
 .driverIdentity { min-width: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 9px; }
-.driverIdentity > b { color: #fff; font: 950 clamp(28px, 2vw, 34px)/1 var(--font-mono); letter-spacing: -.05em; text-shadow: 0 0 16px color-mix(in srgb, var(--team-color) 32%, transparent); }
+.driverIdentity > b { color: #fff; font: 900 clamp(29px, 2vw, 35px)/1 var(--font-mono); font-variant-numeric: tabular-nums lining-nums; letter-spacing: -.03em; text-shadow: 0 0 16px color-mix(in srgb, var(--team-color) 28%, transparent); }
 .driverIdentity > span { min-width: 0; display: grid; gap: 3px; }
 .driverIdentity strong,
 .driverIdentity small { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.driverIdentity strong { color: #f5f8f9; font: 950 19px/1 var(--font-mono); }
-.driverIdentity small { color: #7b9098; font: 850 9px/1 var(--font-mono); }
-.phaseBeacon { min-width: 0; display: flex; align-items: center; gap: 7px; padding: 7px 9px; color: #20d7e7; border: 1px solid color-mix(in srgb, currentColor 28%, transparent); border-radius: 999px; background: color-mix(in srgb, currentColor 8%, transparent); font: 950 10px/1 var(--font-mono); white-space: nowrap; box-shadow: inset 0 0 12px color-mix(in srgb, currentColor 5%, transparent); }
+.driverIdentity strong { color: #f5f8f9; font: 900 clamp(19px, 1.22vw, 22px)/1.05 var(--font-geist); letter-spacing: .01em; }
+.driverIdentity small { color: #879aa1; font: 800 var(--q-font-micro)/1.25 var(--font-mono); }
+.phaseBeacon { min-width: 0; min-height: 34px; display: flex; align-items: center; gap: var(--q-space-sm); padding: var(--q-space-sm) var(--q-space-md); color: #20d7e7; border: 1px solid color-mix(in srgb, currentColor 28%, transparent); border-radius: var(--q-radius-control); background: color-mix(in srgb, currentColor 7%, transparent); font: 900 var(--q-font-label)/1 var(--font-mono); white-space: nowrap; }
 .phaseBeacon i { width: 7px; height: 7px; border-radius: 50%; background: currentColor; box-shadow: 0 0 8px currentColor; }
 .phaseBeacon[data-phase="PUSH_LAP"] { color: #ff5269; }
 .phaseBeacon[data-phase="PUSH_LAP"] i { animation: phase-live 1s ease-in-out infinite; }
+.shell[data-qualifying-paused="true"] .phaseBeacon[data-phase="PUSH_LAP"] i { animation-play-state: paused; }
 .phaseBeacon[data-phase="ABORTED_LAP"] { color: #ff5269; border-radius: 5px; background: rgba(255,82,105,.09); }
-.phaseBeacon[data-phase="COOL_DOWN"],
 .phaseBeacon[data-phase="IN_LAP"] { color: #80939a; }
 .phaseBeacon[data-phase="GARAGE"] { color: #71848b; }
 @keyframes phase-live { 50% { opacity: .35; transform: scale(.72); } }
-.liveDials { grid-column: 1 / -1; min-width: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
-.liveDials > span { min-width: 0; display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; grid-template-rows: 12px 20px; align-items: end; padding: 5px 8px; border-left: 2px solid rgba(32, 215, 231, .45); background: linear-gradient(90deg, rgba(32,215,231,.07), rgba(9,25,32,.68)); }
-.liveDials > span > svg { grid-row: 1 / 3; align-self: center; color: #20d7e7; opacity: .72; }
-.liveDials small { grid-column: 2 / -1; color: #70868e; font: 850 8px/1 var(--font-mono); letter-spacing: .07em; }
-.liveDials strong { min-width: 0; overflow: hidden; color: #eef5f6; font: 950 16px/1 var(--font-mono); font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
-.liveDials em { color: #71858d; font: 800 8px/1 var(--font-mono); font-style: normal; white-space: nowrap; }
+/* Speed dial and tyre bank sit side by side, then stack on a narrow rail. */
+.liveDials { grid-column: 1 / -1; min-width: 0; display: grid; grid-template-columns: 108px minmax(0, 1fr); align-items: center; gap: var(--q-space-md); }
+.speedInstrument { --speed-progress: 0deg; min-width: 0; min-height: 0; display: grid; grid-template-rows: 108px auto; place-items: center; align-content: center; gap: 7px; }
+/* One centred column now that the gear readout is gone. */
+.speedRing { position: relative; width: 108px; aspect-ratio: 1; display: grid; grid-template-columns: minmax(0, 1fr); align-content: center; justify-items: center; gap: 0; border-radius: 50%; color: #58dde7; background: conic-gradient(from 210deg, var(--team-color) 0deg var(--speed-progress), rgba(106,139,149,.16) var(--speed-progress) 300deg, transparent 300deg 360deg); filter: drop-shadow(0 6px 12px rgba(0,0,0,.28)); transition: background .24s linear, filter .2s ease; }
+.speedRing::before { position: absolute; inset: 7px; border: 1px solid rgba(142,181,191,.18); border-radius: inherit; background: radial-gradient(circle at 50% 34%, color-mix(in srgb, var(--team-color) 8%, #0a171d), #061015 72%); box-shadow: inset 0 0 16px rgba(0,0,0,.52); content: ""; }
+.speedRing > * { position: relative; z-index: 1; }
+.speedRing > strong { min-width: 0; color: #f4fafb; font: 900 30px/1.1 var(--font-mono); font-variant-numeric: tabular-nums lining-nums; letter-spacing: -.035em; text-align: center; }
+.speedRing > small { color: #82969e; font: 800 var(--q-font-micro)/1.1 var(--font-mono); letter-spacing: .05em; text-align: center; }
+.trafficReadout { width: 100%; min-width: 0; display: grid; grid-template-columns: 13px minmax(0, 1fr) auto; grid-template-rows: 12px 14px; align-items: center; gap: 2px 4px; color: #80939a; }
+.trafficReadout svg { grid-row: 1 / 3; color: #6f8992; }
+.trafficReadout small { grid-column: 2 / -1; color: #71878f; font: 800 10px/1 var(--font-mono); letter-spacing: .06em; }
+.trafficReadout strong { min-width: 0; overflow: hidden; font: 900 11px/1 var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
+.trafficReadout em { color: #a3b4b9; font: 800 10px/1 var(--font-mono); font-style: normal; font-variant-numeric: tabular-nums lining-nums; }
 .trafficLOW { color: #4bde95 !important; }
 .trafficMEDIUM { color: #f4d35e !important; }
 .trafficHIGH { color: #ff5269 !important; }
-.tyreTelemetry { grid-column: 1 / -1; min-width: 0; min-height: 0; display: grid; grid-template-rows: 11px minmax(0, 1fr); gap: 3px; }
-.tyreTelemetry > header { min-width: 0; display: flex; align-items: center; gap: 5px; color: #8fa2a9; }
+.tyreTelemetry { min-width: 0; min-height: 0; display: grid; grid-template-rows: 16px minmax(0, 1fr); align-self: stretch; gap: 9px; }
+.tyreTelemetry > header { min-width: 0; display: flex; align-items: center; gap: 7px; color: #8fa2a9; }
 .tyreTelemetry > header svg { color: #58dde7; }
-.tyreTelemetry > header span { min-width: 0; overflow: hidden; font: 850 9px/1 var(--font-mono); letter-spacing: .08em; text-overflow: ellipsis; white-space: nowrap; }
-.tyreTelemetry > div { min-width: 0; min-height: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; }
-.tyreTelemetry > div > span { --tyre-tone: #55d996; position: relative; min-width: 0; min-height: 0; display: grid; grid-template-columns: 15px minmax(0, 1fr); grid-template-rows: 11px 19px 10px; align-content: center; align-items: center; gap: 0 3px; padding: 2px 4px; overflow: hidden; color: var(--tyre-tone); border: 1px solid color-mix(in srgb, var(--tyre-tone) 28%, transparent); border-radius: 6px; background: radial-gradient(circle at 18% 22%, color-mix(in srgb, var(--tyre-tone) 13%, transparent), transparent 48%), #08141a; box-shadow: inset 0 1px rgba(255,255,255,.025); transition: color .22s ease, border-color .22s ease, background .22s ease; }
+.tyreTelemetry > header span { min-width: 0; overflow: hidden; font: 800 var(--q-font-micro)/1.2 var(--font-mono); letter-spacing: .06em; text-overflow: ellipsis; white-space: nowrap; }
+.tyreTelemetry > div { min-width: 0; min-height: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: center; gap: var(--q-space-sm); }
+/*
+ * The dial stays circular, but the temperature arc is drawn as a ring border
+ * rather than a filled disc. That frees the whole inner circle for the three
+ * readings, which previously spilled past the disc's edge.
+ */
+.tyreTelemetry > div > span {
+  --tyre-tone: #55d996;
+  --temperature-progress: 50%;
+  position: relative;
+  width: 100%;
+  max-width: 62px;
+  aspect-ratio: 1;
+  justify-self: center;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 0;
+  color: var(--tyre-tone);
+  border-radius: 50%;
+  background:
+    conic-gradient(from 210deg, var(--tyre-tone) 0 var(--temperature-progress), rgba(113,143,152,.16) var(--temperature-progress) 83%, transparent 83%),
+    #061116;
+  transition: color .22s ease, background .22s ease;
+}
+/* Masks the arc into a ring, leaving the interior free for text. */
+.tyreTelemetry > div > span::before {
+  position: absolute;
+  inset: 4px;
+  border-radius: inherit;
+  background: radial-gradient(circle at 50% 32%, color-mix(in srgb, var(--tyre-tone) 10%, #0a171d), #061116 74%);
+  content: "";
+}
+.tyreTelemetry > div > span > * { position: relative; z-index: 1; }
 .tyreTelemetry > div > span[data-temperature="COLD"] { --tyre-tone: #58c9ed; }
 .tyreTelemetry > div > span[data-temperature="HOT"] { --tyre-tone: #ff6176; }
-.tyreTelemetry > div > span > i { grid-column: 1; grid-row: 1 / 3; width: 15px; height: 15px; display: grid; place-items: center; border: 1px solid color-mix(in srgb, var(--tyre-tone) 38%, transparent); border-radius: 50%; background: color-mix(in srgb, var(--tyre-tone) 9%, #061116); }
-.tyreTelemetry > div > span > b { grid-column: 2; grid-row: 1; color: #f2f7f8; font: 950 9px/1 var(--font-mono); }
+.tyreTelemetry > div > span > b { color: #f2f7f8; font: 900 var(--q-font-micro)/1 var(--font-mono); letter-spacing: .04em; }
 .tyreTelemetry abbr { text-decoration: none; }
-.tyreTelemetry strong { grid-column: 2; grid-row: 2; min-width: 0; overflow: hidden; color: currentColor; font: 950 clamp(17px, 1.05vw, 19px)/1 var(--font-mono); font-variant-numeric: tabular-nums; letter-spacing: -.04em; text-overflow: ellipsis; white-space: nowrap; }
-.tyreTelemetry strong small { margin-left: 1px; font-size: 8px; letter-spacing: 0; }
-.tyreTelemetry em { grid-column: 1 / -1; grid-row: 3; min-width: 0; overflow: hidden; color: color-mix(in srgb, var(--tyre-tone) 82%, #f2f7f8); font: 900 8px/1 var(--font-mono); font-style: normal; letter-spacing: .04em; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
+/* Sized so the position code, temperature and state all fit inside the ring. */
+.tyreTelemetry strong { min-width: 0; color: currentColor; font: 900 15px/1.15 var(--font-mono); font-variant-numeric: tabular-nums lining-nums; letter-spacing: -.03em; white-space: nowrap; }
+.tyreTelemetry strong small { margin-inline-start: 1px; font-size: var(--q-font-micro); letter-spacing: 0; }
+.tyreTelemetry em { color: color-mix(in srgb, var(--tyre-tone) 82%, #f2f7f8); font: 800 var(--q-font-micro)/1.1 var(--font-mono); font-style: normal; letter-spacing: 0; text-align: center; white-space: nowrap; }
 
-.trafficDecision { grid-column: 1 / -1; min-width: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 7px; margin: 0; padding: 4px 7px; color: #f2b84b; border-left: 2px solid currentColor; background: color-mix(in srgb, currentColor 9%, transparent); font: 900 9px/1.1 var(--font-mono); }
+.trafficDecision { grid-column: 1 / -1; min-width: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: var(--q-space-sm); margin: 0; padding: var(--q-space-xs) var(--q-space-sm); color: #f2b84b; border: 1px solid color-mix(in srgb, currentColor 24%, transparent); background: color-mix(in srgb, currentColor 7%, transparent); font: 800 var(--q-font-label)/1.25 var(--font-mono); }
 .trafficDecision b,
 .trafficDecision span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .trafficDecision[data-decision="ABORTED"] { color: #ff5269; }
 .trafficDecision[data-decision="TRAFFIC"] { color: #f4d35e; }
-
-.controlStack { min-width: 0; min-height: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: 68px 54px 54px 62px minmax(220px, 1fr); align-content: stretch; gap: 0 9px; overflow: hidden; padding: 2px 11px 8px; background: linear-gradient(180deg, transparent 0 68%, rgba(88, 221, 231, .03)); }
-.controlSection { min-width: 0; min-height: 0; display: grid; grid-template-rows: 19px minmax(0, 1fr); gap: 3px; padding: 5px 0; border-bottom: 1px solid rgba(145, 177, 188, .11); }
-.controlSection[data-control="release"],
-.controlSection[data-control="lap-action"],
-.controlSection[data-control="tyres"] { grid-column: 1 / -1; }
-.controlSection[data-control="energy"] .segmentOptions button { gap: 3px; padding-inline: 3px; font-size: 9px; }
+/*
+ * The rail scrolls as one column of full-width control rows. Splitting it into
+ * two columns was what forced every segment button down to ~50px wide and
+ * clipped labels like "BALANCE" and "WARM-UP"; a single column gives each
+ * option group the rail's full measure.
+ */
+.controlStack {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  /*
+   * The core never shrinks below the height its rows need, but absorbs any
+   * leftover space when the rail is tall. `minmax(0, 1fr)` squeezed it below
+   * its content and pushed the last row past its bottom edge.
+   */
+  grid-template-rows: minmax(min-content, 1fr) auto;
+  align-content: stretch;
+  gap: var(--q-space-sm);
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: var(--q-space-sm) var(--q-space-lg) var(--q-space-md);
+  background: linear-gradient(180deg, transparent 0 58%, rgba(88, 221, 231, .025));
+  scrollbar-width: thin;
+  scrollbar-color: #293743 transparent;
+  container-type: inline-size;
+  container-name: control-rail;
+}
+/*
+ * Equal-height rows stretch to fill the core exactly, so there is no leftover
+ * space to pool at either end and the first row's header cannot be pushed
+ * outside the scroll container.
+ */
+.controlCore { min-width: 0; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); grid-auto-rows: minmax(min-content, 1fr); align-content: stretch; gap: var(--q-space-xs); }
+/*
+ * Each row reads as label column + control column so the buttons keep their
+ * full width and the header text never competes for the same track.
+ */
+.controlSection {
+  position: relative;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: center;
+  gap: var(--q-space-xs);
+  padding: var(--q-space-xs) 0;
+  border-bottom: 1px solid rgba(145, 177, 188, .13);
+  transition: background .18s ease, border-color .18s ease;
+}
+.controlSection[data-priority="true"] { background: linear-gradient(90deg, rgba(32,215,231,.055), transparent 72%); border-bottom-color: rgba(32,215,231,.28); }
+.controlStack > .controlSection[data-control="tyres"] { grid-template-columns: minmax(0, 1fr); gap: var(--q-space-xs); padding: var(--q-space-xs) 0 0; border-top: 1px solid rgba(145, 177, 188, .2); border-bottom: 0; }
 .controlSection:last-child { border-bottom: 0; }
-.controlSection > header { min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+/* Label and current value share one line above the controls. */
+.controlSection > header { min-width: 0; display: flex; align-items: baseline; justify-content: space-between; gap: var(--q-space-sm); }
 .controlSection > header span,
-.controlSection > header b { min-width: 0; overflow: hidden; font: 900 10px/1 var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
-.controlSection > header span { color: #7e9299; letter-spacing: .08em; }
-.controlSection > header b { color: #e5edef; font-size: 10px; }
-.segmentOptions { min-width: 0; min-height: 0; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); align-items: stretch; overflow: hidden; border-radius: 7px; background: #07141a; box-shadow: inset 0 0 0 1px rgba(145, 177, 188, .17), 0 4px 14px rgba(0,0,0,.14); }
-.segmentOptions button { position: relative; min-width: 0; min-height: 29px; display: flex; align-items: center; justify-content: center; gap: 4px; padding: 4px 5px; overflow: hidden; border: 0; border-right: 1px solid rgba(145, 177, 188, .12); color: #87999f; background: transparent; font: 900 10px/1 var(--font-mono); cursor: pointer; transition: color .16s ease, background .16s ease, box-shadow .16s ease; }
-.segmentOptions button:last-child { border-right: 0; }
+.controlSection > header b { min-width: 0; overflow: hidden; font: 800 var(--q-font-micro)/1.25 var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
+.controlSection > header span { color: #8799a0; letter-spacing: .06em; }
+.controlSection[data-priority="true"] > header span { color: #b7c7cc; }
+.controlSection > header b { color: #e5edef; font-size: var(--q-font-label); font-variant-numeric: tabular-nums lining-nums; }
+/*
+ * Option groups wrap instead of shrinking. `auto-fit` with a min track keeps
+ * every button at least as wide as its longest label, so a 4-option group
+ * reflows to two rows on a narrow rail rather than clipping the text.
+ */
+.segmentOptions {
+  width: 100%;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
+  align-items: center;
+  gap: var(--q-space-xs);
+}
+.segmentOptions button {
+  --option-tone: #58dde7;
+  position: relative;
+  min-width: 0;
+  min-height: var(--q-target-min);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--q-space-2xs);
+  padding: var(--q-space-sm) var(--q-space-sm);
+  border: 1px solid color-mix(in srgb, var(--option-tone) 26%, rgba(145,177,188,.15));
+  border-radius: var(--q-radius-control);
+  color: color-mix(in srgb, var(--option-tone) 70%, #b7c6ca);
+  background: color-mix(in srgb, var(--option-tone) 4%, #07141a);
+  font: 850 var(--q-font-label)/1.15 var(--font-mono);
+  cursor: pointer;
+  transition: color .16s ease, border-color .16s ease, background .16s ease, box-shadow .16s ease, transform .16s ease;
+}
+.controlSection[data-control="fuel"] .segmentOptions button:nth-child(2),
+.controlSection[data-control="out-lap"] .segmentOptions button:nth-child(2),
+.controlSection[data-control="attack"] .segmentOptions button:nth-child(2) { --option-tone: #4bde95; }
+.controlSection[data-control="fuel"] .segmentOptions button:nth-child(3),
+.controlSection[data-control="out-lap"] .segmentOptions button:nth-child(3),
+.controlSection[data-control="attack"] .segmentOptions button:nth-child(3) { --option-tone: #f2c562; }
+.controlSection[data-control="attack"] .segmentOptions button:nth-child(4) { --option-tone: #ff5269; }
+/* The label owns the button's inner width and never overflows its bounds. */
 .segmentOptions button span,
-.segmentOptions button small { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.segmentOptions button small { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .segmentOptions button small { display: none; }
-.segmentOptions button[aria-pressed="true"] { z-index: 1; color: #031015; background: linear-gradient(180deg, #53edf5, #20d7e7); box-shadow: inset 0 -2px rgba(0,0,0,.16), 0 0 16px rgba(32, 215, 231, .34); }
-.segmentOptions button:hover:not(:disabled):not([aria-pressed="true"]) { color: #dff9fb; background: rgba(32, 215, 231, .06); }
+.segmentOptions button[aria-pressed="true"] { z-index: 1; color: #031015; border-color: var(--option-tone); background: var(--option-tone); box-shadow: inset 0 -2px rgba(0,0,0,.16), 0 0 15px color-mix(in srgb, var(--option-tone) 38%, transparent); transform: translateY(-1px); }
+.segmentOptions button:hover:not(:disabled):not([aria-pressed="true"]) { color: #effeff; border-color: color-mix(in srgb, var(--option-tone) 68%, transparent); background: color-mix(in srgb, var(--option-tone) 10%, #07141a); }
 .segmentOptions button:disabled { color: #64777e; cursor: not-allowed; opacity: .52; }
-.orbOptions { min-width: 0; min-height: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: center; gap: 7px; }
-.releaseOptions { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
-.orbOptions button { position: relative; min-width: 0; min-height: 34px; display: grid; grid-template-columns: 32px minmax(0, 1fr); align-items: center; gap: 6px; padding: 0 7px 0 0; overflow: hidden; border: 1px solid transparent; border-radius: 18px 7px 7px 18px; color: #9aadb3; background: rgba(8,22,28,.72); font: 900 10px/1.05 var(--font-mono); cursor: pointer; text-align: left; transition: color .16s ease, border-color .16s ease, background .16s ease, box-shadow .16s ease, transform .16s ease; }
-.releaseOptions button { min-height: 44px; grid-template-columns: 40px minmax(0, 1fr); border-radius: 23px 9px 9px 23px; font-size: 11px; }
-.releaseOptions button:first-child:not(:disabled) { color: #031015; border-color: #58dde7; background: linear-gradient(180deg, #6bedf4, #58dde7); box-shadow: 0 0 18px rgba(88,221,231,.18); }
-.releaseOptions button:first-child:not(:disabled) > i { color: #031015; border-color: rgba(3,16,21,.25); background: rgba(3,16,21,.08); }
-.orbOptions button > i { width: 32px; height: 32px; display: grid; place-items: center; border: 1px solid rgba(145, 177, 188, .27); border-radius: 50%; background: radial-gradient(circle, rgba(18, 45, 54, .9), #071219 72%); transition: border-color .15s ease, color .15s ease, box-shadow .15s ease, transform .15s ease; }
-.releaseOptions button > i { width: 40px; height: 40px; }
-.orbOptions button > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: normal; }
+.orbOptions {
+  width: 100%;
+  min-width: 0;
+  display: grid;
+  /* Three actions must share the rail's width on one row. At the desktop rail
+     (354px) that allows 108px each, which still clears the longest label
+     ("Cool Down") given the trimmed icon and padding below. */
+  grid-template-columns: repeat(auto-fit, minmax(108px, 1fr));
+  align-items: center;
+  gap: var(--q-space-xs);
+}
+/*
+ * Release is a single action, so it is sized to its content rather than
+ * stretched across the rail. A full-width pill read as a banner and made the
+ * lead action harder to aim at than a bounded target.
+ */
+.releaseOptions { grid-template-columns: minmax(0, 160px); gap: 0; }
+.orbOptions button {
+  --action-tone: #58dde7;
+  position: relative;
+  min-width: 0;
+  min-height: var(--q-target-min);
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--q-space-2xs);
+  padding: var(--q-space-2xs) var(--q-space-xs) var(--q-space-2xs) var(--q-space-2xs);
+  border: 1px solid color-mix(in srgb, var(--action-tone) 24%, rgba(145,177,188,.16));
+  border-radius: var(--q-radius-control);
+  color: color-mix(in srgb, var(--action-tone) 70%, #a9b9be);
+  background: color-mix(in srgb, var(--action-tone) 4%, rgba(8,22,28,.8));
+  font: 850 var(--q-font-label)/1.2 var(--font-mono);
+  cursor: pointer;
+  text-align: left;
+  transition: color .16s ease, border-color .16s ease, background .16s ease, box-shadow .16s ease, transform .16s ease;
+}
+.controlSection[data-control="lap-action"] .orbOptions button:nth-child(1) { --action-tone: #ff5269; }
+.controlSection[data-control="lap-action"] .orbOptions button:nth-child(2) { --action-tone: #58c9ed; }
+.controlSection[data-control="lap-action"] .orbOptions button:nth-child(3) { --action-tone: #b787f3; }
+/* Release is the rail's lead action, so it gets the tallest target. */
+.releaseOptions button { --action-tone: #58dde7; min-height: var(--q-target-lead); grid-template-columns: 34px minmax(0, 1fr); gap: var(--q-space-sm); padding: var(--q-space-xs) var(--q-space-md) var(--q-space-xs) var(--q-space-xs); border-radius: var(--q-radius-control); font-size: var(--q-font-body); background: rgba(8,22,28,.72); }
+.releaseOptions button[data-ready="true"] { color: #031015; border-color: #58dde7; background: linear-gradient(135deg, #7ef4fa, #20d7e7); box-shadow: 0 0 16px rgba(88,221,231,.27); }
+.releaseOptions button[data-risk="TIME"] { --action-tone: #f2c562; color: #130f03; border-color: #f2c562; background: linear-gradient(135deg, #ffe490, #e8b743); box-shadow: 0 0 16px rgba(242,197,98,.25); }
+.releaseOptions button[data-risk="TRAFFIC"] { --action-tone: #ff8e57; color: #160802; border-color: #ff8e57; background: linear-gradient(135deg, #ffb17e, #f2763f); box-shadow: 0 0 16px rgba(255,142,87,.24); }
+.orbOptions button > i { width: 26px; height: 26px; display: grid; place-items: center; border: 1px solid rgba(145, 177, 188, .27); border-radius: 50%; background: radial-gradient(circle, rgba(18, 45, 54, .9), #071219 72%); transition: border-color .15s ease, color .15s ease, box-shadow .15s ease, transform .15s ease; }
+.releaseOptions button > i { width: 34px; height: 34px; color: currentColor; border-color: color-mix(in srgb, currentColor 48%, transparent); background: rgba(3,16,21,.12); }
+.orbOptions button > span { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.releaseOptions button > span { display: grid; gap: 3px; }
+.releaseOptions button > span strong { min-width: 0; overflow: hidden; font: 900 var(--q-font-body)/1.1 var(--font-mono); letter-spacing: .03em; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
+.releaseOptions button > span small { min-width: 0; overflow: hidden; color: currentColor; font: 800 var(--q-font-micro)/1.15 var(--font-mono); letter-spacing: .01em; opacity: .82; text-overflow: ellipsis; white-space: nowrap; }
 .orbOptions button:hover:not(:disabled) { color: #eafcfd; background: rgba(32,215,231,.07); transform: translateY(-1px); }
 .orbOptions button:hover:not(:disabled) > i { border-color: #20d7e7; transform: scale(1.04); }
 .orbOptions button[aria-pressed="true"] { color: #dffcff; background: rgba(32,215,231,.08); }
@@ -245,66 +482,76 @@
 .driverTabs button:focus-visible,
 .segmentOptions button:focus-visible,
 .orbOptions button:focus-visible,
-.compoundSelector button:focus-visible,
-.tyreSetList button:focus-visible { z-index: 3; outline: 2px solid #c8faff; outline-offset: -2px; box-shadow: 0 0 0 2px #041016, 0 0 16px rgba(200,250,255,.28); }
+.combinedTyreSelector button:focus-visible,
+.physicalTyreSets button:focus-visible { z-index: 3; outline: 2px solid #c8faff; outline-offset: 2px; box-shadow: 0 0 0 2px #041016, 0 0 16px rgba(200,250,255,.28); }
 
-.tyreConsole { position: relative; min-width: 0; min-height: 0; display: grid; grid-template-rows: minmax(56px, .75fr) minmax(54px, .75fr) minmax(74px, 1fr); gap: 6px; }
-.compoundSelector { min-width: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 5px; }
-.compoundSelector button,
-.tyreSetList button,
-.activeSet { --compound-tone: #edf2f4; }
-.compoundSelector button[data-compound="SOFT"], .tyreSetList button[data-compound="SOFT"], .activeSet[data-compound="SOFT"] { --compound-tone: #ff4d63; }
-.compoundSelector button[data-compound="MEDIUM"], .tyreSetList button[data-compound="MEDIUM"], .activeSet[data-compound="MEDIUM"] { --compound-tone: #f4d44d; }
-.compoundSelector button[data-compound="HARD"], .tyreSetList button[data-compound="HARD"], .activeSet[data-compound="HARD"] { --compound-tone: #edf2f4; }
-.compoundSelector button[data-compound="INTERMEDIATE"], .tyreSetList button[data-compound="INTERMEDIATE"], .activeSet[data-compound="INTERMEDIATE"] { --compound-tone: #48d985; }
-.compoundSelector button[data-compound="WET"], .tyreSetList button[data-compound="WET"], .activeSet[data-compound="WET"] { --compound-tone: #4a91ff; }
-.compoundSelector button { position: relative; min-width: 0; min-height: 48px; display: grid; grid-template-columns: 31px minmax(0, 1fr); align-items: center; gap: 4px; padding: 5px 5px; overflow: hidden; border: 1px solid rgba(181,205,212,.16); border-top: 2px solid color-mix(in srgb, var(--compound-tone) 58%, transparent); border-radius: 9px; color: #a7b7bc; background: linear-gradient(180deg, #0b181e, #071219); cursor: pointer; transition: border-color .18s ease, background .18s ease, box-shadow .18s ease, transform .18s ease; }
-.compoundSelector button span { min-width: 0; display: grid; gap: 4px; text-align: left; }
-.compoundSelector button b,
-.compoundSelector button small { min-width: 0; overflow: hidden; font-family: var(--font-mono); line-height: 1; text-overflow: ellipsis; white-space: nowrap; }
-.compoundSelector button b { color: #f2f7f8; font-size: 13px; }
-.compoundSelector button small { color: #a7b7bc; font-size: 9px; }
-.compoundSelector button:hover:not(:disabled) { transform: translateY(-1px); border-color: color-mix(in srgb, var(--compound-tone) 65%, transparent); box-shadow: 0 7px 16px rgba(0,0,0,.18); }
-.compoundSelector button[aria-pressed="true"] { border-color: var(--compound-tone); color: var(--compound-tone); background: linear-gradient(180deg, color-mix(in srgb, var(--compound-tone) 14%, #0b181e), color-mix(in srgb, var(--compound-tone) 5%, #071219)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--compound-tone) 22%, transparent), 0 0 14px color-mix(in srgb, var(--compound-tone) 18%, transparent); }
-.compoundSelector button:disabled { cursor: not-allowed; opacity: .5; }
-.tyreSetList { grid-row: 2; min-width: 0; min-height: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(46px, 1fr)); grid-auto-rows: minmax(54px, 1fr); gap: 5px; overflow: hidden; }
-.tyreSetList button { position: relative; min-width: 0; display: grid; align-items: center; padding: 5px 5px 4px; overflow: hidden; border: 1px solid rgba(181,205,212,.15); border-top-color: color-mix(in srgb, var(--compound-tone) 48%, transparent); border-radius: 7px; color: #a7b7bc; background: #08171d; cursor: pointer; text-align: left; transition: border-color .16s ease, background .16s ease, box-shadow .16s ease, transform .16s ease; }
-.tyreSetList button > i { --wear: 100%; position: absolute; top: 7px; left: 6px; width: 7px; height: 7px; border: 2px solid color-mix(in srgb, var(--compound-tone) 32%, #071219); border-radius: 50%; background: var(--compound-tone); box-shadow: 0 0 7px color-mix(in srgb, var(--compound-tone) 42%, transparent); }
-.tyreSetList button span { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: 11px 24px; align-items: center; gap: 1px 2px; }
-.tyreSetList b,
-.tyreSetList strong,
-.tyreSetList small { min-width: 0; overflow: hidden; font-family: var(--font-mono); line-height: 1; text-overflow: ellipsis; white-space: nowrap; }
-.tyreSetList b { grid-column: 1; padding-left: 10px; color: #a7b7bc; font-size: 9px; }
-.tyreSetList strong { grid-column: 1 / -1; color: #f2f7f8; font-size: 16px; font-variant-numeric: tabular-nums; letter-spacing: -.04em; text-align: center; }
-.tyreSetList small { grid-column: 2; grid-row: 1; color: #8fa2a9; font-size: 8px; text-align: right; }
-.tyreSetList button[data-life-tone="CAUTION"] strong { color: #f2c562; }
-.tyreSetList button[data-life-tone="CRITICAL"] strong { color: #ff6176; }
-.tyreSetList button:hover:not(:disabled) { transform: translateY(-1px); border-color: color-mix(in srgb, var(--compound-tone) 60%, transparent); box-shadow: 0 6px 14px rgba(0,0,0,.18); }
-.tyreSetList button[aria-pressed="true"] { border-color: var(--compound-tone); background: color-mix(in srgb, var(--compound-tone) 10%, #08171d); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--compound-tone) 20%, transparent), 0 0 13px color-mix(in srgb, var(--compound-tone) 17%, transparent); }
-.tyreSetList button:disabled { cursor: not-allowed; opacity: .5; }
-.activeSet { grid-row: 3; position: relative; align-self: stretch; min-width: 0; display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 8px 48px 8px 10px; overflow: hidden; border: 1px solid color-mix(in srgb, var(--compound-tone) 52%, rgba(181,205,212,.18)); border-left: 3px solid var(--compound-tone); border-radius: 8px; background: radial-gradient(circle at 9% 48%, color-mix(in srgb, var(--compound-tone) 18%, transparent), transparent 35%), linear-gradient(120deg, color-mix(in srgb, var(--compound-tone) 9%, #0b181e), #061116 66%); box-shadow: inset 0 1px rgba(255,255,255,.045), 0 8px 22px rgba(0,0,0,.22), 0 0 16px color-mix(in srgb, var(--compound-tone) 8%, transparent); animation: active-set-lock .38s ease-out both; }
-.activeSet::after { position: absolute; inset: 0 auto 0 -42%; width: 24%; background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--compound-tone) 18%, transparent), transparent); content: ""; animation: active-set-sweep .44s ease-out both; transform: skewX(-18deg); }
-.activeSet > :global(.f1-tyre-badge) { z-index: 1; }
-.activeSetIdentity { z-index: 1; min-width: 0; display: grid; gap: 4px; }
-.activeSetIdentity small { min-width: 0; overflow: hidden; color: #8fa2a9; font: 850 9px/1 var(--font-mono); letter-spacing: .09em; text-overflow: ellipsis; white-space: nowrap; }
-.activeSetIdentity small b { margin-left: 5px; padding: 2px 5px; color: var(--compound-tone); border: 1px solid color-mix(in srgb, var(--compound-tone) 40%, transparent); border-radius: 999px; background: color-mix(in srgb, var(--compound-tone) 9%, transparent); font-size: 8px; letter-spacing: .04em; }
-.activeSetIdentity > strong { min-width: 0; display: flex; align-items: baseline; gap: 7px; overflow: hidden; color: #f2f7f8; font: 950 clamp(13px, .9vw, 15px)/1 var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
-.activeSetIdentity > strong em { color: #a7b7bc; font-size: 10px; font-style: normal; }
-.activeSetIdentity > i { color: color-mix(in srgb, var(--compound-tone) 76%, #f2f7f8); font: 900 9px/1 var(--font-mono); font-style: normal; letter-spacing: .06em; }
-.activeSetLife { z-index: 1; min-width: 58px; display: grid; justify-items: end; gap: 3px; }
-.activeSetLife strong { color: #f2f7f8; font: 950 clamp(27px, 1.9vw, 31px)/1 var(--font-mono); font-variant-numeric: tabular-nums; letter-spacing: -.07em; }
-.activeSetLife small { color: #8fa2a9; font: 850 9px/1 var(--font-mono); letter-spacing: .05em; }
-.activeSet[data-life-tone="CAUTION"] .activeSetLife strong { color: #f2c562; }
-.activeSet[data-life-tone="CRITICAL"] .activeSetLife strong { color: #ff6176; text-shadow: 0 0 12px rgba(255,97,118,.3); }
-.tyreWarning { grid-row: 3; align-self: stretch; min-width: 0; display: grid; grid-template-columns: 38px minmax(0, 1fr); align-items: center; gap: 9px; padding: 9px 12px; overflow: hidden; color: #ffb34f; background: linear-gradient(110deg, rgba(54,31,6,.95), rgba(21,17,9,.55)); box-shadow: inset 2px 0 #ffb34f; }
-.tyreWarning > :global(.f1-tyre-badge) { transform: scale(.92); }
-.tyreWarning > span { min-width: 0; display: grid; gap: 5px; }
-.tyreWarning b,
-.tyreWarning small { min-width: 0; overflow: hidden; font-family: var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
-.tyreWarning b { color: #ffd089; font-size: 12px; }
-.tyreWarning small { color: #c59a61; font-size: 9px; }
-@keyframes active-set-lock { from { opacity: .72; transform: translateY(4px); } }
-@keyframes active-set-sweep { to { left: 118%; } }
+.tyreSelectorConsole { min-width: 0; display: grid; grid-auto-rows: min-content; gap: var(--q-space-xs); }
+/*
+ * All five compounds stay on one row. `auto-fit` split them 4+1 at common rail
+ * widths, which read as a layout accident rather than a set; an explicit
+ * 5-track grid keeps the compound family legible as one group.
+ */
+.combinedTyreSelector { width: 100%; min-width: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); align-items: center; gap: var(--q-space-xs); }
+.combinedTyreSelector button { --compound-tone: #edf2f4; position: relative; min-width: 0; min-height: var(--q-target-comfort); display: grid; grid-template-columns: minmax(0, auto) minmax(0, 1fr); align-items: center; justify-items: center; gap: var(--q-space-2xs); padding: var(--q-space-xs); border: 1px solid color-mix(in srgb, var(--compound-tone) 26%, rgba(181,205,212,.14)); border-radius: var(--q-radius-control); color: #b3c0c4; background: linear-gradient(180deg, color-mix(in srgb, var(--compound-tone) 5%, #0a171d), #071219); cursor: pointer; transition: color .16s ease, border-color .16s ease, background .16s ease, box-shadow .16s ease, transform .16s ease; }
+/*
+ * Five compounds across cannot fit both the badge and the name on a narrow
+ * rail. The badge is the redundant half here, since the name is explicit.
+ */
+@container control-rail (max-width: 470px) {
+  .combinedTyreSelector button { grid-template-columns: minmax(0, 1fr); padding-inline: var(--q-space-2xs); }
+  .combinedTyreSelector button > :global(.f1-tyre-badge) { display: none; }
+  .combinedTyreSelector strong { color: var(--compound-tone); }
+}
+.combinedTyreSelector button[data-compound="SOFT"] { --compound-tone: #ff4d63; }
+.combinedTyreSelector button[data-compound="MEDIUM"] { --compound-tone: #f4d44d; }
+.combinedTyreSelector button[data-compound="HARD"] { --compound-tone: #edf2f4; }
+.combinedTyreSelector button[data-compound="INTERMEDIATE"] { --compound-tone: #48d985; }
+.combinedTyreSelector button[data-compound="WET"] { --compound-tone: #4a91ff; }
+/* Scoped up from the shared 22px/8px small badge: inside a 48px control the
+   compound letter is a primary reading, not a decoration. */
+.combinedTyreSelector button > :global(.f1-tyre-badge) { width: 26px; min-width: 26px; height: 26px; min-height: 26px; aspect-ratio: 1; font-size: 11px; }
+.towerTyre :global(.f1-tyre-badge) { width: 24px; min-width: 24px; height: 24px; min-height: 24px; font-size: 10px; }
+.combinedTyreSelector button > span { min-width: 0; display: grid; align-content: center; justify-items: center; }
+.combinedTyreSelector strong,
+.combinedTyreSelector small { min-width: 0; max-width: 100%; overflow: hidden; font-family: var(--font-mono); line-height: 1; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
+/* One line: the compound name. Life lives on the physical-set row. */
+.combinedTyreSelector strong { color: #e8eef0; font-size: var(--q-font-micro); font-weight: 900; letter-spacing: .04em; }
+.combinedTyreSelector button[aria-pressed="true"] strong { color: var(--compound-tone); }
+.combinedTyreSelector em { position: absolute; top: 2px; right: var(--q-space-xs); color: color-mix(in srgb, var(--compound-tone) 72%, #fff); font: 900 var(--q-font-micro)/1 var(--font-mono); font-style: normal; opacity: .78; }
+.combinedTyreSelector button:hover:not(:disabled) { transform: translateY(-1px); border-color: color-mix(in srgb, var(--compound-tone) 70%, transparent); box-shadow: 0 7px 15px rgba(0,0,0,.2), 0 0 10px color-mix(in srgb, var(--compound-tone) 12%, transparent); }
+.combinedTyreSelector button[aria-pressed="true"] { color: var(--compound-tone); border-color: var(--compound-tone); background: linear-gradient(180deg, color-mix(in srgb, var(--compound-tone) 12%, #0a171d), color-mix(in srgb, var(--compound-tone) 4%, #071219)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--compound-tone) 22%, transparent), 0 0 14px color-mix(in srgb, var(--compound-tone) 20%, transparent); }
+.combinedTyreSelector button:disabled { cursor: not-allowed; opacity: .42; }
+/*
+ * Physical sets stay on a single row that scrolls horizontally when a compound
+ * has many sets. Wrapping them grew the tyre section tall enough to push the
+ * rest of the rail off screen, so the row is bounded and scrollable instead.
+ */
+/*
+ * All sets of the selected compound fit on one row: six equal tracks that
+ * shrink together. Nothing is cut off at the right edge and the section keeps a
+ * bounded height, so the operation rows above it stay visible.
+ */
+.physicalTyreSets { min-width: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); grid-auto-flow: column; gap: var(--q-space-2xs); padding: 1px 0 3px; }
+/*
+ * Set number, life and freshness are three stacked rows inside the button. The
+ * set number used to be absolutely positioned, which overlapped the life value
+ * and pushed text outside the button box.
+ */
+.physicalTyreSets button { --compound-tone: #edf2f4; position: relative; min-width: 0; min-height: var(--q-target-comfort); display: grid; grid-template-rows: auto auto; align-content: center; justify-items: center; gap: 1px; padding: var(--q-space-xs) 2px; border: 1px solid rgba(145,177,188,.18); border-radius: var(--q-radius-surface); color: #9babb0; background: rgba(5,16,22,.82); cursor: pointer; transition: color .16s ease, border-color .16s ease, background .16s ease, box-shadow .16s ease, transform .16s ease; }
+.physicalTyreSets button[data-compound="SOFT"] { --compound-tone: #ff4d63; }
+.physicalTyreSets button[data-compound="MEDIUM"] { --compound-tone: #f4d44d; }
+.physicalTyreSets button[data-compound="HARD"] { --compound-tone: #edf2f4; }
+.physicalTyreSets button[data-compound="INTERMEDIATE"] { --compound-tone: #48d985; }
+.physicalTyreSets button[data-compound="WET"] { --compound-tone: #4a91ff; }
+.physicalTyreSets button > span { width: 100%; min-width: 0; display: grid; justify-items: center; gap: 0; }
+.physicalTyreSets b { color: var(--compound-tone); font: 800 var(--q-font-micro)/1.1 var(--font-mono); }
+.physicalTyreSets strong { color: #f3f7f8; font: 900 var(--q-font-label)/1.1 var(--font-mono); font-variant-numeric: tabular-nums lining-nums; letter-spacing: -.03em; }
+.physicalTyreSets small { color: #81939a; font: 800 var(--q-font-micro)/1.1 var(--font-mono); letter-spacing: 0; }
+.physicalTyreSets button[data-life-tone="CAUTION"] strong { color: #f2c562; }
+.physicalTyreSets button[data-life-tone="CRITICAL"] strong { color: #ff6176; }
+.physicalTyreSets button[aria-pressed="true"] { border-color: var(--compound-tone); background: color-mix(in srgb, var(--compound-tone) 9%, #071219); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--compound-tone) 22%, transparent), 0 0 12px color-mix(in srgb, var(--compound-tone) 18%, transparent); transform: translateY(-1px); }
+.physicalTyreSets button:hover:not(:disabled) { border-color: color-mix(in srgb, var(--compound-tone) 60%, transparent); transform: translateY(-1px); }
+.physicalTyreSets button:disabled { cursor: not-allowed; opacity: .46; }
 
 .eliminatedRail { grid-template-rows: 52px minmax(0, 1fr); border-top-color: #ff5269; }
 .eliminatedMessage { align-self: start; display: grid; justify-items: start; gap: 9px; margin: 22px 18px; padding: 22px 0; color: #ff5269; border-block: 1px solid rgba(255,82,105,.25); }
@@ -313,58 +560,166 @@
 .eliminatedMessage p { max-width: 29ch; margin: 0; color: #92a2a8; font: 750 12px/1.5 var(--font-geist); }
 
 @media (max-width: 1500px) {
-  .topbar { grid-template-columns: 182px minmax(0, 1fr) 390px; }
+  .topbar { grid-template-columns: 182px minmax(0, 1fr) auto; }
   .broadcast { grid-template-columns: 96px 126px 180px minmax(214px, 1fr); }
-  .grid { grid-template-columns: 340px minmax(480px, 1fr) 360px !important; }
+  .grid { grid-template-columns: 300px minmax(460px, 1fr) minmax(400px, 30vw) !important; }
 }
 
 @media (max-width: 1320px) and (min-width: 1101px) {
-  .grid { grid-template-columns: 310px minmax(470px, 1fr) 360px !important; }
+  /* Three columns of fixed minimums summed past 1180px. The circuit column is
+     the one that can yield, so it drops its minimum instead of forcing the
+     document to scroll horizontally. */
+  .grid { grid-template-columns: minmax(0, 278px) minmax(0, 1fr) minmax(0, 380px) !important; gap: 8px; padding: 8px; }
   .towerHead,
-  .towerRow { grid-template-columns: 22px 57px 31px 53px minmax(74px, 1fr); gap: 3px; padding-inline: 5px; }
+  .towerRow { grid-template-columns: 22px minmax(0, .8fr) 32px minmax(0, .7fr) minmax(0, 1.1fr); gap: 3px; padding-inline: 5px; }
   .towerSectorCell { gap: 2px; padding-inline: 3px; }
-  .driverTelemetry { padding-inline: 8px; }
-  .controlStack { padding-inline: 8px; }
-  .segmentOptions button { padding-inline: 3px; font-size: 10px; }
-  .orbOptions { gap: 3px; }
-  .orbOptions button { grid-template-columns: 28px minmax(0, 1fr); gap: 3px; font-size: 10px; }
-  .orbOptions button > i { width: 28px; height: 28px; }
-  .releaseOptions { gap: 7px; }
-  .releaseOptions button { grid-template-columns: 38px minmax(0, 1fr); font-size: 10px; }
-  .releaseOptions button > i { width: 38px; height: 38px; }
+  .driverTelemetry { padding-inline: var(--q-space-md); }
+  .controlStack { padding-inline: var(--q-space-md); }
 }
 
-@media (max-height: 780px) and (min-width: 1101px) {
-  .controlRail { grid-template-rows: 44px 164px minmax(0, 1fr); }
-  .driverTabs button { padding-block: 4px; }
-  .driverTelemetry { grid-template-rows: 32px 36px 52px auto; padding-block: 5px; }
-  .controlStack { grid-template-rows: 68px 46px 46px 56px minmax(198px, 1fr); padding-bottom: 4px; }
-  .controlSection { grid-template-rows: 17px minmax(0, 1fr); gap: 1px; padding-block: 3px; }
-  .segmentOptions button { min-height: 25px; }
-  .orbOptions button > i { width: 27px; height: 27px; }
-  .orbOptions button { grid-template-columns: 27px minmax(0, 1fr); }
-  .releaseOptions button { grid-template-columns: 40px minmax(0, 1fr); }
-  .releaseOptions button > i { width: 40px; height: 40px; }
-  .tyreConsole { grid-template-rows: 48px 48px minmax(66px, 1fr); }
-  .tyreSetList { grid-auto-rows: 48px; }
-  .compoundSelector button { min-height: 48px; padding-block: 3px; }
-  .activeSet { padding-block: 6px; }
+/*
+ * Container queries drive the rail's internals: what matters is how wide the
+ * rail itself is, not the viewport. This keeps the same component readable in
+ * the 3-column desktop layout and in the full-width stacked mobile layout.
+ */
+/*
+ * Only a genuinely narrow rail (phone, stacked layout) wraps the set row; the
+ * desktop rail keeps it on one line so the tyre section stays bounded.
+ */
+@container control-rail (max-width: 300px) {
+  .physicalTyreSets { grid-auto-flow: row; grid-template-columns: repeat(auto-fit, minmax(62px, 1fr)); gap: var(--q-space-xs); }
+  /* Below this width the action labels each need their own row. */
+  .orbOptions { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Short viewports trade telemetry size for target size, never the reverse. */
+/*
+ * Applies up to 920px tall, which covers the common 900px workstation. The
+ * six control groups must all be reachable without scrolling the rail, and a
+ * 900px viewport does not have the room for the relaxed spacing above.
+ */
+@media (max-height: 920px) and (min-width: 1101px) {
+  /*
+   * A 720px-tall workstation must show all six control groups without
+   * scrolling. Density is recovered from vertical padding and telemetry size,
+   * never from the 44px target floor.
+   */
+  .driverTabs button { min-height: var(--q-target-min); padding-block: var(--q-space-2xs); }
+  .driverTelemetry { gap: var(--q-space-2xs) var(--q-space-md); padding-block: var(--q-space-xs); }
+  /*
+   * Rows still need visible separation on a short viewport: the header binds to
+   * its own controls while consecutive rows stay distinct.
+   */
+  .controlStack { gap: var(--q-space-2xs); padding-block: var(--q-space-2xs); }
+  .controlCore { gap: var(--q-space-2xs); }
+  .controlSection { gap: 3px; padding-block: 2px; }
+  .controlSection > header { line-height: 1.1; }
+  /*
+   * Release and lap-action are mutually exclusive by phase (garage vs on
+   * track), so on a short viewport they share one row. This recovers a full
+   * control row without hiding anything or shrinking a target.
+   */
+  .controlCore { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-column-gap: var(--q-space-md); }
+  .controlCore > .controlSection[data-control="release"] { grid-column: 1; grid-row: 1; }
+  .controlCore > .controlSection[data-control="lap-action"] { grid-column: 2; grid-row: 1; }
+  .controlCore > .controlSection[data-control="fuel"] { grid-column: 1 / -1; }
+  .controlCore > .controlSection[data-control="out-lap"] { grid-column: 1 / -1; }
+  .controlCore > .controlSection[data-control="attack"] { grid-column: 1 / -1; }
+  .controlCore > .controlSection[data-control="lap-action"] .orbOptions { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  /* Iconless and half-width here, so the label wraps to two lines instead of
+     being truncated. */
+  .controlCore > .controlSection[data-control="lap-action"] .orbOptions button { grid-template-columns: minmax(0, 1fr); justify-items: center; padding-inline: 2px; font-size: var(--q-font-micro); line-height: 1.15; text-align: center; }
+  .controlCore > .controlSection[data-control="lap-action"] .orbOptions button > span { overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: break-word; }
+  .controlCore > .controlSection[data-control="lap-action"] .orbOptions button > i { display: none; }
+  /*
+   * The shared release/lap-action row would otherwise be taller than the three
+   * single-selector rows below it, overflowing the core and clipping the first
+   * header. Matching the release target to the standard floor evens the rows.
+   */
+  .controlCore > .controlSection[data-control="release"] .releaseOptions button { min-height: var(--q-target-min); }
+  /* Wide enough for the longest release hint while staying under the rail's
+     compact-button ceiling (46% of the core width). */
+  .releaseOptions { grid-template-columns: minmax(0, 162px); }
+  .releaseOptions button { grid-template-columns: 28px minmax(0, 1fr); gap: var(--q-space-xs); padding-inline: var(--q-space-2xs) var(--q-space-xs); }
+  .releaseOptions button > i { width: 28px; height: 28px; }
+  .tyreSelectorConsole { gap: var(--q-space-2xs); }
+  .combinedTyreSelector { gap: var(--q-space-2xs); }
+  .physicalTyreSets { gap: var(--q-space-2xs); padding-block: 0; }
+  .combinedTyreSelector button,
+  .physicalTyreSets button { min-height: var(--q-target-min); padding-block: 2px; }
+  .physicalTyreSets button { padding-inline: var(--q-space-2xs) var(--q-space-2xs); }
+  .physicalTyreSets b { top: 3px; left: 4px; }
+  .controlStack > .controlSection[data-control="tyres"] { gap: var(--q-space-2xs); padding-top: var(--q-space-2xs); }
+  .liveDials { grid-template-columns: 88px minmax(0, 1fr); gap: var(--q-space-sm); }
+  .speedInstrument { grid-template-rows: 84px auto; gap: 2px; }
+  .speedRing { width: 84px; }
+  .speedRing > strong { font-size: 24px; }
+  .tyreTelemetry { gap: var(--q-space-2xs); }
+  .tyreTelemetry > div { gap: var(--q-space-xs); }
+  .tyreTelemetry > div > span { max-width: 56px; }
+  .tyreTelemetry strong { font-size: 14px; }
+  /* The beacon is a status readout, not a control, so it does not need the
+     44px target floor and stays out of the identity row's height. */
+  .phaseBeacon { min-height: 30px; padding-block: var(--q-space-2xs); }
 }
 
 @media (min-height: 1000px) and (min-width: 1101px) {
-  .controlRail { grid-template-rows: 52px 260px minmax(0, 1fr); }
-  .driverTelemetry { grid-template-rows: 46px 52px minmax(100px, 1fr) auto; }
-  .controlStack { grid-template-rows: 90px 70px 70px 80px minmax(316px, 1fr); }
-  .compoundSelector button { grid-template-columns: 1fr; grid-template-rows: auto auto; justify-items: center; gap: 7px; }
-  .compoundSelector button span { justify-items: center; text-align: center; }
-  .tyreTelemetry strong { font-size: 24px; }
+  .liveDials { grid-template-columns: 116px minmax(0, 1fr); gap: var(--q-space-lg); }
+  .speedInstrument { grid-template-rows: 116px auto; }
+  .speedRing { width: 116px; }
+  .tyreTelemetry > div > span { max-width: 68px; }
+  .tyreTelemetry strong { font-size: 17px; }
 }
 
+/*
+ * Tablet: the leaderboard and circuit share the first band, the command rail
+ * spans full width underneath where its controls have room to breathe.
+ */
 @media (max-width: 1100px) {
-  .shell { height: auto; min-height: 100dvh; overflow: auto; }
-  .topbar { grid-template-columns: 178px minmax(720px, 1fr); grid-template-rows: 80px 54px; overflow-x: auto; }
+  .shell { height: auto; min-height: 100dvh; overflow: visible; }
+  .topbar { grid-template-columns: 178px minmax(0, 1fr); grid-template-rows: auto auto; overflow: visible; }
   .transport { grid-column: 1 / -1; grid-row: 2; justify-content: flex-end; }
-  .grid { min-width: 1100px; min-height: 850px; grid-template-columns: 330px minmax(470px, 1fr) 300px !important; }
+  .grid {
+    min-width: 0;
+    min-height: 0;
+    grid-template-columns: minmax(280px, 34%) minmax(0, 1fr) !important;
+    grid-template-rows: min(62vh, 620px) auto;
+    overflow: visible;
+  }
+  .tower { grid-column: 1; grid-row: 1; }
+  .workspace { grid-column: 2; grid-row: 1; }
+  .controlRail { grid-column: 1 / -1; grid-row: 2; grid-template-rows: auto auto auto; }
+  /* The rail is no longer height-constrained here, so it grows with content
+     instead of scrolling a clipped inner column. */
+  .controlStack { overflow: visible; }
+  .controlCore { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); align-items: start; gap: var(--q-space-xs) var(--q-space-lg); }
+  .driverTelemetry { grid-template-columns: minmax(0, 1fr) auto; }
+  .liveDials { grid-template-columns: 108px minmax(0, 1fr); }
+}
+
+/* Phone: one column, every region full width, nothing horizontally scrolled. */
+@media (max-width: 800px) {
+  .topbar { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto auto; }
+  .broadcast { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+  .transport { grid-column: 1; grid-row: 3; flex-wrap: wrap; justify-content: flex-start; gap: var(--q-space-sm); padding-block: var(--q-space-sm); overflow-x: visible; }
+  .grid { grid-template-columns: minmax(0, 1fr) !important; grid-template-rows: min(70vh, 620px) min(58vh, 520px) auto; }
+  .tower { grid-column: 1; grid-row: 1; }
+  .workspace { grid-column: 1; grid-row: 2; }
+  .controlRail { grid-column: 1; grid-row: 3; }
+  .controlStack { padding-inline: var(--q-space-md); }
+  .driverTelemetry { padding-inline: var(--q-space-md); }
+}
+
+/* Narrow phones: stack the dial above the tyre bank so neither is squeezed. */
+@media (max-width: 520px) {
+  .driverTelemetry { grid-template-columns: minmax(0, 1fr); }
+  .phaseBeacon { justify-self: start; }
+  .liveDials { grid-template-columns: minmax(0, 1fr); justify-items: center; gap: var(--q-space-md); }
+  .tyreTelemetry { width: 100%; }
+  /* On a phone the row is full-width, so the driver name and timings can each
+     take a wider share than in the desktop rail. */
+  .towerHead,
+  .towerRow { grid-template-columns: 26px minmax(0, 1fr) 34px minmax(0, .85fr) minmax(0, 1.2fr); gap: var(--q-space-xs); padding-inline: var(--q-space-md); }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -372,10 +727,8 @@
   .towerRow,
   .orbOptions button,
   .orbOptions button > i,
-  .compoundSelector button,
-  .tyreSetList button,
+  .combinedTyreSelector button,
+  .physicalTyreSets button,
   .tyreTelemetry > div > span { transition: none; }
   .phaseBeacon[data-phase="PUSH_LAP"] i { animation: none; }
-  .activeSet,
-  .activeSet::after { animation: none; }
 }

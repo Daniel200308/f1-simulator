@@ -58,8 +58,24 @@ function incidentReason(snapshot: RaceSnapshot): string | null {
   return `${subject} STOPPED AT ${location} · RECOVERY REQUIRED${cause}`;
 }
 
+/**
+ * The same cause written for a banner that also has to carry the procedural
+ * instruction. It keeps the car, what happened and where, and drops the
+ * secondary clauses the full-length version adds.
+ */
+function shortIncidentReason(snapshot: RaceSnapshot): string | null {
+  const incident = snapshot.activeIncident;
+  if (!incident) return null;
+  const car = snapshot.cars.find((candidate) => candidate.carId === incident.carId);
+  const driver = car ? DRIVER_BY_ID.get(car.driverId) : undefined;
+  const subject = driver ? `CAR ${driver.number} (${driver.shortName})` : incident.carId.toUpperCase();
+  const verb = incident.status === "SPUN" ? "SPUN" : incident.status === "DAMAGED" ? "DAMAGED" : "STOPPED";
+  return `${subject} ${verb} · ${incident.cornerName.toUpperCase()} S${incident.sector}`;
+}
+
 function noticeDetail(snapshot: RaceSnapshot, message: RadioMessage | undefined, headline: string): string {
   const cause = incidentReason(snapshot);
+  const briefCause = shortIncidentReason(snapshot);
   if (snapshot.raceControl === "RED_FLAG") {
     const seconds = Math.max(0, Math.ceil(snapshot.redFlagTimerSeconds ?? 0));
     if (snapshot.redFlagPhase === "RESTART_COUNTDOWN") return `${snapshot.redFlagRestartType ?? "STANDING"} RESTART · LIGHTS IN ${seconds}S · FOLLOW GRID ORDER`;
@@ -72,9 +88,19 @@ function noticeDetail(snapshot: RaceSnapshot, message: RadioMessage | undefined,
   if (snapshot.raceControl === "SAFETY_CAR" && snapshot.safetyCarPhase === "RESTART") {
     return "SAFETY CAR IN THIS LAP · LEADER CONTROLS PACE · OVERTAKE AFTER THE CONTROL LINE";
   }
-  if (snapshot.raceControl === "VSC") return "MAINTAIN POSITIVE DELTA · REDUCE SPEED · OVERTAKING PROHIBITED";
-  if (snapshot.raceControl === "SAFETY_CAR") return `FOLLOW SAFETY CAR DELTA · ${snapshot.safetyCarPhase.replace("_", " ")} · OVERTAKING PROHIBITED`;
-  if (snapshot.raceControl === "YELLOW") return `SECTOR ${snapshot.yellowSector ?? "—"} · REDUCE SPEED · OVERTAKING PROHIBITED`;
+  /*
+   * A neutralisation says why it exists. Naming the car and where it stopped is
+   * the first thing a pit wall wants; the procedural instruction follows it.
+   */
+  if (snapshot.raceControl === "VSC") {
+    return `${briefCause ? `${briefCause} · ` : ""}MAINTAIN POSITIVE DELTA · NO OVERTAKING`;
+  }
+  if (snapshot.raceControl === "SAFETY_CAR") {
+    return `${briefCause ? `${briefCause} · ` : ""}FOLLOW SAFETY CAR DELTA · NO OVERTAKING`;
+  }
+  if (snapshot.raceControl === "YELLOW") {
+    return `${briefCause ?? `SECTOR ${snapshot.yellowSector ?? "—"} INCIDENT`} · REDUCE SPEED · NO OVERTAKING`;
+  }
 
   if (!message) {
     return `RACE CONTROL MONITORING · ${snapshot.pitLaneOpen ? "PIT LANE OPEN" : "PIT LANE CLOSED"}`;

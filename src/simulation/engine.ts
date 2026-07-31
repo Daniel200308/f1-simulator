@@ -423,10 +423,28 @@ function clamp(value: number, minimum: number, maximum: number): number {
   return Math.max(minimum, Math.min(maximum, value));
 }
 
-function buildOperationalRadio(cars: readonly RaceCarState[], tick: number, elapsedTime: number, playerTeamId: string, seed: number, weather: WeatherState): RadioMessage[] {
-  // Routine driver/engineer calls are deliberately sparse. Urgent Race Control,
-  // pit and thermal transitions remain event-driven elsewhere.
-  const intervalTicks = 900;
+/**
+ * Cadence of routine driver/engineer calls. Player cars are staggered by half
+ * this interval, so the team hears one routine call about every 1100 ticks.
+ */
+export const OPERATIONAL_RADIO_INTERVAL_TICKS = 2_200;
+
+function buildOperationalRadio(
+  cars: readonly RaceCarState[],
+  tick: number,
+  elapsedTime: number,
+  playerTeamId: string,
+  seed: number,
+  weather: WeatherState,
+  previousCars: readonly RaceCarState[] = [],
+): RadioMessage[] {
+  /*
+   * Routine driver/engineer calls are deliberately sparse. Two player cars are
+   * staggered by half the interval, so this yields one routine call roughly every
+   * 1100 ticks across the team rather than a constant stream. Urgent Race
+   * Control, pit and thermal transitions remain event-driven elsewhere.
+   */
+  const intervalTicks = OPERATIONAL_RADIO_INTERVAL_TICKS;
   const playerCars = cars.filter((car) => car.teamId === playerTeamId);
   const messages: RadioMessage[] = [];
 
@@ -447,42 +465,69 @@ function buildOperationalRadio(cars: readonly RaceCarState[], tick: number, elap
     const dryingLine = localZone?.dryingLine ?? Math.max(0, 1 - localWater);
     const onDryTyre = DRY_COMPOUNDS.includes(car.tyreCompound);
     const onWetWeatherTyre = car.tyreCompound === "INTERMEDIATE" || car.tyreCompound === "WET";
+
+    /*
+     * Situational judgement for the radio. Each of these reads live state the
+     * driver would actually notice, so the call that comes out matches what is
+     * happening rather than cycling a fixed rota.
+     */
+    const previous = previousCars.find((candidate) => candidate.carId === car.carId);
+    const positionChange = previous ? previous.racePosition - car.racePosition : 0;
+    const carAhead = cars.find((candidate) => candidate.racePosition === car.racePosition - 1);
+    // Being held up by a car that is genuinely slower, not simply defending well.
+    const heldUpBySlowerCar = Boolean(carAhead
+      && car.gapToCarAhead > 0 && car.gapToCarAhead < 1.6
+      && car.tyreLife > carAhead.tyreLife + 14);
+    const stuckInTraffic = car.gapToCarAhead > 0 && car.gapToCarAhead < 2.2 && car.gapToCarBehind < 2.2 && car.racePosition > 4;
+    // The tyre is past its useful life and no stop has been called yet.
+    const tyreCallOverdue = car.tyreLife < 22 && !car.scheduledPitCompound && car.pitStatus === "TRACK";
+    // Rain in the air before it reaches the surface.
+    const rainOnVisor = localRain >= 0.02 && localRain < 0.045 && localWater < 0.05;
+    const finalLaps = car.currentLap >= SILVERSTONE_CIRCUIT.totalLaps - 2;
+    const strategyWorking = positionChange === 0 && car.pitStops > 0 && car.tyreLife > 68 && car.racePosition <= 6;
+    const strategyDoubt = car.pitStops > 0 && car.tyreLife < 45 && car.racePosition > 10;
+    const carFeelsGood = car.tyreLife > 76 && car.dirtyAirLoss < 0.002 && car.gapToCarAhead > 3.5;
+    const lackingPace = car.gapToCarAhead > 4 && car.gapToCarBehind > 4 && car.racePosition > 12;
+
     let source: RadioMessage["source"] = "ENGINEER";
     let priority: RadioMessage["priority"] = "NORMAL";
     let message: string;
 
+    /*
+     * Anything the driver is reacting to gets the short, emotional call; only the
+     * routine reports lower down build a full sentence.
+     */
     if (localWater >= 0.52) {
       source = "DRIVER";
       priority = "URGENT";
-      message = buildRaceDriverRadio({ seed, tick, carIndex, situation: "AQUAPLANING", metric: `standing water in sector ${car.currentSector}` });
+      message = buildRaceDriverRadio({ seed, tick, carIndex, situation: "AQUAPLANING", intensity: "HIGH" });
     } else if (onDryTyre && localWater >= 0.2) {
       source = "DRIVER";
       priority = "WARNING";
-      message = buildRaceDriverRadio({ seed, tick, carIndex, situation: "WET_GRIP", metric: `dry tyre, sector ${car.currentSector}` });
+      message = buildRaceDriverRadio({ seed, tick, carIndex, situation: "WET_GRIP", intensity: "HIGH" });
     } else if (onWetWeatherTyre && localWater <= 0.12 && dryingLine >= 0.48) {
       source = "DRIVER";
       priority = "WARNING";
-      message = buildRaceDriverRadio({ seed, tick, carIndex, situation: "DRYING_LINE", metric: `dry line building in sector ${car.currentSector}` });
+      message = buildRaceDriverRadio({ seed, tick, carIndex, situation: "DRYING_LINE", intensity: "HIGH" });
     } else if (onWetWeatherTyre && (localWater >= 0.24 || localRain >= 0.12)) {
       source = "DRIVER";
-      priority = "WARNING";
       message = buildRaceDriverRadio({ seed, tick, carIndex, situation: "RAIN_RUNNING", metric: `wet running in sector ${car.currentSector}` });
     } else if (localRain >= 0.045 && localWater < 0.14) {
       source = "DRIVER";
       priority = "WARNING";
-      message = buildRaceDriverRadio({ seed, tick, carIndex, situation: "RAIN_STARTING", metric: `rain beginning in sector ${car.currentSector}` });
+      message = buildRaceDriverRadio({ seed, tick, carIndex, situation: "RAIN_STARTING", intensity: "HIGH" });
     } else if (localWater >= 0.1 && localWater < 0.3) {
       source = "DRIVER";
       priority = "WARNING";
-      message = buildRaceDriverRadio({ seed, tick, carIndex, situation: "INTER_CROSSOVER", metric: `mixed grip in sector ${car.currentSector}` });
+      message = buildRaceDriverRadio({ seed, tick, carIndex, situation: "INTER_CROSSOVER", intensity: "HIGH" });
     } else if (car.tyreLife < 28) {
       source = "DRIVER";
       priority = "WARNING";
-      message = buildRaceDriverRadio({ seed, tick, carIndex, situation: "TYRE_WEAR", metric: `tyre life ${Math.round(car.tyreLife)} percent` });
+      message = buildRaceDriverRadio({ seed, tick, carIndex, situation: "TYRE_WEAR", intensity: "HIGH" });
     } else if (hotTyre > 112) {
       source = "DRIVER";
       priority = "WARNING";
-      message = buildRaceDriverRadio({ seed, tick, carIndex, situation: "TYRE_HOT", metric: `peak ${Math.round(hotTyre)} degrees` });
+      message = buildRaceDriverRadio({ seed, tick, carIndex, situation: "TYRE_HOT", intensity: "HIGH" });
     } else if (coldTyre < 82 && car.currentLap > 1) {
       source = "DRIVER";
       message = buildRaceDriverRadio({ seed, tick, carIndex, situation: "TYRE_COLD", metric: `coldest corner ${Math.round(coldTyre)} degrees` });
@@ -490,13 +535,53 @@ function buildOperationalRadio(cars: readonly RaceCarState[], tick: number, elap
       source = "DRIVER";
       priority = "WARNING";
       message = car.batteryPercent < 32
-        ? buildRaceDriverRadio({ seed, tick, carIndex, situation: "ATTACK_ENERGY", metric: `battery ${Math.round(car.batteryPercent)} percent` })
-        : buildRaceDriverRadio({ seed, tick, carIndex, situation: "ATTACK_TYRE", metric: `tyre life ${Math.round(car.tyreLife)} percent` });
+        ? buildRaceDriverRadio({ seed, tick, carIndex, situation: "ATTACK_ENERGY", intensity: "HIGH" })
+        : buildRaceDriverRadio({ seed, tick, carIndex, situation: "ATTACK_TYRE", intensity: "HIGH" });
     } else if (car.batteryPercent < 18) {
       message = `Energy is low at ${Math.round(car.batteryPercent)} percent. Recharge through the next technical section.`;
     } else if (car.dirtyAirLoss > 0.006 || (car.gapToCarAhead > 0 && car.gapToCarAhead < 1.1)) {
       source = "DRIVER";
-      message = buildRaceDriverRadio({ seed, tick, carIndex, situation: "DIRTY_AIR", metric: `gap ${car.gapToCarAhead.toFixed(3)}` });
+      message = buildRaceDriverRadio({ seed, tick, carIndex, situation: "DIRTY_AIR", intensity: "HIGH" });
+    } else if (positionChange < 0) {
+      // Overtaken since the last routine call.
+      source = "DRIVER";
+      priority = "WARNING";
+      message = buildRaceDriverRadio({ seed, tick, carIndex, situation: "POSITION_LOST", intensity: "HIGH" });
+    } else if (positionChange > 0) {
+      source = "DRIVER";
+      message = buildRaceDriverRadio({ seed, tick, carIndex, situation: "POSITION_GAINED", intensity: "HIGH" });
+    } else if (heldUpBySlowerCar) {
+      source = "DRIVER";
+      priority = "WARNING";
+      message = buildRaceDriverRadio({ seed, tick, carIndex, situation: "SLOW_CAR_AHEAD", intensity: "HIGH" });
+    } else if (stuckInTraffic) {
+      source = "DRIVER";
+      priority = "WARNING";
+      message = buildRaceDriverRadio({ seed, tick, carIndex, situation: "TRAFFIC_FRUSTRATION", intensity: "HIGH" });
+    } else if (tyreCallOverdue) {
+      source = "DRIVER";
+      priority = "WARNING";
+      message = buildRaceDriverRadio({ seed, tick, carIndex, situation: "PIT_CALL_LATE", intensity: "HIGH" });
+    } else if (rainOnVisor) {
+      source = "DRIVER";
+      message = buildRaceDriverRadio({ seed, tick, carIndex, situation: "FIRST_DROPS", intensity: "HIGH" });
+    } else if (finalLaps) {
+      source = "DRIVER";
+      message = buildRaceDriverRadio({ seed, tick, carIndex, situation: "FINAL_LAPS_PUSH", intensity: "HIGH" });
+    } else if (strategyWorking) {
+      source = "DRIVER";
+      message = buildRaceDriverRadio({ seed, tick, carIndex, situation: "STRATEGY_APPROVAL", intensity: "HIGH" });
+    } else if (strategyDoubt) {
+      source = "DRIVER";
+      priority = "WARNING";
+      message = buildRaceDriverRadio({ seed, tick, carIndex, situation: "STRATEGY_DOUBT", intensity: "HIGH" });
+    } else if (carFeelsGood) {
+      source = "DRIVER";
+      message = buildRaceDriverRadio({ seed, tick, carIndex, situation: "CAR_HAPPY", intensity: "HIGH" });
+    } else if (lackingPace) {
+      source = "DRIVER";
+      priority = "WARNING";
+      message = buildRaceDriverRadio({ seed, tick, carIndex, situation: "PACE_COMPLAINT", intensity: "HIGH" });
     } else {
       const situation = (Math.floor(tick / intervalTicks) + index) % 4;
       if (situation === 0) {
@@ -510,12 +595,15 @@ function buildOperationalRadio(cars: readonly RaceCarState[], tick: number, elap
         message = `Tyre life ${Math.round(car.tyreLife)} percent, energy ${Math.round(car.batteryPercent)} percent. Current pace is sustainable.`;
       } else {
         source = "DRIVER";
+        const underPressure = car.gapToCarBehind < 1.2;
         message = buildRaceDriverRadio({
           seed,
           tick,
           carIndex,
-          situation: car.gapToCarBehind < 1.2 ? "DEFENDING" : "STABLE",
-          metric: car.gapToCarBehind < 1.2 ? `gap behind ${car.gapToCarBehind.toFixed(3)}` : `position P${car.racePosition}`,
+          situation: underPressure ? "DEFENDING" : "STABLE",
+          // Being attacked is a reaction; cruising in clear air is a report.
+          intensity: underPressure ? "HIGH" : undefined,
+          metric: underPressure ? undefined : `position P${car.racePosition}`,
         });
       }
     }
@@ -1926,7 +2014,14 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
       && incidentUpdate.raceControl !== "SAFETY_CAR"
       && incidentUpdate.raceControl !== "RED_FLAG"
       && incidentUpdate.pitLaneOpen;
-    if (pitStatus === "TRACK" && mandatoryPenaltyDue && car.totalDistance >= 0 && lapDistanceBefore >= PIT_ENTRY_START) {
+    /*
+     * The pit entry can only be taken in the window that begins at the entry line
+     * and ends before the box. Allowing it anywhere past the entry line meant a
+     * car could commit with the box already behind it and arrive at the stop
+     * without ever driving the lane.
+     */
+    const inPitEntryWindow = lapDistanceBefore >= PIT_ENTRY_START && lapDistanceBefore < PIT_LANE_START;
+    if (pitStatus === "TRACK" && mandatoryPenaltyDue && car.totalDistance >= 0 && inPitEntryWindow) {
       pitStatus = "PIT_ENTRY";
       pitLaneTimer = 0;
       penaltyServiceId = pendingMandatoryPenalty.id;
@@ -1938,12 +2033,20 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
       pitTyreServiceElapsedSeconds = 0;
       servePenaltyRequested = false;
       servingPenaltyIds.add(pendingMandatoryPenalty.id);
-    } else if (pitStatus === "TRACK" && scheduledPitCompound && incidentUpdate.pitLaneOpen && car.totalDistance >= 0 && lapDistanceBefore >= PIT_ENTRY_START) {
+    } else if (pitStatus === "TRACK" && scheduledPitCompound && incidentUpdate.pitLaneOpen && car.totalDistance >= 0 && inPitEntryWindow) {
       pitStatus = "PIT_ENTRY";
       pitLaneTimer = 0;
     }
-    if (pitStatus === "PIT_ENTRY" && lapDistanceBefore >= PIT_LANE_START) pitStatus = "PIT_LANE";
-    if (pitStatus === "PIT_LANE" && lapDistanceBefore >= PIT_BOX_DISTANCE) {
+    /*
+     * Each pit phase has to be held for at least one tick. Chaining the entry,
+     * lane and box transitions in a single step let a car that crossed the entry
+     * line beyond the box distance skip straight to the stop, so it appeared to
+     * teleport to the pit exit instead of driving down the lane.
+     */
+    const enteredPitThisStep = car.pitStatus === "TRACK" && pitStatus === "PIT_ENTRY";
+    if (!enteredPitThisStep && pitStatus === "PIT_ENTRY" && lapDistanceBefore >= PIT_LANE_START) pitStatus = "PIT_LANE";
+    const joinedLaneThisStep = car.pitStatus !== "PIT_LANE" && pitStatus === "PIT_LANE";
+    if (!joinedLaneThisStep && pitStatus === "PIT_LANE" && lapDistanceBefore >= PIT_BOX_DISTANCE) {
       if (penaltyServiceType === "DRIVE_THROUGH") {
         pitStatus = "PIT_EXIT";
       } else {
@@ -2581,7 +2684,7 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
   const weatherTransitionRadio = tick % 10 === 0
     ? buildWeatherTransitionRadio(snapshot.weather, weather, cars, snapshot.radioMessages, tick, elapsedTime, snapshot.playerTeamId, snapshot.seed)
     : [];
-  const operationalRadio = buildOperationalRadio(cars, tick, elapsedTime, snapshot.playerTeamId, snapshot.seed, weather);
+  const operationalRadio = buildOperationalRadio(cars, tick, elapsedTime, snapshot.playerTeamId, snapshot.seed, weather, snapshot.cars);
   const energyRadio = buildEnergyRadioMessages(snapshot.cars, cars, snapshot.playerTeamId, tick, elapsedTime, snapshot.radioMessages);
   let teamOrder = snapshot.teamOrder ?? { type: "NONE" as const, issuedAt: 0, leadCarId: null, trailingCarId: null };
   const teamOrderEvents: RaceEvent[] = [];

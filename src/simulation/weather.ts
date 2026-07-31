@@ -331,6 +331,30 @@ function aggregateSectors(zones: readonly TrackSurfaceZone[]): WeatherSectorStat
   });
 }
 
+/** Base surface temperature before the session has laid any rubber. */
+const TRACK_TEMPERATURE_BASE_C = 28;
+/** Total warming a fully rubbered-in track gains over a session. */
+const TRACK_TEMPERATURE_EVOLUTION_C = 5.5;
+/** Time to reach most of that evolution, roughly a full race distance. */
+const TRACK_EVOLUTION_TIME_CONSTANT_SECONDS = 1_800;
+
+/**
+ * Surface temperature follows track evolution and the weather together.
+ *
+ * Running rubbers the surface in and warms it, approaching a plateau rather than
+ * climbing without limit. Rain undoes that quickly: falling rain cools the
+ * surface directly and standing water keeps it cool afterwards, which is why a
+ * wet track stays cold even once the shower has passed.
+ */
+export function trackTemperatureFor(elapsedTime: number, rainIntensity: number, trackWetness: number): number {
+  const evolution = 1 - Math.exp(-Math.max(0, elapsedTime) / TRACK_EVOLUTION_TIME_CONSTANT_SECONDS);
+  // Rain suppresses the rubbering-in benefit as well as cooling the surface.
+  const evolutionGain = TRACK_TEMPERATURE_EVOLUTION_C * evolution * (1 - Math.min(1, trackWetness * 1.15));
+  const rainCooling = rainIntensity * 9;
+  const wetCooling = trackWetness * 4.5;
+  return Math.max(12, TRACK_TEMPERATURE_BASE_C + evolutionGain - rainCooling - wetCooling);
+}
+
 function assembleWeather(seed: number, elapsedTime: number, zones: readonly TrackSurfaceZone[]): WeatherState {
   const radarCells = buildRadar(seed, elapsedTime);
   const sectors = aggregateSectors(zones);
@@ -352,7 +376,7 @@ function assembleWeather(seed: number, elapsedTime: number, zones: readonly Trac
     rainIntensity,
     trackWetness,
     airTemperature: 22 - rainIntensity * 3.5,
-    trackTemperature: 31 - rainIntensity * 9 - trackWetness * 4,
+    trackTemperature: trackTemperatureFor(elapsedTime, rainIntensity, trackWetness),
     forecastRainInMinutes: nextRain,
     radarCells,
     surfaceZones: zones,

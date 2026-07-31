@@ -1,6 +1,6 @@
 .backdrop { position: fixed; inset: 0; z-index: 120; display: grid; place-items: center; padding: 20px; background: radial-gradient(circle at 22% 18%, color-mix(in srgb, var(--selected-team, #e10600) 10%, transparent), transparent 32%), #03080c; }
 .selector { --selected-team: #e10600; width: min(1480px, 100%); height: min(900px, calc(100dvh - 40px)); display: grid; grid-template-rows: 118px minmax(0,1fr); overflow: hidden; border: 1px solid rgba(148,177,190,.25); background: linear-gradient(145deg, rgba(11,24,31,.99), rgba(3,8,12,.99)); box-shadow: 0 34px 110px rgba(0,0,0,.68), inset 0 3px 0 var(--selected-team); }
-.header { display: grid; grid-template-columns: 58px minmax(0,1fr) auto; align-items: center; gap: 18px; padding: 20px 26px; border-bottom: 1px solid rgba(148,177,190,.16); }
+.header { display: grid; grid-template-columns: 58px minmax(0,1fr) auto; align-items: center; gap: 18px; padding: 20px 26px; border-bottom: 1px solid rgba(148,177,190,.16); pointer-events: none; }
 .mark { width: 54px; height: 54px; display: grid; place-items: center; border: 1px solid color-mix(in srgb, var(--selected-team) 65%, #30434c); border-radius: 50%; color: var(--selected-team); background: color-mix(in srgb, var(--selected-team) 9%, #061015); box-shadow: 0 0 24px color-mix(in srgb, var(--selected-team) 18%, transparent); }
 .header small, .teamBrief > span { color: var(--selected-team); font: 900 10px var(--font-mono); letter-spacing: .13em; }
 .header h1 { margin: 5px 0 3px; font-size: 31px; letter-spacing: -.035em; }
@@ -9,7 +9,7 @@
 .header > b span { color: #6f8790; font-size: 9px; }
 .workspace { min-width: 0; min-height: 0; display: grid; grid-template-columns: minmax(0,1fr) 390px; }
 .teamGrid { min-width: 0; min-height: 0; display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); align-content: center; gap: 11px; padding: 22px; overflow: auto; }
-.teamGrid button { --team: #20d7e7; position: relative; min-width: 0; min-height: 104px; display: grid; grid-template-columns: 42px minmax(0,1fr); align-items: center; gap: 12px; padding: 15px 17px; overflow: hidden; border: 1px solid rgba(148,177,190,.16); color: #eaf1f3; background: linear-gradient(145deg, rgba(15,29,36,.88), rgba(5,12,16,.96)); cursor: pointer; text-align: left; transition: transform .16s ease, border-color .16s ease, background .16s ease; }
+.teamGrid button { --team: #20d7e7; position: relative; min-width: 0; min-height: 104px; display: grid; grid-template-columns: 42px minmax(0,1fr); align-items: center; gap: 12px; padding: 15px 17px; overflow: hidden; border: 1px solid rgba(148,177,190,.16); color: #eaf1f3; background: linear-gradient(145deg, rgba(15,29,36,.88), rgba(5,12,16,.96)); cursor: pointer; touch-action: manipulation; text-align: left; transition: transform .16s ease, border-color .16s ease, background .16s ease; -webkit-tap-highlight-color: transparent; }
 .teamGrid button:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--team) 64%, #30434c); }
 .teamGrid button.selected { border-color: var(--team); background: linear-gradient(145deg, color-mix(in srgb, var(--team) 12%, #0b171d), rgba(5,12,16,.98)); box-shadow: inset 0 0 28px color-mix(in srgb, var(--team) 8%, transparent), 0 12px 28px rgba(0,0,0,.24); }
 .teamGrid button > span { color: var(--team); font: 950 20px var(--font-mono); }
@@ -37,12 +37,30 @@
 .scope b, .scope small { display: block; font-family: var(--font-mono); }
 .scope b { font-size: 10px; }
 .scope small { margin-top: 4px; color: #768d95; font-size: 9px; }
-.confirm { height: 54px; display: flex; align-items: center; justify-content: center; gap: 9px; margin-top: auto; border: 1px solid var(--selected-team); color: #fff; background: var(--selected-team); cursor: pointer; font: 950 12px var(--font-mono); letter-spacing: .1em; box-shadow: 0 0 25px color-mix(in srgb, var(--selected-team) 22%, transparent); }
+.confirm { min-height: 54px; display: flex; align-items: center; justify-content: center; gap: 9px; margin-top: auto; border: 1px solid var(--selected-team); color: #fff; background: var(--selected-team); cursor: pointer; touch-action: manipulation; font: 950 12px var(--font-mono); letter-spacing: .1em; box-shadow: 0 0 25px color-mix(in srgb, var(--selected-team) 22%, transparent); -webkit-tap-highlight-color: transparent; }
 .confirm:hover { filter: brightness(1.12); }
 
 @media (max-width: 1050px) {
-  .selector { height: calc(100dvh - 20px); grid-template-rows: auto minmax(0,1fr); }
-  .workspace { grid-template-columns: 1fr; overflow: auto; }
-  .teamGrid { grid-template-columns: repeat(2,minmax(0,1fr)); }
-  .teamBrief { border-top: 1px solid rgba(148,177,190,.16); border-left: 0; }
+  .backdrop { place-items: start center; padding: 10px; overflow-x: hidden; overflow-y: auto; }
+  .selector { width: 100%; height: auto; min-height: calc(100dvh - 20px); grid-template-rows: auto auto; overflow: visible; }
+  .workspace { grid-template-columns: 1fr; overflow: visible; }
+  .teamGrid { grid-template-columns: repeat(2,minmax(0,1fr)); align-content: start; overflow: visible; }
+  .teamBrief { min-height: 500px; border-top: 1px solid rgba(148,177,190,.16); border-left: 0; }
+}
+
+@media (max-width: 600px) {
+  .backdrop { padding: 0; }
+  .selector { min-height: 100dvh; border-inline: 0; }
+  .header { grid-template-columns: 44px minmax(0,1fr); gap: 12px; padding: 16px 14px; }
+  .header > b { display: none; }
+  .mark { width: 42px; height: 42px; }
+  .header h1 { margin-block: 3px; font-size: 24px; }
+  .header p { font-size: 10px; line-height: 1.35; }
+  .teamGrid { grid-template-columns: 1fr; gap: 8px; padding: 14px; }
+  .teamGrid button { min-height: 78px; grid-template-columns: 36px minmax(0,1fr); padding: 11px 13px; }
+  .teamGrid button > span { font-size: 17px; }
+  .teamBrief { min-height: 470px; padding: 20px 18px; }
+  .teamBrief h2 { font-size: 29px; }
+  .performance { margin-block: 18px 14px; }
+  .confirm { margin-top: 22px; font-size: 13px; }
 }

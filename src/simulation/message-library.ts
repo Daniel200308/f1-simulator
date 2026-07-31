@@ -20,7 +20,20 @@ export type RaceRadioSituation =
   | "WET_GRIP"
   | "AQUAPLANING"
   | "DRYING_LINE"
-  | "INTER_CROSSOVER";
+  | "INTER_CROSSOVER"
+  /* Frustration and approval: the driver reacting to the race, not reporting it. */
+  | "SLOW_CAR_AHEAD"
+  | "BLOCKED_ANGRY"
+  | "STRATEGY_DOUBT"
+  | "STRATEGY_APPROVAL"
+  | "PIT_CALL_LATE"
+  | "TRAFFIC_FRUSTRATION"
+  | "FIRST_DROPS"
+  | "CAR_HAPPY"
+  | "PACE_COMPLAINT"
+  | "POSITION_LOST"
+  | "POSITION_GAINED"
+  | "FINAL_LAPS_PUSH";
 
 interface SessionMessageContext {
   seed: number;
@@ -47,6 +60,12 @@ interface RaceDriverRadioContext {
   carIndex: number;
   situation: RaceRadioSituation;
   metric?: string;
+  /**
+   * How strongly the driver is reacting. `HIGH` returns a short, emotional call
+   * of the kind heard when something is actually happening; the default returns
+   * the full considered read.
+   */
+  intensity?: "NORMAL" | "HIGH";
 }
 
 const DRIVER_OPENERS = [
@@ -77,6 +96,69 @@ const DRIVER_QUALIFYING_OPENERS = [
   "I found a clear limit rather than a surprise.",
   "That was a tidy lap, even if it was not perfect.",
   "I got the important corners connected this time.",
+] as const;
+
+const QUALIFYING_ADVANCED_REACTIONS = [
+  "Yes! We delivered that when the pressure came on.",
+  "That is a proper response; I am really happy with that lap.",
+  "Good, we are through. I had to commit fully to make that one stick.",
+  "Come on! That lap had real bite when we needed it.",
+  "That felt alive. I trusted it and the lap finally came together.",
+  "We got it. The margin was uncomfortable, but the lap was honest.",
+  "That is much more like us. I could attack instead of surviving it.",
+  "Yes, that was satisfying. I found the rhythm at exactly the right moment.",
+  "I am relieved, honestly. That final run carried a lot of pressure.",
+  "Nice one. The car gave me confidence and I used every bit of it.",
+  "That was intense, but we earned our place in the next session.",
+  "I enjoyed that one. The grip arrived and I could finally lean on the car.",
+] as const;
+
+const QUALIFYING_ELIMINATED_REACTIONS = [
+  "Damn it, that hurts. We had more pace than this result shows.",
+  "No, that is brutal. I am angry because the lap was there for us.",
+  "That is so frustrating. We cannot keep leaving the decisive lap this late.",
+  "I am gutted. One messy sequence has knocked us out.",
+  "That was rubbish from my side; I never joined the corners together.",
+  "Honestly, that is painful. I was fighting the car instead of attacking the lap.",
+  "Damn, we missed it. The preparation and the push never lined up.",
+  "I hate going out like that. The potential was there and we did not use it.",
+  "That is a horrible feeling. I knew the cut was moving and still could not answer it.",
+  "I am really disappointed. We gave away too much before the final sector.",
+  "No way, that is not good enough. We should have been safely through.",
+  "That one stings. I pushed hard, but the lap fell apart underneath me.",
+] as const;
+
+const QUALIFYING_NO_TIME_REACTIONS = [
+  "This is a disaster; we never even put a representative lap on the board.",
+  "Damn it, no time is unacceptable. We let the whole session get away from us.",
+  "I am furious. I never got one clean chance to show what the car could do.",
+  "That is the worst way to go out. We had pace and no lap to prove it.",
+  "Honestly, that was chaos. Every window closed before I could start a proper lap.",
+  "No lap, no result. That is incredibly frustrating from inside the car.",
+  "I cannot believe we finished without a time. We made the session far too difficult.",
+  "That really hurts; all that preparation and we never reached the line with a valid lap.",
+] as const;
+
+const QUALIFYING_TOP_REACTIONS = [
+  "Yes! That is a lap I can be proud of.",
+  "Come on! I got everything out of it when it counted.",
+  "That was special. The car and I were right on the limit together.",
+  "Beautiful. I could feel every corner building toward the line.",
+  "That is the qualifying lap we came here to deliver.",
+  "I loved that. There was no hesitation anywhere on the lap.",
+  "That felt properly quick. I committed and the car stayed with me.",
+  "Yes, that is hugely satisfying. I left almost nothing out there.",
+] as const;
+
+const QUALIFYING_GRID_REACTIONS = [
+  "I gave it everything, but I am still frustrated with where we have ended up.",
+  "The lap was committed, though I wanted more from this grid position.",
+  "I pushed as hard as I could. It is not the result I came here for.",
+  "There were good corners in that lap, but not enough of them together.",
+  "I am disappointed with the position, even if the final lap was cleaner.",
+  "That was on the edge all the way around. I wish it had bought us more.",
+  "We found some pace, but the result still feels tougher than it should.",
+  "I cannot celebrate that position. We left too much time in the weak part of the lap.",
 ] as const;
 
 const DRIVER_REQUESTS = [
@@ -431,6 +513,78 @@ const RADIO_OBSERVATIONS: Record<RaceRadioSituation, readonly string[]> = {
     "I need the radar picture because the current grip could go either way in one lap",
     "the track is balanced right on the crossover and the next rain cell will decide it",
   ],
+  SLOW_CAR_AHEAD: [
+    "the car in front is nowhere near my pace and I am stuck behind him",
+    "I am losing time every lap to a car that cannot hold this speed",
+    "he is slow in every corner and I still cannot find a way past",
+    "this is costing me the whole stint and he is not even fighting",
+  ],
+  BLOCKED_ANGRY: [
+    "that was a completely unnecessary block into the corner",
+    "he moved under braking and I had to take avoiding action",
+    "I was fully alongside and he just closed the door on me",
+    "that is the second time he has done that to me today",
+  ],
+  STRATEGY_DOUBT: [
+    "I am not convinced this plan is working for us",
+    "this strategy is putting me in traffic instead of clear air",
+    "I think we have called this one wrong",
+    "the numbers on my dash do not match what you are telling me",
+  ],
+  STRATEGY_APPROVAL: [
+    "this plan is working exactly as we discussed",
+    "good call, the car came alive after that change",
+    "I like this strategy; the tyre is holding on much better",
+    "that was the right decision at the right moment",
+  ],
+  PIT_CALL_LATE: [
+    "we left that stop far too late and it has cost us",
+    "I was asking for this lap and we waited another two",
+    "the tyre was finished long before we finally boxed",
+    "that call needed to come earlier than it did",
+  ],
+  TRAFFIC_FRUSTRATION: [
+    "I am spending my whole race in someone else's air",
+    "every time I clear one car there is another right in front",
+    "this traffic is destroying the tyre and the lap time",
+    "I cannot show our real pace stuck in this queue",
+  ],
+  FIRST_DROPS: [
+    "I felt the first drops on my visor through the last corner",
+    "there is definitely something in the air now",
+    "a few spots landing on the straight, nothing on the line yet",
+    "the visor is picking up rain even though the track is still dry",
+  ],
+  CAR_HAPPY: [
+    "the car feels genuinely good underneath me now",
+    "this is the best balance I have had all weekend",
+    "I can place it exactly where I want in every corner",
+    "the platform is stable and I can lean on it properly",
+  ],
+  PACE_COMPLAINT: [
+    "we simply do not have the pace of the cars around us",
+    "I am driving at the limit and still losing time on the straights",
+    "there is nothing more in this car at the moment",
+    "the deficit is in the corners and I cannot drive around it",
+  ],
+  POSITION_LOST: [
+    "I have lost that position and I could not do anything about it",
+    "he got the move done and I had no answer on the straight",
+    "that hurts; I was defending as hard as I could",
+    "we have dropped a place and I need something to fight back with",
+  ],
+  POSITION_GAINED: [
+    "that is the move done, I am through and clear",
+    "position gained and the car still feels strong",
+    "I got him into the braking zone cleanly",
+    "that is one more place; let us keep this going",
+  ],
+  FINAL_LAPS_PUSH: [
+    "these are the closing laps and I am ready to empty the car",
+    "tell me what I have left because I am going for it now",
+    "final push; give me everything the car has",
+    "this is the run to the flag and I am committed",
+  ],
 };
 
 const RADIO_REQUESTS: Record<RaceRadioSituation, readonly string[]> = {
@@ -452,6 +606,56 @@ const RADIO_REQUESTS: Record<RaceRadioSituation, readonly string[]> = {
   AQUAPLANING: ["This needs reporting to race control.", "I need a safer pace instruction immediately.", "Check the standing-water level because this is too much.", "We should not be racing at this speed.", "Tell me if the safety car is being considered."],
   DRYING_LINE: ["Check the slick crossover for me.", "I need the dry-line trend over the next lap.", "Tell me where I can cool the tyre.", "Compare my sectors with the cars already on slicks.", "Do not leave me on this tyre once it overheats."],
   INTER_CROSSOVER: ["Give me the next two-minute radar picture.", "Compare the intermediate to staying out.", "I need a clear call before the pit entry.", "Watch the sector times of anyone who has stopped.", "Tell me if this rain is building or passing."],
+  SLOW_CAR_AHEAD: ["Get me past him somehow.", "Tell me where he is weakest.", "Can we use the pit window to clear him?", "I need a plan because this is wasting the stint."],
+  BLOCKED_ANGRY: ["Report that to race control.", "That deserves a look from the stewards.", "Tell him to leave me room.", "I want that reviewed."],
+  STRATEGY_DOUBT: ["Talk me through the thinking here.", "Show me the numbers behind this.", "Give me an alternative before it is too late.", "Convince me this is right."],
+  STRATEGY_APPROVAL: ["Keep doing exactly this.", "Stay on this plan.", "Tell the crew that was well judged.", "Same again for the next stint."],
+  PIT_CALL_LATE: ["Do not leave the next one that long.", "Call it earlier next time.", "Watch my degradation more closely.", "I need the stop when I ask for it."],
+  TRAFFIC_FRUSTRATION: ["Find me clear air.", "Use the strategy to break me out of this.", "Tell me the gap to the front of this queue.", "I need a window, any window."],
+  FIRST_DROPS: ["Watch the radar closely now.", "Tell me if this is the front of a cell.", "Keep the intermediates ready.", "Give me a warning before it arrives properly."],
+  CAR_HAPPY: ["Do not change anything.", "Note this setup for the next race.", "Let me keep pushing like this.", "Tell me if I need to manage anything."],
+  PACE_COMPLAINT: ["We need to look at this after the race.", "Tell me if the others are doing something different.", "Give me any mode that helps.", "I want to understand where it is going."],
+  POSITION_LOST: ["Give me a plan to get it back.", "Tell me his weak sector.", "Can we get him at the stops?", "I need something different to fight him."],
+  POSITION_GAINED: ["Tell me the next target.", "Give me the gap to the car ahead.", "How is the tyre after that fight?", "Keep me informed on the one behind."],
+  FINAL_LAPS_PUSH: ["Tell me how much I can use.", "Give me every mode you have.", "Count me down to the flag.", "Let me know if anyone is closing."],
+};
+
+/*
+ * Short, emotional calls for the moments a driver actually reacts rather than
+ * reports. Kept deliberately terse: on a real radio these arrive clipped, and a
+ * measured three-clause sentence would read as narration.
+ */
+const RADIO_OUTBURSTS: Record<RaceRadioSituation, readonly string[]> = {
+  TYRE_WEAR: ["These tyres are done.", "I've got nothing left here.", "They're gone, completely gone.", "I can't hold this pace, no grip.", "Tyres are finished, I need to box."],
+  TYRE_HOT: ["They're overheating!", "I'm cooking the rears.", "Too hot, I'm losing the back.", "Everything's overheating back there.", "I need to cool these down, now."],
+  TYRE_COLD: ["No temperature at all.", "These are stone cold.", "I've got zero front end.", "Nothing from the tyres yet.", "Can't switch them on."],
+  ATTACK_ENERGY: ["Give me everything.", "I need the battery, now!", "Deploy, deploy!", "Let me have it on the straight.", "I'm ready, just give me the power."],
+  ATTACK_TYRE: ["I'm coming for him.", "The tyres are good, let me go.", "I can take him, trust me.", "Let me push, I've got the grip.", "This is my chance."],
+  DIRTY_AIR: ["I can't follow this close.", "I'm stuck in his air.", "No downforce behind him.", "Get me out of this dirty air.", "I'm losing the front here."],
+  BALANCE: ["The car's not right.", "I'm fighting it every corner.", "Something's off at the rear.", "This balance is killing me.", "I can't drive around this."],
+  DEFENDING: ["He's right on me!", "I'm holding him, just.", "He's got a run, help me.", "I can't defend forever.", "Keep him behind, tell me the gap."],
+  STABLE: ["Feeling good.", "Happy with this.", "The car's alive, let's go.", "Nice and steady here.", "I'm in a rhythm now."],
+  RAIN_STARTING: ["Rain, rain!", "I'm feeling drops.", "It's starting out here.", "First spots on the visor.", "Rain in the last corner."],
+  RAIN_INTENSIFYING: ["It's getting worse!", "This is properly wet now.", "I need wets, it's coming down.", "It's much heavier out here.", "Box me, this is too much."],
+  RAIN_EASING: ["It's easing off.", "Drying already.", "Rain's passing through.", "I can see a line forming.", "It's much better now."],
+  LOCAL_SHOWER: ["Only wet in one part.", "Dry everywhere but there.", "It's a shower in sector two.", "One corner is soaked.", "Watch that patch for me."],
+  RAIN_RUNNING: ["Happy on this tyre.", "Good in the wet.", "This feels right for the conditions.", "I've got confidence here.", "Comfortable, keep me out."],
+  WET_GRIP: ["No grip at all!", "I'm on the wrong tyre.", "I can't stay on the track.", "This is undriveable.", "I need to box, please."],
+  AQUAPLANING: ["I'm aquaplaning!", "Standing water, it's dangerous!", "I nearly lost it there.", "This isn't safe.", "We need the safety car."],
+  DRYING_LINE: ["The line's drying fast.", "Slicks would work now.", "It's ready for dries.", "I'm losing time on these.", "Get me on slicks."],
+  INTER_CROSSOVER: ["I need a decision.", "Tell me now, in or stay out.", "This is the moment.", "Make the call.", "I can't judge it from here."],
+  SLOW_CAR_AHEAD: ["This guy is so slow!", "Come on, he's holding me up!", "I'm way faster than him!", "Get him out of my way!", "This is ridiculous, he's nowhere."],
+  BLOCKED_ANGRY: ["That's dangerous!", "He can't do that!", "Oh come on!", "He pushed me off!", "Did you see that?!"],
+  STRATEGY_DOUBT: ["I don't like this plan.", "Are you sure about this?", "This isn't working.", "I think we've got this wrong.", "Really? This is the call?"],
+  STRATEGY_APPROVAL: ["Great call!", "Yes, that worked.", "Good job, guys.", "That was perfect.", "Love it, keep going."],
+  PIT_CALL_LATE: ["That was too late!", "I asked two laps ago!", "Why did we wait?", "The tyre was dead!", "We lost time there."],
+  TRAFFIC_FRUSTRATION: ["Traffic again!", "I can't get clear!", "Every single lap!", "This is hopeless in here.", "I need clean air!"],
+  FIRST_DROPS: ["I felt a drop.", "Rain, on my visor.", "Something's coming.", "Spots of rain out here.", "It's starting, I think."],
+  CAR_HAPPY: ["The car's beautiful.", "This feels great!", "Yes, that's it.", "I'm loving this.", "Perfect balance."],
+  PACE_COMPLAINT: ["We're just too slow.", "There's nothing here.", "I can't do any more.", "They're walking away.", "This isn't enough."],
+  POSITION_LOST: ["No! He got me.", "I couldn't hold him.", "Lost the place.", "Nothing I could do.", "Damn it."],
+  POSITION_GAINED: ["Got him!", "Yes! That's the move.", "Through, and clear.", "One more down.", "Beautiful."],
+  FINAL_LAPS_PUSH: ["Let's finish this.", "Everything now!", "I'm going for it.", "Full attack.", "All in."],
 };
 
 function choice<T>(values: readonly T[], seed: number, stream: number, tick: number): T {
@@ -482,12 +686,45 @@ function classificationRead(context: SessionMessageContext): string {
   return `P${context.position}, ${context.gapSeconds.toFixed(3)}s away — the limitation is costing us repeatedly.`;
 }
 
+function sentenceCase(message: string): string {
+  return `${message.charAt(0).toUpperCase()}${message.slice(1)}`;
+}
+
+function qualifyingDriverReaction(context: SessionMessageContext, stream: number): string {
+  const observation = sentenceCase(choice(
+    SETUP_VOICES[setupVoiceFor(context.balanceIssue)].driver,
+    context.seed,
+    stream + 3,
+    3,
+  ));
+
+  if (context.outcome === "NO RUN" || context.position === null) {
+    const reaction = choice(QUALIFYING_NO_TIME_REACTIONS, context.seed, stream + 10, 10);
+    return `${reaction} ${observation}.`;
+  }
+
+  if (context.outcome === "ELIMINATED") {
+    const reaction = choice(QUALIFYING_ELIMINATED_REACTIONS, context.seed, stream + 11, 11);
+    return `${reaction} P${context.position} and out — ${observation}.`;
+  }
+
+  if (context.outcome === "ADVANCED") {
+    const reaction = choice(QUALIFYING_ADVANCED_REACTIONS, context.seed, stream + 12, 12);
+    return `${reaction} P${context.position} gets us through. ${observation}.`;
+  }
+
+  const reactions = context.position <= 3 ? QUALIFYING_TOP_REACTIONS : QUALIFYING_GRID_REACTIONS;
+  const reaction = choice(reactions, context.seed, stream + 13, 13);
+  return `${reaction} We finish P${context.position}. ${observation}.`;
+}
+
 export function buildSessionDriverMessage(context: SessionMessageContext): string {
   const stream = context.carIndex * 29 + context.sessionIndex * 11;
+  if (context.phase === "QUALIFYING") return qualifyingDriverReaction(context, stream);
   if (context.outcome === "NO RUN") {
     return `We never got a proper lap in ${context.session}. Use the other car as the reference and give me one simple question next run.`;
   }
-  const opener = choice(context.phase === "QUALIFYING" ? DRIVER_QUALIFYING_OPENERS : DRIVER_OPENERS, context.seed, stream + 2, 2).replace(/\.$/, "");
+  const opener = choice(DRIVER_OPENERS, context.seed, stream + 2, 2).replace(/\.$/, "");
   const voice = SETUP_VOICES[setupVoiceFor(context.balanceIssue)];
   const observation = choice(voice.driver, context.seed, stream + 3, 3);
   const request = choice(DRIVER_REQUESTS, context.seed, stream + 4, 4);
@@ -509,6 +746,14 @@ export function buildSessionEngineerMessage(context: SessionMessageContext): str
 
 export function buildRaceDriverRadio(context: RaceDriverRadioContext): string {
   const stream = context.carIndex * 37 + Object.keys(RADIO_OBSERVATIONS).indexOf(context.situation) * 17;
+  /*
+   * An urgent situation gets the clipped, emotional call. Only the routine
+   * reports build the full opener/observation/request sentence, which keeps the
+   * long-form voice for moments that can actually carry it.
+   */
+  if (context.intensity === "HIGH") {
+    return choice(RADIO_OUTBURSTS[context.situation], context.seed, stream + 21, context.tick);
+  }
   const opener = choice(RADIO_OPENERS, context.seed, stream + 7, context.tick);
   const observation = choice(RADIO_OBSERVATIONS[context.situation], context.seed, stream + 8, context.tick + 1);
   const request = choice(RADIO_REQUESTS[context.situation], context.seed, stream + 9, context.tick + 2);

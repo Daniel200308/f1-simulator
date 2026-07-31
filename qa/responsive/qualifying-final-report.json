@@ -1,0 +1,187 @@
+{
+  "stage": "final",
+  "target": "http://127.0.0.1:3000",
+  "viewports": {
+    "desktop-1920x1080": {
+      "viewport": {
+        "width": 1920,
+        "height": 1080
+      },
+      "docScroll": {
+        "width": 1920,
+        "height": 1080
+      },
+      "horizontalScroll": false,
+      "buttonCount": 35,
+      "tooSmallCount": 0,
+      "tooSmall": [],
+      "textOverflowCount": 0,
+      "textOverflow": [],
+      "tinyTextCount": 0,
+      "tinyTextMin": null,
+      "tinyText": [],
+      "clippedContainers": []
+    },
+    "desktop-1440x900": {
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "docScroll": {
+        "width": 1440,
+        "height": 900
+      },
+      "horizontalScroll": false,
+      "buttonCount": 35,
+      "tooSmallCount": 0,
+      "tooSmall": [],
+      "textOverflowCount": 0,
+      "textOverflow": [],
+      "tinyTextCount": 0,
+      "tinyTextMin": null,
+      "tinyText": [],
+      "clippedContainers": []
+    },
+    "laptop-1280x720": {
+      "viewport": {
+        "width": 1280,
+        "height": 720
+      },
+      "docScroll": {
+        "width": 1280,
+        "height": 720
+      },
+      "horizontalScroll": false,
+      "buttonCount": 35,
+      "tooSmallCount": 0,
+      "tooSmall": [],
+      "textOverflowCount": 0,
+      "textOverflow": [],
+      "tinyTextCount": 0,
+      "tinyTextMin": null,
+      "tinyText": [],
+      "clippedContainers": []
+    },
+    "laptop-1180x800": {
+      "viewport": {
+        "width": 1180,
+        "height": 800
+      },
+      "docScroll": {
+        "width": 1180,
+        "height": 800
+      },
+      "horizontalScroll": false,
+      "buttonCount": 35,
+      "tooSmallCount": 0,
+      "tooSmall": [],
+      "textOverflowCount": 0,
+      "textOverflow": [],
+      "tinyTextCount": 0,
+      "tinyTextMin": null,
+      "tinyText": [],
+      "clippedContainers": []
+    },
+    "tablet-1024x768": {
+      "viewport": {
+        "width": 1024,
+        "height": 768
+      },
+      "docScroll": {
+        "width": 1024,
+        "height": 1336
+      },
+      "horizontalScroll": false,
+      "buttonCount": 35,
+      "tooSmallCount": 0,
+      "tooSmall": [],
+      "textOverflowCount": 0,
+      "textOverflow": [],
+      "tinyTextCount": 0,
+      "tinyTextMin": null,
+      "tinyText": [],
+      "clippedContainers": []
+    },
+    "tablet-834x1112": {
+      "viewport": {
+        "width": 834,
+        "height": 1112
+      },
+      "docScroll": {
+        "width": 834,
+        "height": 1513
+      },
+      "horizontalScroll": false,
+      "buttonCount": 35,
+      "tooSmallCount": 0,
+      "tooSmall": [],
+      "textOverflowCount": 0,
+      "textOverflow": [],
+      "tinyTextCount": 0,
+      "tinyTextMin": null,
+      "tinyText": [],
+      "clippedContainers": []
+    },
+    "phone-430x932": {
+      "viewport": {
+        "width": 430,
+        "height": 932
+      },
+      "docScroll": {
+        "width": 430,
+        "height": 2582
+      },
+      "horizontalScroll": false,
+      "buttonCount": 35,
+      "tooSmallCount": 0,
+      "tooSmall": [],
+      "textOverflowCount": 0,
+      "textOverflow": [],
+      "tinyTextCount": 0,
+      "tinyTextMin": null,
+      "tinyText": [],
+      "clippedContainers": []
+    },
+    "phone-390x844": {
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "docScroll": {
+        "width": 390,
+        "height": 2522
+      },
+      "horizontalScroll": false,
+      "buttonCount": 35,
+      "tooSmallCount": 0,
+      "tooSmall": [],
+      "textOverflowCount": 0,
+      "textOverflow": [],
+      "tinyTextCount": 0,
+      "tinyTextMin": null,
+      "tinyText": [],
+      "clippedContainers": []
+    },
+    "phone-360x740": {
+      "viewport": {
+        "width": 360,
+        "height": 740
+      },
+      "docScroll": {
+        "width": 360,
+        "height": 2574
+      },
+      "horizontalScroll": false,
+      "buttonCount": 35,
+      "tooSmallCount": 0,
+      "tooSmall": [],
+      "textOverflowCount": 0,
+      "textOverflow": [],
+      "tinyTextCount": 0,
+      "tinyTextMin": null,
+      "tinyText": [],
+      "clippedContainers": []
+    }
+  },
+  "consoleErrors": []
+}

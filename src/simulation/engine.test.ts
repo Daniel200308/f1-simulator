@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { RaceSnapshot, TyreTemperatureState } from "@/domain/race";
 import { playerCarIdsFor, TEAMS } from "@/fixtures/grid";
-import { averageTyreTemperature, buildWeatherTransitionRadio, cancelCarPit, checksumFor, createInitialSnapshot, estimatePitOutPosition, FIXED_STEP_SECONDS, PIT_BOX_DISTANCE, PIT_ENTRY_START, PIT_EXIT_END, SAFETY_CAR_RANDOM_MAX_LAP, SAFETY_CAR_RANDOM_MIN_LAP, scheduledSafetyCarTriggerDistance, setCarEnergyMode, setCarPace, setCarPit, setCarStartingTyre, setCarTyreMode, stepSnapshot } from "@/simulation/engine";
+import { averageTyreTemperature, buildWeatherTransitionRadio, cancelCarPit, checksumFor, createInitialSnapshot, estimatePitOutPosition, FIXED_STEP_SECONDS, OPERATIONAL_RADIO_INTERVAL_TICKS, PIT_BOX_DISTANCE, PIT_ENTRY_START, PIT_EXIT_END, SAFETY_CAR_RANDOM_MAX_LAP, SAFETY_CAR_RANDOM_MIN_LAP, scheduledSafetyCarTriggerDistance, setCarEnergyMode, setCarPace, setCarPit, setCarStartingTyre, setCarTyreMode, stepSnapshot } from "@/simulation/engine";
 import { SILVERSTONE_REFERENCE_LAP_SECONDS, telemetryReferenceLapTime, telemetrySpeedAtDistance } from "@/simulation/silverstone-telemetry";
 import { strategyRecommendation } from "@/simulation/strategy";
 import { sectorAtDistance, segmentIndexAtDistance, SILVERSTONE_CIRCUIT, SILVERSTONE_CORNERS, SILVERSTONE_OVERTAKE_DETECTION_DISTANCE } from "@/simulation/track";
@@ -950,7 +950,8 @@ describe("race simulation", () => {
   });
 
   it("proactively reports both player cars on the unified team-radio cadence", () => {
-    const state = runTicks(505, 901);
+    // Both cars must have had a routine call by the end of one full cadence.
+    const state = runTicks(505, OPERATIONAL_RADIO_INTERVAL_TICKS + 1);
     const operational = state.radioMessages.filter((message) => message.id.includes("operations-radio"));
     expect(new Set(operational.map((message) => message.carId))).toEqual(new Set(["ferrari-1", "ferrari-2"]));
     expect(operational.every((message) => message.source === "DRIVER" || message.source === "ENGINEER")).toBe(true);
@@ -974,8 +975,9 @@ describe("race simulation", () => {
     const next = stepSnapshot({
       ...initial,
       status: "RUNNING",
-      tick: 899,
-      elapsedTime: 89.9,
+      // One tick short of a cadence boundary so the next step emits the call.
+      tick: OPERATIONAL_RADIO_INTERVAL_TICKS - 1,
+      elapsedTime: (OPERATIONAL_RADIO_INTERVAL_TICKS - 1) / 10,
       weather: soakedWeather,
       cars: initial.cars.map((car) => ({ ...car, currentLap: 4, reactionTime: 0 })),
     });
@@ -1103,7 +1105,13 @@ describe("race simulation", () => {
     expect(startingCar.energyStoreTemperature).toBe(43);
     expect(Math.abs(car.powerUnitTemperature - startingCar.powerUnitTemperature)).toBeGreaterThan(0.2);
     expect(Math.abs(car.gearboxTemperature - startingCar.gearboxTemperature)).toBeGreaterThan(0.2);
-    expect(Math.abs(car.energyStoreTemperature - startingCar.energyStoreTemperature)).toBeGreaterThan(0.2);
+    /*
+     * The energy store moves less than the mechanical systems now that cars run
+     * the balanced usage level by default instead of cycling through separate
+     * harvest and boost maps. The check still proves the value is live rather
+     * than published as a constant.
+     */
+    expect(Math.abs(car.energyStoreTemperature - startingCar.energyStoreTemperature)).toBeGreaterThan(0.1);
   });
 
   it("heats the power unit and energy store more under attack and deployment", () => {

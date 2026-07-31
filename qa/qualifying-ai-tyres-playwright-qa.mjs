@@ -39,13 +39,26 @@ async function waitUntil(predicate, timeoutMs, message) {
 
 async function viewportMetrics(page, label) {
   const metrics = await page.evaluate(() => {
-    const bounds = (selector) => {
-      const element = document.querySelector(selector);
+    const elementBounds = (element) => {
       if (!element) return null;
       const rect = element.getBoundingClientRect();
       return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height, scrollWidth: element.scrollWidth, scrollHeight: element.scrollHeight, clientWidth: element.clientWidth, clientHeight: element.clientHeight };
     };
-    const clipped = [...document.querySelectorAll("[aria-label='Qualifying driver control'] button span, [aria-label='Qualifying driver control'] button b, [aria-label='Qualifying driver control'] button small")]
+    const bounds = (selector) => elementBounds(document.querySelector(selector));
+    const controls = document.querySelector("[aria-label='Qualifying driver control']");
+    const controlCore = controls?.querySelector("[class*='controlCore']");
+    const coreBox = elementBounds(controlCore);
+    const coreSections = [...(controlCore?.querySelectorAll(":scope > section[class*='controlSection']") ?? [])].map(elementBounds).filter(Boolean);
+    const coreTopSpace = coreBox && coreSections.length > 0 ? Math.min(...coreSections.map((section) => section.top)) - coreBox.top : null;
+    const coreBottomSpace = coreBox && coreSections.length > 0 ? coreBox.bottom - Math.max(...coreSections.map((section) => section.bottom)) : null;
+    const coreBalance = coreTopSpace !== null && coreBottomSpace !== null ? Math.abs(coreTopSpace - coreBottomSpace) : null;
+    const operationControls = [...(controlCore?.querySelectorAll("[class*='segmentOptions'], [class*='orbOptions']") ?? [])].map((control) => {
+      const controlBox = elementBounds(control);
+      const sectionBox = elementBounds(control.closest("section"));
+      const buttonWidths = [...control.querySelectorAll("button")].map((button) => button.getBoundingClientRect().width);
+      return controlBox && sectionBox ? { ...controlBox, maxButtonWidth: Math.max(...buttonWidths), centreOffset: Math.abs((controlBox.left + controlBox.right) / 2 - (sectionBox.left + sectionBox.right) / 2) } : null;
+    }).filter(Boolean);
+    const clipped = [...document.querySelectorAll("[aria-label='Qualifying driver control'] button span, [aria-label='Qualifying driver control'] button b, [aria-label='Qualifying driver control'] button small, [aria-label='Live tyre temperatures'] em")]
       .filter((element) => element.scrollWidth > element.clientWidth + 1 || element.scrollHeight > element.clientHeight + 1)
       .map((element) => element.textContent?.trim());
     return {
@@ -56,13 +69,20 @@ async function viewportMetrics(page, label) {
       tower: bounds("[aria-label='Qualifying leaderboard']"),
       map: bounds("[data-traffic-overview='true']"),
       controls: bounds("[aria-label='Qualifying driver control']"),
-      tyreConsole: bounds("[class*='tyreConsole']"),
+      tyreSection: bounds("[aria-label='Qualifying driver control'] [data-control='tyres']"),
+      controlCore: coreBox,
+      coreBalance,
+      operationControls,
       clipped,
     };
   });
   check(metrics.scrollWidth <= metrics.innerWidth && metrics.scrollHeight <= metrics.innerHeight, `${label} has no document overflow`, metrics);
   check([metrics.tower, metrics.map, metrics.controls].every((item) => item && item.left >= 0 && item.top >= 0 && item.right <= metrics.innerWidth && item.bottom <= metrics.innerHeight), `${label} keeps leaderboard, circuit and control rail in the viewport`, metrics);
-  check(metrics.tyreConsole && metrics.tyreConsole.bottom <= metrics.controls.bottom && metrics.tyreConsole.height >= 72, `${label} keeps the tyre-set console visible`, metrics.tyreConsole);
+  check(metrics.tyreSection && metrics.tyreSection.bottom <= metrics.controls.bottom && metrics.tyreSection.height <= 140, `${label} keeps compound and physical-set selectors visible at the bottom`, metrics.tyreSection);
+  check(metrics.controlCore && metrics.coreBalance !== null && metrics.coreBalance <= 5, `${label} centres the operation controls vertically`, { core: metrics.controlCore, balance: metrics.coreBalance });
+  check(metrics.operationControls.length === 5
+    && metrics.operationControls.every((control) => control.centreOffset <= 3 && control.maxButtonWidth < metrics.controlCore.width * .46),
+  `${label} keeps centred operation buttons narrower than the rail`, metrics.operationControls);
   check(metrics.clipped.length === 0, `${label} control labels are not clipped`, metrics.clipped);
   results.viewports[label] = metrics;
 }
@@ -72,26 +92,53 @@ async function exerciseControls(page, label, completeRun) {
   const canvas = page.locator("canvas[data-renderer='SINGLE_CANVAS']");
 
   const release = rail.getByRole("button", { name: /LEC Release Now/i });
-  const waitGap = rail.getByRole("button", { name: /LEC Wait for Gap/i });
-  check(await release.isDisabled() && await waitGap.isDisabled(), `${label} blocks release until a physical tyre set is selected`);
-  check(await rail.getByText("Select a tyre set before release", { exact: true }).isVisible(), `${label} explains the missing tyre selection`);
+  check(await release.isDisabled(), `${label} blocks release until a physical tyre set is selected`);
+  check(await rail.getByRole("button", { name: /Wait for Gap|Hold in Garage/i }).count() === 0, `${label} exposes only the Release action`);
+  const tyreChoices = rail.locator("button[data-tyre-choice='true']");
+  check(await tyreChoices.count() === 5, `${label} exposes exactly five combined tyre choices`);
+  check(await rail.locator("button[data-tyre-choice='true'][aria-pressed='true']").count() === 0, `${label} begins without inventing a selected physical set`);
+  const tyreMetadata = await tyreChoices.evaluateAll((buttons) => buttons.map((button) => ({
+    life: button.textContent?.trim() ?? "",
+    setCount: Number(button.getAttribute("data-set-count") ?? 0),
+    setId: button.getAttribute("data-set-id") ?? "",
+    setNumber: button.getAttribute("data-set-number") ?? "",
+    status: button.getAttribute("data-status") ?? "",
+  })));
+  // Compound buttons name their compound; remaining life is shown on the
+  // physical-set row, which is where a set is actually selected.
+  check(tyreMetadata.every((choice) => choice.setCount === 0 || (/[A-Z]{3,}/.test(choice.life)
+    && !/\d+%/.test(choice.life)
+    && choice.setId.length > 0
+    && /^\d+$/.test(choice.setNumber)
+    && /^(NEW|USED)$/.test(choice.status))),
+  `${label} exposes the compound name and actual set id, number and status on every available tyre choice`, tyreMetadata);
+  check(await rail.locator("button[data-tyre-set-choice='true']").count() >= 2, `${label} directly exposes the selected compound's physical tyre sets`);
+  check(await rail.getByRole("button", { name: /Release Now/i }).count() === 1, `${label} renders exactly one Release control`);
 
   for (const compound of ["MEDIUM", "HARD", "INTERMEDIATE", "WET", "SOFT"]) {
-    const choice = rail.getByRole("button", { name: new RegExp(`LEC ${compound},`) });
+    const choice = rail.locator(`button[data-tyre-choice='true'][data-compound='${compound}']`);
     await choice.click();
     check(await choice.getAttribute("aria-pressed") === "true", `${label} selects ${compound} from the compound sidewalls`);
   }
-  const setButtons = rail.getByRole("button", { name: /Select SOFT set/i });
-  check(await setButtons.count() === 6, `${label} exposes all six allocated Soft physical sets`);
-  check(await setButtons.first().getAttribute("aria-pressed") === "true", `${label} highlights the exact selected set`);
-  check(await release.isEnabled() && await waitGap.isEnabled(), `${label} enables release and gap queue after selecting a set`);
+  const softChoice = rail.locator("button[data-tyre-choice='true'][data-compound='SOFT']");
+  const firstSoftSetId = await softChoice.getAttribute("data-set-id");
+  await softChoice.click();
+  const cycledSoftSetId = await softChoice.getAttribute("data-set-id");
+  check(Boolean(firstSoftSetId && cycledSoftSetId && firstSoftSetId !== cycledSoftSetId), `${label} cycles through exact Soft sets when the selected button is pressed again`, { firstSoftSetId, cycledSoftSetId });
+  check(await rail.locator("button[data-tyre-choice='true'][aria-pressed='true']").count() === 1, `${label} highlights exactly one selected physical set`);
+  check(await release.isEnabled(), `${label} enables release after selecting a set`);
+
+  await rail.getByRole("button", { name: "Control Lewis Hamilton, car 44" }).click();
+  const secondDriverChoices = rail.locator("button[data-tyre-choice='true']");
+  check(await secondDriverChoices.count() === 5, `${label} keeps five tyre choices after switching drivers`);
+  const secondDriverSoft = rail.locator("button[data-tyre-choice='true'][data-compound='SOFT']");
+  await secondDriverSoft.click();
+  check(await secondDriverSoft.getAttribute("aria-pressed") === "true" && Boolean(await secondDriverSoft.getAttribute("data-set-id")), `${label} lets the second driver select an exact physical set`);
+  await rail.getByRole("button", { name: "Control Charles Leclerc, car 16" }).click();
+  check(await rail.locator("button[data-tyre-choice='true'][aria-pressed='true']").count() === 1, `${label} preserves the first driver's exact tyre selection after switching back`);
 
   await page.getByRole("button", { name: "Pause qualifying" }).click();
-  await waitGap.click();
-  check(await waitGap.getAttribute("aria-pressed") === "true", `${label} arms Wait for Gap while the session is paused`);
-  const hold = rail.getByRole("button", { name: /LEC Hold in Garage/i });
-  await hold.click();
-  check(await hold.getAttribute("aria-pressed") === "true", `${label} restores Hold in Garage`);
+  check(await rail.locator("[role='status'][data-mode]").count() === 0, `${label} keeps the removed battery strategy out of the command rail while paused`);
   await page.getByRole("button", { name: "Resume qualifying" }).click();
   await waitUntil(async () => await release.isEnabled(), 5_000, `${label} did not reopen a safe release window`);
   await release.click();
@@ -106,10 +153,12 @@ async function exerciseControls(page, label, completeRun) {
 
   if (completeRun) {
     await waitUntil(async () => await rail.getAttribute("data-lap-status") === "GARAGE", 22_000, `${label} player car did not return to the garage`);
-    const usedSet = rail.getByRole("button", { name: /Select SOFT set .* USED/i }).first();
+    const usedSet = rail.locator("button[data-tyre-set-choice='true'][data-status='USED']").first();
     await usedSet.waitFor({ timeout: 3_000 });
-    check(await usedSet.isVisible(), `${label} keeps the completed qualifying set available as USED`);
-    check((await usedSet.getAttribute("aria-label"))?.includes("life"), `${label} reports the used set's remaining life`);
+    const usedSetData = { life: await usedSet.innerText(), setId: await usedSet.getAttribute("data-set-id"), setNumber: await usedSet.getAttribute("data-set-number") };
+    check(Boolean(usedSetData.setId && usedSetData.setNumber && /\d+%/.test(usedSetData.life)), `${label} directly exposes the completed qualifying set as USED with remaining life`, usedSetData);
+    await usedSet.click();
+    check(await usedSet.getAttribute("aria-pressed") === "true", `${label} lets the player reselect the used physical set directly`);
   }
 }
 

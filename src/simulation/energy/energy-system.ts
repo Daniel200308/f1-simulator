@@ -218,10 +218,18 @@ export function updateEnergySystem(input: EnergyUpdateInput): EnergyUpdateResult
   const tractionLimit = clamp(speedTraction * Math.sqrt(grip) * profile.lowSpeedTorqueControl, 0, 1);
   const thermalEfficiency = temperatureEfficiency(previous.batteryTemperatureC, config);
   const usableSocFactor = clamp((previous.stateOfCharge - config.minimumUsableSoc) / 0.18, 0, 1);
+  /*
+   * The lap-end target still shapes deployment, but the tightest usage level is
+   * meant to spend the battery. Holding ATTACK to the same reserve protection as
+   * BALANCED made the three usage levels feel almost identical, so it keeps only
+   * a light floor while OVERTAKE and BOOST ignore the target entirely.
+   */
   const automaticTargetControl = mode !== "BOOST" && mode !== "OVERTAKE";
   const targetDeficit = automaticTargetControl ? Math.max(0, targetSocAtLapEnd - predictedBefore) : 0;
+  const protectionStrength = mode === "ATTACK" ? 1.5 : 3.2;
+  const protectionFloor = mode === "ATTACK" ? 0.55 : 0.12;
   const predictedProtection = targetDeficit > 0
-    ? clamp(1 - targetDeficit * 3.2, 0.12, 1)
+    ? clamp(1 - targetDeficit * protectionStrength, protectionFloor, 1)
     : 1;
   const lapDeployLimit = config.deploymentLimitMJPerLap ?? Number.POSITIVE_INFINITY;
   const lapDeployFactor = clamp((lapDeployLimit - previous.deployedEnergyThisLapMJ) / Math.max(0.3, lapDeployLimit * 0.14), 0, 1);

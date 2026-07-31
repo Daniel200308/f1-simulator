@@ -1,7 +1,7 @@
 "use client";
 
-import type { CSSProperties } from "react";
 import { useState } from "react";
+import type { CSSProperties } from "react";
 import Image from "next/image";
 import { Activity, ChevronRight, CircleUserRound, Fan, Flag, Gauge, Headphones, Settings2, Timer, Trophy, Waves, Wrench, X } from "lucide-react";
 
@@ -206,10 +206,94 @@ function Classification({ state }: { state: WeekendState }) {
   );
 }
 
+/**
+ * One driver's race-start band: identity, the set chosen, that compound's
+ * allocation, and the three plans the chosen set produces.
+ *
+ * Sets are filtered by a compound tab. Showing all 16 at once wrapped three
+ * rows deep and collided with the plan rows on a 720px-tall screen.
+ */
+function DriverStrategyRow({
+  carId,
+  doctrine,
+  gridPosition,
+  onStartingTyreChange,
+  plans,
+  selection,
+  tyreInventory,
+}: {
+  carId: string;
+  doctrine: string;
+  gridPosition: number;
+  onStartingTyreChange: (carId: string, selection: RaceStartTyreSelection) => void;
+  plans: ReturnType<typeof buildRaceStrategyPlans>;
+  selection: RaceStartTyreSelection;
+  tyreInventory: WeekendState["tyreInventory"];
+}) {
+  const [requestedCompound, setRequestedCompound] = useState<TyreCompound | null>(null);
+  const driver = DRIVER_BY_ID.get(carId)!;
+  // The tab follows the chosen set until the user browses a different compound.
+  const activeCompound = requestedCompound ?? selection.compound;
+  const visibleSets = raceStartTyreSetsFor(carId, activeCompound, tyreInventory);
+
+  return <article className={styles.driverStrategyRow} style={{ "--grid-team": `#${TEAM_BY_ID.get(driver.teamId)?.primaryColor.toString(16).padStart(6, "0") ?? "20d7e7"}` } as CSSProperties}>
+    <header className={styles.driverStrategyHead}>
+      <span className={styles.driverStrategyIdentity}><b>P{gridPosition}</b><i /><div><strong>{driver.shortName}</strong><small>#{driver.number} · {doctrine.replaceAll("_", " ")}</small></div></span>
+      <span className={styles.driverStrategyStart}><TyreBadge compound={selection.compound} size="medium" title={`${selection.compound} set ${selection.setNumber} selected`} /><span><b>SET {selection.setNumber.toString().padStart(2, "0")}</b><small>{selection.freshness} · {selection.condition}% · {selection.lapsUsed}L</small></span></span>
+    </header>
+
+    <div className={styles.startSetPicker}>
+      <div className={styles.compoundTabs} aria-label={`${driver.shortName} compound`} role="group">
+        {COMPOUNDS.map((compound) => {
+          const sets = raceStartTyreSetsFor(carId, compound, tyreInventory);
+          return <button
+            aria-label={`${driver.shortName} show ${compound} sets, ${sets.length} available`}
+            aria-pressed={activeCompound === compound}
+            data-compound={compound}
+            disabled={sets.length === 0}
+            key={compound}
+            onClick={() => setRequestedCompound(compound)}
+            title={`${compound} · ${sets.length} set${sets.length === 1 ? "" : "s"}`}
+            type="button"
+          ><TyreBadge compound={compound} size="small" /><span>{sets.length}</span></button>;
+        })}
+      </div>
+
+      {/* The selected compound's sets, each with its life after Q3. */}
+      <div className={styles.startSetGrid} aria-label={`${driver.shortName} starting tyre set`} role="group">
+        {visibleSets.map((set) => (
+          <button
+            aria-label={`${driver.shortName} start on ${activeCompound} set ${set.setNumber}, ${set.freshness}, ${set.condition} percent life, ${set.lapsUsed} laps used`}
+            aria-pressed={selection.id === set.id}
+            data-compound={activeCompound}
+            data-freshness={set.freshness}
+            data-set-id={set.id}
+            data-start-set-choice="true"
+            key={set.id}
+            onClick={() => onStartingTyreChange(carId, { ...set })}
+            title={`${activeCompound} set ${set.setNumber} · ${set.freshness} · ${set.condition}% life · ${set.lapsUsed} laps`}
+            type="button"
+          >
+            <span><b>#{set.setNumber.toString().padStart(2, "0")}</b><strong>{set.condition}%</strong></span>
+            <small>{set.lapsUsed === 0 ? "NEW" : `${set.lapsUsed}L USED`}</small>
+          </button>
+        ))}
+      </div>
+    </div>
+
+    <div className={styles.preRacePlanRows} aria-label={`${driver.shortName} race strategy plans`} role="group">{plans.map((strategyPlan) => <article data-recommended={strategyPlan.recommended} key={strategyPlan.id}>
+      <span className={styles.preRacePlanIdentity}><b>PLAN {strategyPlan.id}</b><small>{strategyPlan.name}</small></span>
+      <span className={styles.preRacePlanTrack}>{strategyPlan.stints.map((stint) => {
+        const width = ((stint.endLap - stint.startLap + 1) / 52) * 100;
+        return <span className={styles.preRacePlanStint} data-compound={stint.compound} key={`${stint.startLap}-${stint.compound}`} style={{ "--stint-width": `${width}%` } as CSSProperties}><b>{TYRE_SHORT[stint.compound]}</b><small>L{stint.startLap}–{stint.endLap}</small>{stint.pitAtEnd ? <i>BOX L{stint.endLap}</i> : null}</span>;
+      })}</span>
+      <span className={styles.preRacePlanOutcome}><b>{strategyPlan.stopCount} STOP{strategyPlan.stopCount === 1 ? "" : "S"}</b><small>{strategyPlan.recommended ? "RECOMMENDED" : `+${strategyPlan.projectedDeltaSeconds.toFixed(1)}s`} · {strategyPlan.risk} RISK</small></span>
+    </article>)}</div>
+  </article>;
+}
+
 function RacePreparation({ state, startingTyres, onStartingTyreChange }: Pick<WeekendHubProps, "state" | "startingTyres" | "onStartingTyreChange">) {
   const playerCarIds = playerCarIdsFor(state.playerTeamId);
-  const [requestedStrategyCarId, setRequestedStrategyCarId] = useState(playerCarIds[0]);
-  const strategyCarId = playerCarIds.includes(requestedStrategyCarId) ? requestedStrategyCarId : playerCarIds[0];
   const weather = createSpatialWeather(state.seed);
   const playerOverrides = Object.fromEntries(playerCarIds.map((carId) => [carId, startingTyres[carId]?.compound]));
   const plan = buildRaceStartingTyrePlan({
@@ -219,23 +303,36 @@ function RacePreparation({ state, startingTyres, onStartingTyreChange }: Pick<We
     weather,
     playerOverrides,
   });
-  const strategySelection = startingTyres[strategyCarId] ?? chooseRaceStartTyreSet(strategyCarId, plan[strategyCarId].compound, state.tyreInventory);
-  const strategyTyreSets: readonly TyreSetState[] = raceStartTyreInventory(strategyCarId, state.tyreInventory).map((set) => ({
-    id: set.id,
-    compound: set.compound,
-    condition: set.condition,
-    lapsUsed: set.lapsUsed,
-    status: set.id === strategySelection.id ? "FITTED" : set.freshness === "USED" ? "USED" : "AVAILABLE",
-  }));
-  const strategyPlans = buildRaceStrategyPlans({
-    currentLap: 1,
-    totalLaps: 52,
-    tyreCompound: strategySelection.compound,
-    tyreLife: strategySelection.condition,
-    tyreAgeLaps: strategySelection.lapsUsed,
-    tyreSets: strategyTyreSets,
-    weather,
-    raceControl: "GREEN",
+  /*
+   * Both drivers get their own strategy row. Previously a STRATEGY button
+   * swapped one shared board between them, which hid the comparison that the
+   * decision actually needs.
+   */
+  const driverStrategies = playerCarIds.map((carId) => {
+    const selection = startingTyres[carId] ?? chooseRaceStartTyreSet(carId, plan[carId].compound, state.tyreInventory);
+    const tyreSets: readonly TyreSetState[] = raceStartTyreInventory(carId, state.tyreInventory).map((set) => ({
+      id: set.id,
+      compound: set.compound,
+      condition: set.condition,
+      lapsUsed: set.lapsUsed,
+      status: set.id === selection.id ? "FITTED" : set.freshness === "USED" ? "USED" : "AVAILABLE",
+    }));
+    return {
+      carId,
+      selection,
+      // Plans are rebuilt from the chosen set, so its post-Q3 life and age feed
+      // the stint lengths directly.
+      plans: buildRaceStrategyPlans({
+        currentLap: 1,
+        totalLaps: 52,
+        tyreCompound: selection.compound,
+        tyreLife: selection.condition,
+        tyreAgeLaps: selection.lapsUsed,
+        tyreSets,
+        weather,
+        raceControl: "GREEN",
+      }),
+    };
   });
   const gridRows = Array.from({ length: Math.ceil(state.gridOrder.length / 2) }, (_, index) => state.gridOrder.slice(index * 2, index * 2 + 2));
   const compoundCounts = COMPOUNDS.map((compound) => ({ compound, count: state.gridOrder.filter((carId) => plan[carId]?.compound === compound).length }));
@@ -257,42 +354,50 @@ function RacePreparation({ state, startingTyres, onStartingTyreChange }: Pick<We
       </section>
 
       <section className={styles.raceStrategyWorkspace}>
-        <header><Flag aria-hidden="true" size={18} /><span><b>RACE START TYRES</b><small>SELECT COMPOUND · SELECT NEW OR SCRUBBED SET · FIA 2026 ALLOCATION</small></span></header>
-        <div className={styles.startTyreCards}>{playerCarIds.map((carId) => {
-          const driver = DRIVER_BY_ID.get(carId)!;
-          const decision = plan[carId];
-          const selection = startingTyres[carId] ?? chooseRaceStartTyreSet(carId, decision.compound, state.tyreInventory);
-          const selectedCompoundSets = raceStartTyreSetsFor(carId, selection.compound, state.tyreInventory);
-          const freshSet = selectedCompoundSets.find((set) => set.freshness === "NEW");
-          const usedSet = selectedCompoundSets.find((set) => set.freshness === "USED");
-          return <article className={styles.startTyreCard} data-plan-active={strategyCarId === carId} key={carId} style={{ "--grid-team": `#${TEAM_BY_ID.get(driver.teamId)?.primaryColor.toString(16).padStart(6, "0") ?? "20d7e7"}` } as CSSProperties}>
-            <header><span><b>P{state.gridOrder.indexOf(carId) + 1}</b><i /></span><div><strong>{driver.shortName}</strong><small>#{driver.number} · {decision.doctrine.replaceAll("_", " ")}</small></div><TyreBadge compound={selection.compound} size="large" title={`${selection.compound} set ${selection.setNumber} selected`} /></header>
-            <div className={styles.startTyreChoices}>{COMPOUNDS.map((compound) => {
-              const compoundSets = raceStartTyreSetsFor(carId, compound, state.tyreInventory);
-              const newCount = compoundSets.filter((set) => set.freshness === "NEW").length;
-              const usedCount = compoundSets.length - newCount;
-              return <button aria-label={`${driver.shortName} start on ${compound}, ${newCount} new and ${usedCount} used sets`} aria-pressed={selection.compound === compound} data-compound={compound} key={compound} onClick={() => onStartingTyreChange(carId, chooseRaceStartTyreSet(carId, compound, state.tyreInventory))} title={`${compound} · ${newCount} new · ${usedCount} used`} type="button"><TyreBadge compound={compound} size="medium" /><span><strong>{TYRE_SHORT[compound]}</strong><small>{newCount}N · {usedCount}U</small></span></button>;
-            })}</div>
-            <div className={styles.tyreSetChoice} aria-label={`${driver.shortName} tyre set condition`}>
-              <button aria-pressed={selection.freshness === "NEW"} disabled={!freshSet} onClick={() => freshSet && onStartingTyreChange(carId, { ...freshSet })} type="button"><i data-freshness="NEW" /><span><b>NEW SET</b><small>{freshSet ? `SET ${freshSet.setNumber} · 100%` : "NONE LEFT"}</small></span></button>
-              <button aria-pressed={selection.freshness === "USED"} disabled={!usedSet} onClick={() => usedSet && onStartingTyreChange(carId, { ...usedSet })} type="button"><i data-freshness="USED" /><span><b>QUALI USED</b><small>{usedSet ? `SET ${usedSet.setNumber} · ${usedSet.condition}% · ${usedSet.lapsUsed}L` : "NO SCRUBBED SET"}</small></span></button>
-              <button className={styles.strategyFocusButton} aria-pressed={strategyCarId === carId} onClick={() => setRequestedStrategyCarId(carId)} type="button"><span><b>STRATEGY</b><small>{strategyCarId === carId ? "DISPLAYED" : "VIEW PLAN"}</small></span></button>
-            </div>
-          </article>;
-        })}</div>
+        <header><Flag aria-hidden="true" size={18} /><span><b>RACE START TYRES &amp; STRATEGY</b><small>SELECT AN EXACT SET · POST-Q3 LIFE DRIVES PLAN A / B / C</small></span></header>
 
-        <section className={styles.preRacePlanBoard} aria-label={`${DRIVER_BY_ID.get(strategyCarId)?.shortName} race strategy plans`}>
-          <header><div><span>AI STRATEGY · {DRIVER_BY_ID.get(strategyCarId)?.shortName}</span><strong>52-LAP PLAN A / B / C</strong></div><p><b>{strategySelection.freshness}</b> {TYRE_SHORT[strategySelection.compound]} · {strategySelection.condition}% START</p></header>
-          <div className={styles.preRacePlanRows}>{strategyPlans.map((strategyPlan) => <article data-recommended={strategyPlan.recommended} key={strategyPlan.id}>
-            <span className={styles.preRacePlanIdentity}><b>PLAN {strategyPlan.id}</b><small>{strategyPlan.name}</small></span>
-            <span className={styles.preRacePlanTrack}>{strategyPlan.stints.map((stint) => {
-              const width = ((stint.endLap - stint.startLap + 1) / 52) * 100;
-              return <span className={styles.preRacePlanStint} data-compound={stint.compound} key={`${stint.startLap}-${stint.compound}`} style={{ "--stint-width": `${width}%` } as CSSProperties}><b>{TYRE_SHORT[stint.compound]}</b><small>L{stint.startLap}–{stint.endLap}</small>{stint.pitAtEnd ? <i>BOX L{stint.endLap}</i> : null}</span>;
-            })}</span>
-            <span className={styles.preRacePlanOutcome}><b>{strategyPlan.stopCount} STOP{strategyPlan.stopCount === 1 ? "" : "S"}</b><small>{strategyPlan.recommended ? "RECOMMENDED" : `+${strategyPlan.projectedDeltaSeconds.toFixed(1)}s`} · {strategyPlan.risk} RISK</small></span>
-          </article>)}</div>
-          <footer><b>FIA DRY RACE RULE</b><span>Two different dry compounds are built into every full-race plan. Used qualifying sets remain selectable with their estimated life.</span></footer>
-        </section>
+        {/*
+         * Grid conditions at the moment the race starts. Rain can already be
+         * falling when the lights go out, so the compound choice below has to be
+         * made against the actual forecast rather than an assumed dry race.
+         */}
+        <div className={styles.startWeather} aria-label="Race start conditions" data-condition={weather.condition}>
+          <span className={styles.startWeatherHeadline}>
+            <b>{weather.condition.replaceAll("_", " ")}</b>
+            <small>{weather.forecastRainInMinutes === null
+              ? "NO RAIN ON RADAR"
+              : weather.forecastRainInMinutes === 0 ? "RAIN FALLING NOW" : `RAIN IN ~${weather.forecastRainInMinutes} MIN`}</small>
+          </span>
+          <span className={styles.startWeatherReadings}>
+            <span><small>TRACK</small><strong>{weather.trackTemperature.toFixed(0)}°C</strong></span>
+            <span><small>AIR</small><strong>{weather.airTemperature.toFixed(0)}°C</strong></span>
+            <span><small>WET</small><strong>{Math.round(weather.trackWetness * 100)}%</strong></span>
+            <span><small>RAIN</small><strong>{Math.round(weather.rainIntensity * 100)}%</strong></span>
+          </span>
+          <span className={styles.startWeatherSectors} aria-label="Sector surface at the start">
+            {(weather.sectors ?? []).map((sector) => (
+              <span
+                key={sector.sector}
+                style={{ "--wetness": `${Math.max(4, sector.wetness * 100)}%` } as CSSProperties}
+                title={`Sector ${sector.sector}: ${Math.round(sector.wetness * 100)}% wet`}
+              ><b>S{sector.sector}</b><i aria-hidden="true" /><strong>{Math.round(sector.wetness * 100)}%</strong></span>
+            ))}
+          </span>
+        </div>
+
+        {driverStrategies.map(({ carId, selection, plans }) => (
+          <DriverStrategyRow
+            carId={carId}
+            doctrine={plan[carId].doctrine}
+            gridPosition={state.gridOrder.indexOf(carId) + 1}
+            key={carId}
+            onStartingTyreChange={onStartingTyreChange}
+            plans={plans}
+            selection={selection}
+            tyreInventory={state.tyreInventory}
+          />
+        ))}
+        <footer className={styles.strategyFootnote}><b>FIA DRY RACE RULE</b><span>Two different dry compounds are built into every full-race plan. Scrubbed qualifying sets stay selectable with the life they have left after Q3.</span></footer>
       </section>
     </div>
   );
@@ -309,8 +414,10 @@ function QualifyingReportClassification({ result }: { result: WeekendSessionResu
       <div className={styles.reportClassificationColumns}>{columns.map((column, columnIndex) => <div key={columnIndex}>{column.map((entry) => {
         const driver = DRIVER_BY_ID.get(entry.carId)!;
         const team = TEAM_BY_ID.get(driver.teamId)!;
-        return <div className={entry.eliminated ? styles.reportClassificationOut : ""} key={entry.carId} style={{ "--team": `#${team.primaryColor.toString(16).padStart(6, "0")}` } as CSSProperties}>
-          <b>{entry.position.toString().padStart(2, "0")}</b><span><i /><strong>{driver.shortName}</strong><small>{team.shortName}</small></span><em data-compound={entry.compound}>{TYRE_SHORT[entry.compound]}</em><time>{entry.timedLap === false ? "NO TIME" : formatLapTime(entry.bestLapSeconds)}</time><small>{entry.position === 1 ? "POLE" : entry.timedLap === false ? "—" : `+${entry.gapSeconds.toFixed(3)}`}</small>
+        const resultStatus = result.session === "Q3" ? "GRID" : entry.eliminated ? "OUT" : "ADV";
+        const rowClassName = [entry.eliminated ? styles.reportClassificationOut : "", entry.position === cutPosition + 1 ? styles.reportClassificationCut : ""].filter(Boolean).join(" ");
+        return <div aria-label={`${driver.shortName}, position ${entry.position}, ${entry.timedLap === false ? "no valid time" : formatLapTime(entry.bestLapSeconds)}, ${resultStatus === "ADV" ? "advanced" : resultStatus === "OUT" ? "eliminated" : "classified for the grid"}`} className={rowClassName} data-cut-boundary={entry.position === cutPosition + 1} data-result-status={resultStatus} data-timed-lap={entry.timedLap !== false} key={entry.carId} style={{ "--team": `#${team.primaryColor.toString(16).padStart(6, "0")}` } as CSSProperties}>
+          <b>{entry.position.toString().padStart(2, "0")}</b><span><i /><strong>{driver.shortName}</strong><small>{team.shortName}</small></span><em data-compound={entry.compound} title={`${entry.compound} · ${entry.laps} recorded laps`}>{TYRE_SHORT[entry.compound]}</em><time>{entry.timedLap === false ? "NO TIME" : formatLapTime(entry.bestLapSeconds)}</time><small>{entry.position === 1 ? "POLE" : entry.timedLap === false ? "—" : `+${entry.gapSeconds.toFixed(3)}`}</small><mark>{resultStatus}</mark>
         </div>;
       })}</div>)}</div>
       {eliminated.length > 0 && <footer><span>ELIMINATED</span>{eliminated.map((entry) => <b key={entry.carId}>{DRIVER_BY_ID.get(entry.carId)?.shortName}</b>)}</footer>}
@@ -343,10 +450,10 @@ export function SessionReport({ report, onClose, classification = null, actionLa
             return (
               <article className={styles.reportCar} key={carReport.carId} style={{ "--team": `#${team.primaryColor.toString(16).padStart(6, "0")}` } as CSSProperties}>
                 <header><span>#{driver.number}</span><div><h3>{driver.name}</h3><p>{driver.shortName} · {team.shortName}</p></div><b data-outcome={carReport.outcome}>{carReport.position ? `P${carReport.position}` : carReport.outcome}</b></header>
-                <div className={styles.conditionGrid}>{metrics.map(([label, value]) => <span key={label}><small>{label}</small><strong>{value}%</strong><i><b style={{ width: `${value}%` }} /></i></span>)}</div>
+                {!classification && <div className={styles.conditionGrid}>{metrics.map(([label, value]) => <span key={label}><small>{label}</small><strong>{value}%</strong><i><b style={{ width: `${value}%` }} /></i></span>)}</div>}
                 <div className={styles.reportMessages}>
-                  <article><Headphones aria-hidden="true" size={18} /><div><strong>DRIVER REPORT</strong><p>“{concise(carReport.driverMessage, 215)}”</p></div></article>
-                  <article><Wrench aria-hidden="true" size={18} /><div><strong>ENGINEER REPORT</strong><p>{concise(carReport.engineerMessage, 215)}</p></div></article>
+                  <article><Headphones aria-hidden="true" size={18} /><div><strong>DRIVER REPORT</strong><p>“{classification ? carReport.driverMessage : concise(carReport.driverMessage, 215)}”</p></div></article>
+                  {!classification && <article><Wrench aria-hidden="true" size={18} /><div><strong>ENGINEER REPORT</strong><p>{concise(carReport.engineerMessage, 215)}</p></div></article>}
                 </div>
               </article>
             );

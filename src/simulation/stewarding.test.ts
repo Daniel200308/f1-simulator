@@ -48,7 +48,7 @@ describe("reviewStewarding", () => {
     expect(result.investigations.filter((investigation) => investigation.infringement === "PIT_SPEEDING")).toHaveLength(0);
   });
 
-  it.each([314, 315])("caps pit-lane speeding at the seeded two-or-three incident quota (%i)", (seed) => {
+  it.each([314, 315])("caps pit-lane speeding at the seeded rare-incident quota (%i)", (seed) => {
     const initial = createInitialSnapshot(seed);
     const cars = initial.cars.map((car) => ({
       ...car,
@@ -70,9 +70,13 @@ describe("reviewStewarding", () => {
     const result = reviewStewarding({ snapshot: initial, cars, incidentEvents: [], tick: 10, elapsedTime: 1 });
     const pitSpeeding = result.investigations.filter((investigation) => investigation.infringement === "PIT_SPEEDING");
 
+    /*
+     * Speeding is a rare mistake, so most seeds produce none at all. The point of
+     * the check is that a whole pit lane of over-speed evidence still yields no
+     * more than the seeded quota.
+     */
     expect(pitSpeeding).toHaveLength(pitSpeedingIncidentQuota(seed));
-    expect(pitSpeeding.length).toBeGreaterThanOrEqual(2);
-    expect(pitSpeeding.length).toBeLessThanOrEqual(3);
+    expect(pitSpeeding.length).toBeLessThanOrEqual(1);
   });
 
   it("does not turn a bunched pit train into mass unsafe-release investigations", () => {

@@ -28,7 +28,6 @@ import {
   abortQualifyingLap,
   coolDownQualifyingCar,
   createWeekendState,
-  holdQualifyingCar,
   latestWeekendReport,
   raceSetupPerformanceFactor,
   recallQualifyingCar,
@@ -37,7 +36,6 @@ import {
   runWeekendSession,
   setLiveQualifyingSpeed,
   setQualifyingAttackMode,
-  setQualifyingEnergyMode,
   setQualifyingFuelPlan,
   setQualifyingOutLapMode,
   setQualifyingTyreSet,
@@ -46,7 +44,6 @@ import {
   startLiveQualifying,
   tickLiveQualifying,
   toggleLiveQualifyingPause,
-  waitForQualifyingGap,
   type WeekendSessionReport,
 } from "@/simulation/weekend";
 import { useRaceStore } from "@/store/race-store";
@@ -271,9 +268,7 @@ export function RaceShell() {
         onAttackModeChange={(carId, mode) => setWeekend((current) => setQualifyingAttackMode(current, carId, mode))}
         onCloseReport={() => setActiveWeekendReport(null)}
         onCoolDown={(carId) => setWeekend((current) => coolDownQualifyingCar(current, carId))}
-        onEnergyModeChange={(carId, mode) => setWeekend((current) => setQualifyingEnergyMode(current, carId, mode))}
         onFuelPlanChange={(carId, plan) => setWeekend((current) => setQualifyingFuelPlan(current, carId, plan))}
-        onHoldInGarage={(carId) => setWeekend((current) => holdQualifyingCar(current, carId))}
         onOutLapModeChange={(carId, mode) => setWeekend((current) => setQualifyingOutLapMode(current, carId, mode))}
         onPause={() => setWeekend((current) => toggleLiveQualifyingPause(current))}
         onRelease={(carId) => setWeekend((current) => releaseQualifyingCar(current, carId))}
@@ -284,7 +279,6 @@ export function RaceShell() {
         onSpeedChange={(qualifyingSpeed) => setWeekend((current) => setLiveQualifyingSpeed(current, qualifyingSpeed))}
         onStart={() => setWeekend((current) => startLiveQualifying(current))}
         onTyreSetChange={(carId, tyreSetId) => setWeekend((current) => setQualifyingTyreSet(current, carId, tyreSetId))}
-        onWaitForGap={(carId) => setWeekend((current) => waitForQualifyingGap(current, carId))}
         selectedCarId={selectedCarId}
         state={weekend}
       />

@@ -61,8 +61,13 @@ export const FIA_2026_PENALTY_RULES = {
 } as const;
 
 /** Each seeded race contains only two or three isolated limiter mistakes. */
-export function pitSpeedingIncidentQuota(seed: number): 2 | 3 {
-  return Math.abs(Math.trunc(seed)) % 2 === 0 ? 2 : 3;
+/*
+ * Pit-lane speeding is a rare mistake, not a routine event. Two or three per
+ * race read as a broken limiter; most races see none and an occasional one is
+ * enough to keep the rule meaningful.
+ */
+export function pitSpeedingIncidentQuota(seed: number): 0 | 1 {
+  return Math.abs(Math.trunc(seed)) % 4 === 0 ? 1 : 0;
 }
 
 export interface StewardDecision {

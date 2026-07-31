@@ -68,6 +68,34 @@ describe("motorsport message library", () => {
     expect(cooling).toMatch(/thermal|temperature|heat|protection/i);
   });
 
+  it("gives qualifying drivers emotional, result-aware reactions without losing the car complaint", () => {
+    const base = {
+      seed: 20_260_729,
+      carIndex: 3,
+      sessionIndex: 4,
+      session: "Q2",
+      phase: "QUALIFYING" as const,
+      driverShortName: "DRV",
+      laps: 6,
+      gapSeconds: 0.641,
+      balanceIssue: "rear instability over kerbs",
+      tyreConditionPercent: 82,
+      aeroBalancePercent: 78,
+      mechanicalBalancePercent: 64,
+      thermalMarginPercent: 88,
+      bestLapSeconds: 88.5,
+    };
+    const advanced = buildSessionDriverMessage({ ...base, outcome: "ADVANCED" as const, position: 8 });
+    const eliminated = buildSessionDriverMessage({ ...base, outcome: "ELIMINATED" as const, position: 17 });
+    const noTime = buildSessionDriverMessage({ ...base, outcome: "ELIMINATED" as const, position: null, bestLapSeconds: null, laps: 0 });
+
+    expect(advanced).toMatch(/through|delivered|happy|proper|relieved|earned|satisfying|got it|come on/i);
+    expect(eliminated).toMatch(/out|frustrat|angry|gutted|pain|hurt|rubbish|disappointed|hate|stings/i);
+    expect(noTime).toMatch(/no time|no lap|never|disaster|furious|chaos/i);
+    expect(`${advanced} ${eliminated} ${noTime}`).toMatch(/rear|kerb|rotation|traction|correction|instability/i);
+    expect([advanced, eliminated, noTime].every((message) => message.length < 330)).toBe(true);
+  });
+
   it("provides more than 100 distinct contextual driver-radio lines", () => {
     expect(RACE_DRIVER_RADIO_VARIANT_CAPACITY).toBeGreaterThanOrEqual(100);
     const situations: RaceRadioSituation[] = ["TYRE_WEAR", "TYRE_HOT", "TYRE_COLD", "ATTACK_ENERGY", "ATTACK_TYRE", "DIRTY_AIR", "BALANCE", "DEFENDING", "STABLE", "RAIN_STARTING", "RAIN_RUNNING", "WET_GRIP", "AQUAPLANING", "DRYING_LINE", "INTER_CROSSOVER"];

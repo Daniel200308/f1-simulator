@@ -26,6 +26,7 @@ interface AnimatedCar {
   code: string;
   color: string;
   phase: QualifyingCarPhase;
+  recoveryLap: boolean;
   player: boolean;
   pitLane: boolean;
   yielding: boolean;
@@ -64,11 +65,76 @@ const SECTOR_PATHS = [
   samplesToRangePath(SECTOR_RATIOS[0], SECTOR_RATIOS[1]),
   samplesToRangePath(SECTOR_RATIOS[1], 1),
 ] as const;
+const SECTOR_TWO_EXTERIOR_ANCHOR = closestTrackProgressInRange(
+  { x: 0.214, y: 0.212 },
+  SECTOR_RATIOS[0],
+  SECTOR_RATIOS[1],
+);
 const SECTOR_LABEL_CONFIGS = [
-  { id: "S1", progress: SECTOR_RATIOS[0] / 2, x: 0.65, y: 0.44 },
-  { id: "S2", progress: (SECTOR_RATIOS[0] + SECTOR_RATIOS[1]) / 2, x: 0.39, y: 0.22 },
-  { id: "S3", progress: (SECTOR_RATIOS[1] + 1) / 2, x: 0.44, y: 0.82 },
+  { id: "S1", progress: SECTOR_RATIOS[0] / 2, candidates: [{ x: 0.64, y: 0.37 }, { x: 0.58, y: 0.63 }, { x: 0.72, y: 0.58 }] },
+  {
+    id: "S2",
+    progress: SECTOR_TWO_EXTERIOR_ANCHOR,
+    candidates: [{ x: 0.12, y: 0.315 }],
+    exteriorDock: "RIGHT",
+  },
+  { id: "S3", progress: (SECTOR_RATIOS[1] + 1) / 2, candidates: [{ x: 0.42, y: 0.76 }, { x: 0.34, y: 0.7 }, { x: 0.52, y: 0.7 }] },
 ] as const;
+const SECTOR_LABEL_HALF_WIDTH = 0.065;
+const SECTOR_LABEL_HALF_HEIGHT = 0.026;
+const SECTOR_LABEL_TRACK_CLEARANCE = 0.018;
+const OPPONENT_MARKER_RADIUS = 5.2;
+const PLAYER_MARKER_RADIUS = 8.4;
+const PLAYER_MARKER_CORE_RADIUS = 3.4;
+const OPPONENT_LABEL_FONT_SIZE = 12;
+const PLAYER_LABEL_FONT_SIZE = 15;
+const MARKER_CORE_OPACITY = 1;
+
+function closestTrackProgressInRange(
+  target: { x: number; y: number },
+  startProgress: number,
+  endProgress: number,
+): number {
+  const startIndex = Math.max(0, Math.floor(startProgress * QUALIFYING_TRACK_SAMPLE_COUNT));
+  const endIndex = Math.min(QUALIFYING_TRACK_SAMPLE_COUNT - 1, Math.ceil(endProgress * QUALIFYING_TRACK_SAMPLE_COUNT));
+  let closestIndex = startIndex;
+  let closestDistance = Number.POSITIVE_INFINITY;
+
+  for (let index = startIndex; index <= endIndex; index += 1) {
+    const deltaX = QUALIFYING_TRACK_SAMPLES[index * 2] - target.x;
+    const deltaY = QUALIFYING_TRACK_SAMPLES[index * 2 + 1] - target.y;
+    const distanceSquared = deltaX * deltaX + deltaY * deltaY;
+    if (distanceSquared < closestDistance) {
+      closestDistance = distanceSquared;
+      closestIndex = index;
+    }
+  }
+
+  return closestIndex / QUALIFYING_TRACK_SAMPLE_COUNT;
+}
+
+function labelSlotClearsCircuit(x: number, y: number): boolean {
+  const clearsSamples = (samples: Float32Array) => {
+    for (let index = 0; index < samples.length; index += 2) {
+      if (
+        Math.abs(samples[index] - x) <= SECTOR_LABEL_HALF_WIDTH + SECTOR_LABEL_TRACK_CLEARANCE
+        && Math.abs(samples[index + 1] - y) <= SECTOR_LABEL_HALF_HEIGHT + SECTOR_LABEL_TRACK_CLEARANCE
+      ) return false;
+    }
+    return true;
+  };
+  return clearsSamples(QUALIFYING_TRACK_SAMPLES) && clearsSamples(QUALIFYING_PIT_SAMPLES);
+}
+
+function labelEdgeToward(anchor: { x: number; y: number }, label: { x: number; y: number }) {
+  const deltaX = anchor.x - label.x;
+  const deltaY = anchor.y - label.y;
+  const scale = Math.min(
+    Math.abs(deltaX) > 0.0001 ? SECTOR_LABEL_HALF_WIDTH / Math.abs(deltaX) : Number.POSITIVE_INFINITY,
+    Math.abs(deltaY) > 0.0001 ? SECTOR_LABEL_HALF_HEIGHT / Math.abs(deltaY) : Number.POSITIVE_INFINITY,
+  );
+  return { x: label.x + deltaX * scale, y: label.y + deltaY * scale };
+}
 
 function samplesToPath(samples: Float32Array, close: boolean): string {
   let path = "";
@@ -132,12 +198,24 @@ function currentProgress(marker: AnimatedCar, now: number): number {
   return interpolateTrackProgress(marker.fromProgress, marker.targetProgress, amount);
 }
 
+export function qualifyingSectorLabelLayouts() {
+  return SECTOR_LABEL_CONFIGS.map((label) => {
+    const anchor = sampledTrackPoint(label.progress);
+    const position = label.candidates.find((candidate) => labelSlotClearsCircuit(candidate.x, candidate.y)) ?? label.candidates.at(-1)!;
+    const exteriorDock = "exteriorDock" in label ? label.exteriorDock : null;
+    const edge = exteriorDock === "RIGHT"
+      ? { x: position.x + SECTOR_LABEL_HALF_WIDTH, y: position.y }
+      : labelEdgeToward(anchor, position);
+    const elbow = exteriorDock === "RIGHT"
+      ? { x: edge.x, y: anchor.y }
+      : { x: anchor.x + (edge.x - anchor.x) * 0.52, y: anchor.y };
+    return { ...label, ...position, anchor, edge, elbow };
+  });
+}
+
 function StaticCircuitBackdrop() {
   const pitBox = sampledPitPoint(QUALIFYING_PIT_BOX_PROGRESS);
-  const sectorLabels = SECTOR_LABEL_CONFIGS.map((label) => ({
-    ...label,
-    anchor: sampledTrackPoint(label.progress),
-  }));
+  const sectorLabels = qualifyingSectorLabelLayouts();
   const boundaries = [timingLine(SECTOR_RATIOS[0]), timingLine(SECTOR_RATIOS[1])];
   const startFinishLine = timingLine(0, 0.021);
   const startFinishLabel = trackAnnotation(0, 0.052);
@@ -153,7 +231,8 @@ function StaticCircuitBackdrop() {
     <circle className={styles.pitBox} cx={pitBox.x} cy={pitBox.y} r=".008" />
     <g className={styles.sectorLabels} data-sector-labels="true">
       {sectorLabels.map((label, index) => <g className={styles.sectorLabel} data-sector={label.id} data-sector-label={label.id} key={label.id}>
-        <line className={styles.sectorLabelLeader} x1={label.anchor.x} x2={label.x} y1={label.anchor.y} y2={label.y} />
+        <polyline className={styles.sectorLabelLeader} points={`${label.anchor.x},${label.anchor.y} ${label.elbow.x},${label.elbow.y} ${label.edge.x},${label.edge.y}`} />
+        <circle className={styles.sectorLabelAnchor} cx={label.anchor.x} cy={label.anchor.y} r=".0035" />
         <rect height=".044" rx=".011" width=".122" x={label.x - 0.061} y={label.y - 0.022} />
         <text x={label.x} y={label.y}>{`SECTOR ${index + 1}`}</text>
       </g>)}
@@ -189,15 +268,14 @@ function phaseMarkerColor(marker: AnimatedCar): string {
   if (marker.phase === "ABORTED_LAP") return "#ff5269";
   if (marker.phase === "PUSH_LAP") return "#ff5269";
   if (marker.phase === "OUT_LAP") return "#20d7e7";
-  if (marker.phase === "IN_LAP" || marker.phase === "PIT_ENTRY") return "#667980";
-  return "#8b999e";
+  if (marker.phase === "IN_LAP" || marker.phase === "PIT_ENTRY") return "#82969d";
+  return "#9aa9ae";
 }
 
 function drawCarGlyph(context: CanvasRenderingContext2D, marker: AnimatedCar, x: number, y: number, now: number) {
   const phaseColor = phaseMarkerColor(marker);
-  const phaseAlpha = marker.phase === "IN_LAP" || marker.phase === "PIT_ENTRY" ? 0.4 : marker.phase === "COOL_DOWN" ? 0.58 : 1;
   if (marker.phase === "PUSH_LAP") {
-    const pulse = 5.5 + (Math.sin(now / 155) + 1) * 2.4 + (marker.player ? 2 : 0);
+    const pulse = 7 + (Math.sin(now / 155) + 1) * 2.6 + (marker.player ? 2.5 : 0);
     context.beginPath();
     context.arc(x, y, pulse, 0, Math.PI * 2);
     context.strokeStyle = phaseColor;
@@ -207,7 +285,7 @@ function drawCarGlyph(context: CanvasRenderingContext2D, marker: AnimatedCar, x:
     context.globalAlpha = 1;
   }
   if (marker.phase === "ABORTED_LAP") {
-    const ring = marker.player ? 9.5 : 7.5;
+    const ring = marker.player ? 11.5 : 9;
     context.beginPath();
     context.arc(x, y, ring, 0, Math.PI * 2);
     context.strokeStyle = "#ff5269";
@@ -221,7 +299,7 @@ function drawCarGlyph(context: CanvasRenderingContext2D, marker: AnimatedCar, x:
     context.stroke();
   }
   if (marker.yielding) {
-    const pulse = 7 + (Math.sin(now / 180) + 1) * 1.6 + (marker.player ? 1.5 : 0);
+    const pulse = 8.5 + (Math.sin(now / 180) + 1) * 1.8 + (marker.player ? 2 : 0);
     context.beginPath();
     context.arc(x, y, pulse, 0, Math.PI * 2);
     context.strokeStyle = "#f2b84b";
@@ -231,24 +309,28 @@ function drawCarGlyph(context: CanvasRenderingContext2D, marker: AnimatedCar, x:
     context.globalAlpha = 1;
   }
   context.beginPath();
-  context.arc(x, y, marker.player ? 6.8 : 4, 0, Math.PI * 2);
+  context.arc(x, y, marker.player ? PLAYER_MARKER_RADIUS : OPPONENT_MARKER_RADIUS, 0, Math.PI * 2);
   context.fillStyle = marker.player ? "#051016" : phaseColor;
-  context.globalAlpha = phaseAlpha;
+  context.globalAlpha = MARKER_CORE_OPACITY;
   context.fill();
   context.globalAlpha = 1;
   if (marker.player) {
-    context.lineWidth = 2.2;
+    context.lineWidth = 2.4;
     context.strokeStyle = marker.color;
     context.shadowColor = marker.color;
-    context.shadowBlur = 9;
+    context.shadowBlur = 11;
     context.stroke();
     context.shadowBlur = 0;
     context.beginPath();
-    context.arc(x, y, 2.5, 0, Math.PI * 2);
+    context.arc(x, y, PLAYER_MARKER_CORE_RADIUS, 0, Math.PI * 2);
     context.fillStyle = phaseColor;
-    context.globalAlpha = phaseAlpha;
+    context.globalAlpha = MARKER_CORE_OPACITY;
     context.fill();
     context.globalAlpha = 1;
+  } else {
+    context.lineWidth = 1.25;
+    context.strokeStyle = "rgba(2, 8, 12, .96)";
+    context.stroke();
   }
 }
 
@@ -272,25 +354,25 @@ function drawCarLabel(
   now: number,
 ) {
   const { marker, x, y } = positioned;
-  const fontSize = marker.player ? 13.5 : 10.5;
+  const fontSize = marker.player ? PLAYER_LABEL_FONT_SIZE : OPPONENT_LABEL_FONT_SIZE;
   const fontWeight = marker.player ? 950 : 900;
   context.font = `${fontWeight} ${fontSize}px ui-monospace, SFMono-Regular, Menlo, monospace`;
   const textWidth = context.measureText(marker.code).width;
   const direction = marker.preferredLabelDirection;
   if (now >= marker.nextLabelCollisionAt) {
     marker.nextLabelCollisionAt = now + 220;
-    const preferredReach = marker.player ? 15 : 10;
-    const preferredY = marker.player ? -12 : -8;
+    const preferredReach = marker.player ? 18 : 12;
+    const preferredY = marker.player ? -14 : -10;
     const preferredBox = labelBoxAt(x, y, direction * preferredReach, preferredY, textWidth, fontSize);
     const preferredFits = preferredBox.left >= 2 && preferredBox.right <= width - 2 && preferredBox.top >= 2 && preferredBox.bottom <= height - 2;
     if (preferredFits && !occupied.some((existing) => boxesOverlap(preferredBox, existing))) {
       marker.labelTargetX = direction * preferredReach;
       marker.labelTargetY = preferredY;
     } else {
-    const reach = marker.player ? 15 : 10;
+    const reach = marker.player ? 18 : 12;
     const candidates: readonly (readonly [number, number])[] = marker.player
-      ? [[direction * reach, -12], [direction * 20, 17], [direction * 25, -21], [-direction * reach, -12], [-direction * 22, 17]]
-      : [[direction * reach, -8], [direction * 15, 13], [direction * 20, -16], [-direction * reach, -8], [-direction * 16, 13], [0, -17]];
+      ? [[direction * reach, -14], [direction * 23, 19], [direction * 28, -23], [-direction * reach, -14], [-direction * 25, 19]]
+      : [[direction * reach, -10], [direction * 18, 15], [direction * 23, -19], [-direction * reach, -10], [-direction * 19, 15], [0, -20]];
     for (const [offsetX, offsetY] of candidates) {
       const box = labelBoxAt(x, y, offsetX, offsetY, textWidth, fontSize);
       if (box.left < 2 || box.right > width - 2 || box.top < 2 || box.bottom > height - 2) continue;
@@ -311,12 +393,12 @@ function drawCarLabel(
   const chosenBox = labelBoxAt(x, y, offsetX, offsetY, textWidth, fontSize);
   occupied.push(chosenBox);
 
-  const preferredReach = marker.player ? 15 : 10;
-  const adjusted = Math.abs(marker.labelTargetX - direction * preferredReach) > 1 || Math.abs(marker.labelTargetY - (marker.player ? -12 : -8)) > 1;
+  const preferredReach = marker.player ? 18 : 12;
+  const adjusted = Math.abs(marker.labelTargetX - direction * preferredReach) > 1 || Math.abs(marker.labelTargetY - (marker.player ? -14 : -10)) > 1;
   marker.labelAdjusted = adjusted;
   if (adjusted) {
     context.beginPath();
-    context.moveTo(x + Math.sign(offsetX) * (marker.player ? 7 : 4), y);
+    context.moveTo(x + Math.sign(offsetX) * (marker.player ? PLAYER_MARKER_RADIUS : OPPONENT_MARKER_RADIUS), y);
     context.lineTo(labelX - Math.sign(offsetX) * 2, labelY - fontSize * 0.42);
     context.strokeStyle = marker.player ? "rgba(230, 246, 248, .62)" : "rgba(139, 161, 169, .42)";
     context.lineWidth = 0.8;
@@ -326,11 +408,11 @@ function drawCarLabel(
   context.textBaseline = "alphabetic";
   context.fillStyle = "rgba(3, 11, 16, .84)";
   context.fillRect(chosenBox.left - 3, chosenBox.top - 2, chosenBox.right - chosenBox.left + 6, chosenBox.bottom - chosenBox.top + 4);
-  context.lineWidth = marker.player ? 4 : 3.2;
+  context.lineWidth = marker.player ? 4.4 : 3.6;
   context.strokeStyle = "rgba(3, 10, 15, .96)";
   context.strokeText(marker.code, labelX, labelY);
   context.fillStyle = "#f4f8f9";
-  context.globalAlpha = marker.player ? 1 : 0.94;
+  context.globalAlpha = 1;
   context.fillText(marker.code, labelX, labelY);
   context.globalAlpha = 1;
   const decisionLabel = marker.phase === "ABORTED_LAP" ? "ABORTED" : marker.yielding ? "YIELD" : marker.decisionState === "TRAFFIC" ? "TRAFFIC" : null;
@@ -389,6 +471,7 @@ function syncAnimationTarget(
     code: driver?.shortName ?? target.carId.slice(0, 3).toUpperCase(),
     color: markerColor(target.carId),
     phase: target.phase,
+    recoveryLap: target.recoveryLap,
     player: playerIndex !== undefined,
     pitLane: target.pitLane,
     yielding: target.yielding,
@@ -518,7 +601,7 @@ export const QualifyingTrafficOverview = memo(function QualifyingTrafficOverview
       canvas!.dataset.outLapCars = String(markers.filter((marker) => marker.phase === "OUT_LAP").length);
       canvas!.dataset.inLapCars = String(markers.filter((marker) => marker.phase === "IN_LAP").length);
       canvas!.dataset.pitEntryCars = String(markers.filter((marker) => marker.phase === "PIT_ENTRY").length);
-      canvas!.dataset.coolDownCars = String(markers.filter((marker) => marker.phase === "COOL_DOWN").length);
+      canvas!.dataset.recoveryLapCars = String(markers.filter((marker) => marker.phase === "IN_LAP" && marker.recoveryLap).length);
       canvas!.dataset.yieldingCars = String(markers.filter((marker) => marker.yielding).length);
       canvas!.dataset.abortedCars = String(markers.filter((marker) => marker.phase === "ABORTED_LAP").length);
       canvas!.dataset.trafficConflicts = String(markers.filter((marker) => marker.decisionState === "TRAFFIC").length);
@@ -591,15 +674,12 @@ export const QualifyingTrafficOverview = memo(function QualifyingTrafficOverview
     drawRef.current?.();
   }, [activeTargets, live.paused, live.speed, playerKey]);
 
-  return <section className={styles.panel} data-mode="CIRCUIT" data-traffic-overview="true">
+  return <section className={styles.panel} data-mode="CIRCUIT" data-paused={live.paused} data-traffic-overview="true">
     <header className={styles.header}>
       <span className={styles.title}><MapPinned aria-hidden="true" size={17} /><span><small>{live.session} LIVE TRAFFIC</small><strong>SILVERSTONE CIRCUIT</strong></span></span>
       <span className={styles.metrics}><span><small>TRACK</small><strong>{counts.track}</strong></span><span><small>PIT</small><strong>{counts.pit}</strong></span><span data-live={counts.flying > 0}><small>FLYING</small><strong>{counts.flying}</strong></span></span>
     </header>
     <div className={styles.visual} ref={hostRef}>
-      <div className={styles.sectorRibbon} aria-label="Session best sector times">
-        {sectorHighlights.map((highlight) => <span data-set={highlight.time !== null} key={highlight.sector}><small>S{highlight.sector}</small><strong>{highlight.time === null ? "—.---" : highlight.time.toFixed(3)}</strong><em>{highlight.driver}</em></span>)}
-      </div>
       <MemoStaticCircuitBackdrop />
       <canvas
         aria-label={`${counts.track} cars on track and ${counts.pit} cars moving in the pit lane`}
@@ -607,8 +687,11 @@ export const QualifyingTrafficOverview = memo(function QualifyingTrafficOverview
         data-animation-state="REF_INTERPOLATION"
         data-coordinate-model="NORMALIZED_PROGRESS"
         data-label-anchoring="PERSISTENT_OFFSETS"
-        data-ai-label-size="10.5"
-        data-player-label-size="13.5"
+        data-ai-label-size={OPPONENT_LABEL_FONT_SIZE}
+        data-ai-marker-radius={OPPONENT_MARKER_RADIUS}
+        data-marker-core-opacity={MARKER_CORE_OPACITY}
+        data-player-label-size={PLAYER_LABEL_FONT_SIZE}
+        data-player-marker-radius={PLAYER_MARKER_RADIUS}
         data-label-treatment="WHITE_DARK_PLATE"
         data-marker-language="PHASE_CODED"
         data-renderer="SINGLE_CANVAS"
@@ -616,16 +699,26 @@ export const QualifyingTrafficOverview = memo(function QualifyingTrafficOverview
         ref={canvasRef}
         role="img"
       />
+    </div>
+    {/*
+      * Sector timings and the marker legend sit in their own band below the
+      * circuit. As overlays they covered the track surface, which is the one
+      * region on this screen that has to stay fully readable.
+      */}
+    <footer className={styles.circuitFooter}>
+      <div className={styles.sectorRibbon} aria-label="Session best sector times">
+        <b>FASTEST SECTORS</b>
+        {sectorHighlights.map((highlight) => <span data-set={highlight.time !== null} key={highlight.sector}><small>S{highlight.sector}</small><strong>{highlight.time === null ? "—.---" : highlight.time.toFixed(3)}</strong><em>{highlight.driver}</em></span>)}
+      </div>
       <span className={styles.stateLegend} aria-label="Live circuit marker legend">
         <span><i data-phase="PUSH_LAP" />Flying Lap</span>
         <span><i data-phase="OUT_LAP" />Out Lap</span>
         <span><i data-phase="IN_LAP" />In Lap</span>
         <span><i data-phase="PIT_ENTRY" />Pit Entry</span>
-        <span><i data-phase="COOL_DOWN" />Cool Down</span>
         <span><i data-phase="YIELDING" />Yielding</span>
         <span><i data-phase="ABORTED_LAP" />Aborted</span>
         <span><i data-player="true" />Player Car</span>
       </span>
-    </div>
+    </footer>
   </section>;
 });

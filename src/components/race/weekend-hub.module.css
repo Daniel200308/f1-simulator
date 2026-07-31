@@ -182,8 +182,17 @@
 .workspaceSolo { grid-template-columns: minmax(0, 1fr); }
 .workspaceSolo .garageCanvas { border-right: 0; }
 
+/*
+ * `display: block` used to drop the grid's height containment here, letting
+ * race preparation grow past the hub and clip its own content off screen. A
+ * single-cell grid keeps the block behaviour while honouring the row height.
+ */
 .raceWorkspace {
-  display: block;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  min-height: 0;
+  overflow: hidden;
 }
 
 
@@ -1056,11 +1065,188 @@
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-rows: 30px minmax(132px, .68fr) minmax(210px, 1fr);
+  /* Header, grid conditions, one row per driver, then the rule footnote. */
+  grid-template-rows: 30px auto repeat(2, minmax(0, 1fr)) auto;
   gap: 8px;
   padding: 10px;
+  /* Everything fits by design, so the workspace itself never scrolls. An `auto`
+     overflow here also disables the `1fr` height sharing the bands rely on. */
   overflow: hidden;
 }
+
+/*
+ * One self-contained band per driver: identity and chosen set, every allocated
+ * set, then that driver's three plans. Both drivers are visible at once, which
+ * is what makes the two start-tyre choices comparable.
+ */
+.driverStrategyRow {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  /* Identity and set picker size to content; the plans take what is left. */
+  grid-template-rows: auto auto minmax(0, 1fr);
+  align-content: stretch;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid rgba(148, 177, 190, .16);
+  border-left: 2px solid var(--grid-team);
+  background: linear-gradient(120deg, color-mix(in srgb, var(--grid-team) 6%, transparent), rgba(7, 17, 22, .82) 34%);
+}
+.driverStrategyHead { min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.driverStrategyIdentity { min-width: 0; display: flex; align-items: center; gap: 8px; }
+.driverStrategyIdentity > b { color: #f2f7f8; font: 950 16px var(--font-mono); }
+.driverStrategyIdentity > i { width: 4px; height: 26px; border-radius: 999px; background: var(--grid-team); box-shadow: 0 0 9px color-mix(in srgb, var(--grid-team) 55%, transparent); }
+.driverStrategyIdentity > div { min-width: 0; }
+.driverStrategyIdentity strong,
+.driverStrategyIdentity small { display: block; min-width: 0; overflow: hidden; font-family: var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
+.driverStrategyIdentity strong { color: #fff; font-size: 18px; }
+.driverStrategyIdentity small { margin-top: 3px; color: #82969e; font-size: 10px; letter-spacing: .03em; }
+.driverStrategyStart { min-width: 0; display: flex; align-items: center; gap: 8px; }
+.driverStrategyStart > span { min-width: 0; display: grid; gap: 2px; text-align: right; }
+.driverStrategyStart b { color: #e7eff1; font: 900 12px var(--font-mono); }
+.driverStrategyStart small { color: #8ea1a8; font: 800 10px var(--font-mono); }
+
+/*
+ * Compound tabs on the left, that compound's sets on the right. At most six
+ * sets exist per compound, so the row never wraps and the driver band keeps a
+ * predictable height at every viewport.
+ */
+.startSetPicker { min-width: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 8px; }
+
+.compoundTabs { min-width: 0; display: flex; align-items: center; gap: 3px; padding-right: 8px; border-right: 1px solid rgba(148, 177, 190, .16); }
+.compoundTabs button {
+  min-width: 0;
+  min-height: 40px;
+  display: grid;
+  grid-template-columns: auto auto;
+  align-items: center;
+  gap: 3px;
+  padding: 4px 5px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  color: #8fa3aa;
+  background: transparent;
+  cursor: pointer;
+  opacity: .5;
+  transition: opacity .16s ease, border-color .16s ease, background .16s ease;
+}
+.compoundTabs button > span { color: #cfdadd; font: 800 10px/1 var(--font-mono); }
+.compoundTabs button:hover:not(:disabled) { opacity: .85; }
+.compoundTabs button[aria-pressed="true"] { opacity: 1; border-color: rgba(148, 177, 190, .34); background: rgba(148, 177, 190, .08); }
+.compoundTabs button:disabled { cursor: not-allowed; opacity: .16; }
+
+.startSetGrid { min-width: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); grid-auto-flow: column; align-items: center; gap: 5px; }
+.startSetGrid button {
+  --set-tone: #e8eff2;
+  min-width: 0;
+  min-height: 40px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: center;
+  justify-items: center;
+  gap: 1px;
+  padding: 4px 6px;
+  border: 1px solid rgba(148, 177, 190, .2);
+  border-radius: 10px;
+  color: #9cadb3;
+  background: rgba(6, 15, 20, .82);
+  cursor: pointer;
+  transition: color .16s ease, border-color .16s ease, background .16s ease, transform .16s ease;
+}
+.startSetGrid button[data-compound="SOFT"] { --set-tone: #ff4d63; }
+.startSetGrid button[data-compound="MEDIUM"] { --set-tone: #f4d44d; }
+.startSetGrid button[data-compound="HARD"] { --set-tone: #edf2f4; }
+.startSetGrid button[data-compound="INTERMEDIATE"] { --set-tone: #48d985; }
+.startSetGrid button[data-compound="WET"] { --set-tone: #4a91ff; }
+/* Set number and life share a line; the usage note sits under them. */
+.startSetGrid button > span { min-width: 0; display: flex; align-items: baseline; justify-content: center; gap: 4px; }
+.startSetGrid button b,
+.startSetGrid button strong,
+.startSetGrid button small { min-width: 0; overflow: hidden; font-family: var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
+.startSetGrid button b { color: var(--set-tone); font: 800 9px/1.1 var(--font-mono); }
+.startSetGrid button strong { color: #f1f6f7; font: 900 13px/1.1 var(--font-mono); font-variant-numeric: tabular-nums; }
+.startSetGrid button small { color: #7d9099; font: 800 9px/1.1 var(--font-mono); }
+.startSetGrid button[data-freshness="NEW"] small { color: var(--green); }
+.startSetGrid button:hover { transform: translateY(-1px); border-color: color-mix(in srgb, var(--set-tone) 58%, transparent); }
+.startSetGrid button[aria-pressed="true"] {
+  color: var(--set-tone);
+  border-color: var(--set-tone);
+  background: color-mix(in srgb, var(--set-tone) 11%, #071219);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--set-tone) 24%, transparent);
+}
+.startSetGrid button:focus-visible,
+.driverStrategyRow .preRacePlanRows > article:focus-visible { outline: 2px solid #c8faff; outline-offset: 2px; }
+
+.strategyFootnote { min-width: 0; display: grid; grid-template-columns: 105px minmax(0, 1fr); align-items: center; gap: 8px; padding: 5px 2px 0; border-top: 1px solid rgba(148, 177, 190, .12); color: #81969d; font: 9px/1.3 var(--font-mono); }
+.strategyFootnote b { color: var(--green); }
+
+/*
+ * Grid conditions. The compound decision below is only meaningful against the
+ * weather the race actually starts in, which may already be wet.
+ */
+.startWeather {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px 14px;
+  padding: 7px 10px;
+  border: 1px solid rgba(148, 177, 190, .18);
+  border-left: 2px solid var(--accent);
+  background: linear-gradient(115deg, rgba(32, 215, 231, .06), rgba(7, 17, 22, .82) 42%);
+}
+.startWeather[data-condition="LIGHT_RAIN"],
+.startWeather[data-condition="HEAVY_RAIN"] { border-left-color: #5b9dff; background: linear-gradient(115deg, rgba(91, 157, 255, .12), rgba(7, 17, 22, .82) 42%); }
+.startWeatherHeadline { min-width: 0; display: grid; gap: 2px; }
+.startWeatherHeadline b { min-width: 0; overflow: hidden; color: #eef5f7; font: 950 14px/1.1 var(--font-mono); letter-spacing: .05em; text-overflow: ellipsis; white-space: nowrap; }
+.startWeatherHeadline small { color: #8ea1a8; font: 800 10px/1.2 var(--font-mono); letter-spacing: .04em; }
+.startWeatherReadings { display: flex; align-items: center; gap: 12px; }
+.startWeatherReadings > span { display: grid; gap: 2px; text-align: right; }
+.startWeatherReadings small { color: #7d9099; font: 800 9px/1 var(--font-mono); letter-spacing: .06em; }
+.startWeatherReadings strong { color: #dce8ea; font: 950 13px/1 var(--font-mono); font-variant-numeric: tabular-nums; }
+/* Same stacked-bar language as the in-race surface panel. */
+.startWeatherSectors { min-width: 0; display: grid; grid-auto-rows: min-content; gap: 3px; }
+.startWeatherSectors > span { --wetness: 4%; display: grid; grid-template-columns: 22px 74px 34px; align-items: center; gap: 6px; }
+.startWeatherSectors b { color: #93a7ae; font: 900 9px/1 var(--font-mono); }
+.startWeatherSectors i { position: relative; height: 6px; overflow: hidden; border-radius: 3px; background: rgba(126, 151, 160, .18); }
+.startWeatherSectors i::after { position: absolute; inset: 0 auto 0 0; width: var(--wetness); border-radius: inherit; background: linear-gradient(90deg, rgba(91, 157, 255, .6), #5b9dff); content: ""; }
+.startWeatherSectors strong { color: #cad7db; font: 900 10px/1 var(--font-mono); font-variant-numeric: tabular-nums; text-align: right; }
+
+/*
+ * Below ~820px tall the two driver bands and six plan rows need every pixel, so
+ * spacing and the explanatory footnote give way rather than the controls.
+ */
+@media (max-height: 820px) {
+  /*
+   * Both bands get exactly the same height. Mixed `auto`/`1fr` tracks handed the
+   * leftover space to the second band and squeezed the first one's plan block
+   * below the height its three rows need, clipping the third plan.
+   */
+  .racePreparation .raceStrategyWorkspace { grid-template-rows: 26px auto repeat(2, minmax(0, 1fr)); align-content: stretch; gap: 6px; padding: 8px; }
+  .driverStrategyRow { grid-template-rows: auto auto minmax(0, 1fr); }
+  .driverStrategyRow .preRacePlanRows { grid-template-rows: repeat(3, minmax(0, 1fr)); }
+  .strategyFootnote { display: none; }
+  .driverStrategyRow { gap: 4px; padding: 6px 8px; }
+  .driverStrategyIdentity > b { font-size: 14px; }
+  .driverStrategyIdentity strong { font-size: 16px; }
+  .driverStrategyIdentity small { margin-top: 1px; font-size: 9px; }
+  .driverStrategyStart small { font-size: 9px; }
+  .compoundTabs button,
+  .startSetGrid button { min-height: 36px; }
+  .driverStrategyRow .preRacePlanRows { gap: 2px; }
+  /* Conditions stay visible but give the plans their space back. */
+  .startWeather { grid-template-columns: minmax(0, 1fr) auto; gap: 6px 10px; padding: 5px 8px; }
+  .startWeatherHeadline b { font-size: 12px; }
+  .startWeatherSectors { display: none; }
+}
+
+/*
+ * Three plan rows sharing the band's height equally. A `min-height` floor on the
+ * rows made them overflow the band and print on top of the driver below instead
+ * of compressing, so the rows flex and the band owns the height budget.
+ */
+.driverStrategyRow .preRacePlanRows { min-height: 0; grid-template-rows: repeat(3, minmax(0, 1fr)); gap: 3px; padding: 0; overflow: hidden; }
+.driverStrategyRow .preRacePlanRows > article { min-height: 0; overflow: hidden; }
 
 .startTyreCards {
   min-width: 0;
@@ -1252,7 +1438,7 @@
 
 .reportBodyQualifying {
   display: grid;
-  grid-template-columns: minmax(0, 1.48fr) minmax(390px, .92fr);
+  grid-template-columns: minmax(0, 1.7fr) minmax(350px, .82fr);
   background: linear-gradient(90deg, rgba(32, 215, 231, .025), transparent 58%);
 }
 
@@ -1267,25 +1453,33 @@
 
 .reportBodyQualifying .reportCars {
   grid-template-columns: minmax(0, 1fr);
-  gap: 10px;
-  padding: 12px;
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding: 14px;
   border-left: 1px solid rgba(148, 177, 190, .16);
 }
 
-.reportBodyQualifying .reportCar { padding: 12px; }
-.reportBodyQualifying .conditionGrid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px 9px; margin: 9px 0; padding: 7px 0; }
-.reportBodyQualifying .conditionGrid small { font-size: 9px; }
-.reportBodyQualifying .reportMessages { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
-.reportBodyQualifying .reportMessages > article { grid-template-columns: 18px minmax(0, 1fr); gap: 7px; padding: 8px; }
-.reportBodyQualifying .reportMessages strong { font-size: 10px; }
-.reportBodyQualifying .reportMessages p { display: -webkit-box; margin-top: 4px; overflow: hidden; font-size: 12px; line-height: 1.34; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.reportBodyQualifying .reportCar { display: grid; grid-template-rows: auto minmax(0, 1fr); padding: 14px 15px; }
+.reportBodyQualifying .reportMessages { min-height: 0; grid-template-columns: minmax(0, 1fr); gap: 8px; margin-top: 12px; }
+.reportBodyQualifying .reportMessages > article { grid-template-columns: 22px minmax(0, 1fr); align-content: center; gap: 9px; padding: 12px 13px; }
+.reportBodyQualifying .reportMessages strong { font-size: 11px; }
+.reportBodyQualifying .reportMessages p {
+  display: block;
+  margin-top: 6px;
+  overflow: visible;
+  font-size: clamp(14px, 1vw, 16px);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: initial;
+  -webkit-line-clamp: unset;
+}
 
 .reportClassification {
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-rows: 60px minmax(0, 1fr) 42px;
-  padding: 12px 14px;
+  grid-template-rows: 64px minmax(0, 1fr) 44px;
+  padding: 13px 16px;
   overflow: hidden;
 }
 
@@ -1302,48 +1496,53 @@
 .reportClassification > header div strong,
 .reportClassification > header p b,
 .reportClassification > header p small { display: block; }
-.reportClassification > header div span { color: var(--accent); font: 900 9px var(--font-mono); letter-spacing: .1em; }
-.reportClassification > header div strong { margin-top: 4px; color: #eef5f7; font: italic 950 22px var(--font-mono); }
+.reportClassification > header div span { color: var(--accent); font: 900 11px var(--font-mono); letter-spacing: .1em; }
+.reportClassification > header div strong { margin-top: 4px; color: #eef5f7; font: italic 950 25px var(--font-mono); }
 .reportClassification > header p { margin: 0; padding-left: 10px; border-left: 2px solid var(--green); }
 .reportClassification > header p[data-eliminated="true"] { border-left-color: var(--red); }
-.reportClassification > header p b { color: #eef5f7; font: 950 19px var(--font-mono); }
-.reportClassification > header p small { margin-top: 2px; color: #728992; font: 850 7px var(--font-mono); letter-spacing: .08em; }
+.reportClassification > header p b { color: #eef5f7; font: 950 21px var(--font-mono); }
+.reportClassification > header p small { margin-top: 2px; color: #8299a1; font: 850 9px var(--font-mono); letter-spacing: .08em; }
 
-.reportClassificationColumns { min-width: 0; min-height: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 14px; padding-top: 7px; overflow: hidden; }
+.reportClassificationColumns { min-width: 0; min-height: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 18px; padding-top: 8px; overflow: hidden; }
 .reportClassificationColumns > div { min-width: 0; }
 .reportClassificationColumns > div > div {
   min-width: 0;
-  min-height: 26px;
+  min-height: 31px;
   display: grid;
-  grid-template-columns: 25px minmax(48px, 1fr) 25px 69px 54px;
+  grid-template-columns: 28px minmax(72px, 1fr) 28px 78px 55px 42px;
   align-items: center;
-  gap: 3px;
-  padding: 0 5px;
+  gap: 5px;
+  padding: 0 7px;
   border-bottom: 1px solid rgba(148, 177, 190, .09);
   color: #8ca0a8;
 }
 
-.reportClassificationColumns > div > div > b { font: 900 11px var(--font-mono); }
+.reportClassificationColumns > div > div > b { font: 900 13px var(--font-mono); }
 .reportClassificationColumns > div > div > span { min-width: 0; display: grid; grid-template-columns: 3px minmax(0, 1fr) auto; align-items: center; gap: 5px; }
 .reportClassificationColumns > div > div > span i { width: 3px; height: 17px; background: var(--team); }
-.reportClassificationColumns > div > div > span strong { overflow: hidden; color: #edf4f5; font: 950 12px var(--font-mono); text-overflow: ellipsis; }
-.reportClassificationColumns > div > div > span small { color: #657d86; font: 800 7px var(--font-mono); }
-.reportClassificationColumns em { width: 20px; height: 20px; display: grid; place-items: center; border: 1px solid currentColor; border-radius: 50%; color: #f4d35e; font: normal 950 9px var(--font-mono); }
+.reportClassificationColumns > div > div > span strong { overflow: hidden; color: #edf4f5; font: 950 14px var(--font-mono); text-overflow: ellipsis; }
+.reportClassificationColumns > div > div > span small { color: #718892; font: 800 8px var(--font-mono); }
+.reportClassificationColumns em { width: 23px; height: 23px; display: grid; place-items: center; border: 1px solid currentColor; border-radius: 50%; color: #f4d35e; font: normal 950 10px var(--font-mono); }
 .reportClassificationColumns em[data-compound="SOFT"] { color: var(--red); }
 .reportClassificationColumns em[data-compound="HARD"] { color: #e6eef0; }
 .reportClassificationColumns em[data-compound="INTERMEDIATE"] { color: var(--green); }
 .reportClassificationColumns em[data-compound="WET"] { color: #5b9dff; }
 .reportClassificationColumns time,
 .reportClassificationColumns > div > div > small { overflow: hidden; text-align: right; text-overflow: ellipsis; white-space: nowrap; }
-.reportClassificationColumns time { color: #dce7ea; font: 850 10px var(--font-mono); }
-.reportClassificationColumns > div > div > small { color: #eff5f6; font: 950 11px var(--font-mono); }
+.reportClassificationColumns time { color: #e5eef0; font: 900 12px var(--font-mono); font-variant-numeric: tabular-nums; }
+.reportClassificationColumns > div > div > small { color: #fff; font: 950 13px var(--font-mono); font-variant-numeric: tabular-nums; }
+.reportClassificationColumns mark { min-width: 0; padding: 4px 3px; border: 1px solid rgba(70, 231, 170, .34); color: var(--green); background: rgba(70, 231, 170, .08); font: 950 9px/1 var(--font-mono); text-align: center; }
+.reportClassificationColumns [data-result-status="OUT"] mark { border-color: rgba(255, 82, 105, .38); color: #ff8ca0; background: rgba(255, 82, 105, .1); }
+.reportClassificationColumns [data-result-status="GRID"] mark { border-color: rgba(32, 215, 231, .34); color: var(--accent); background: rgba(32, 215, 231, .08); }
 .reportClassificationColumns .reportClassificationOut { box-shadow: inset 3px 0 var(--red); background: rgba(255, 82, 105, .07); }
 .reportClassificationColumns .reportClassificationOut > b,
 .reportClassificationColumns .reportClassificationOut > small { color: var(--red); }
+.reportClassificationColumns .reportClassificationCut { position: relative; border-top: 2px solid var(--red); }
+.reportClassificationColumns .reportClassificationCut::before { position: absolute; top: -8px; right: 3px; padding: 1px 4px; color: #fff; background: var(--red); content: "CUT"; font: 950 7px/1 var(--font-mono); letter-spacing: .08em; }
 
 .reportClassification > footer { min-width: 0; display: flex; align-items: center; gap: 8px; padding: 7px 5px 0; overflow: hidden; border-top: 1px solid rgba(255, 82, 105, .18); }
-.reportClassification > footer span { color: var(--red); font: 950 9px var(--font-mono); letter-spacing: .08em; }
-.reportClassification > footer b { padding: 4px 6px; color: #ff9aa9; background: rgba(255, 82, 105, .09); font: 900 9px var(--font-mono); }
+.reportClassification > footer span { color: var(--red); font: 950 10px var(--font-mono); letter-spacing: .08em; }
+.reportClassification > footer b { padding: 4px 7px; color: #ff9aa9; background: rgba(255, 82, 105, .09); font: 900 10px var(--font-mono); }
 
 .reportCar {
   --team: var(--accent);
@@ -1417,6 +1616,28 @@
   .voiceWave { display: none; }
 }
 
+@media (max-width: 700px) {
+  .reportBackdrop { place-items: start center; padding: 0; overflow-y: auto; }
+  .sessionReport { width: 100%; min-height: 100dvh; max-height: none; grid-template-rows: auto auto auto; overflow: visible; border-inline: 0; }
+  .sessionReport > header { grid-template-columns: minmax(0, 1fr) 44px; gap: 12px; padding: 18px 16px 15px; }
+  .sessionReport > header h2 { font-size: 27px; }
+  .sessionReport > header p { font-size: 14px; line-height: 1.45; }
+  .reportBody { overflow: visible; }
+  .reportBodyQualifying { grid-template-columns: minmax(0, 1fr); }
+  .reportClassification { overflow: visible; }
+  .reportClassificationColumns { grid-template-columns: minmax(0, 1fr); overflow: visible; }
+  .reportCars { grid-template-columns: minmax(0, 1fr); gap: 12px; padding: 14px; overflow: visible; }
+  .reportBodyQualifying .reportCars { grid-template-rows: none; border-left: 0; border-top: 1px solid rgba(148, 177, 190, .16); }
+  .reportCar { padding: 14px; overflow: hidden; }
+  .reportCar > header { grid-template-columns: 46px minmax(0, 1fr) auto; gap: 8px; }
+  .reportCar h3 { overflow: hidden; font-size: 18px; text-overflow: ellipsis; white-space: nowrap; }
+  .conditionGrid { gap: 8px 12px; margin-block: 12px; padding-block: 10px; }
+  .conditionGrid small { font-size: 10px; }
+  .reportMessages p { font-size: 14px; line-height: 1.42; }
+  .sessionReport > footer { position: sticky; bottom: 0; z-index: 2; padding: 12px 14px; background: rgba(7, 17, 22, .97); }
+  .sessionReport > footer button { width: 100%; min-width: 0; min-height: 52px; }
+}
+
 @media (max-height: 760px) {
   .hub { grid-template-rows: 108px minmax(0, 1fr) 205px; }
   .hubRace { grid-template-rows: 102px minmax(0, 1fr) 68px; }
@@ -1453,10 +1674,13 @@
   .startTyreChoices button > :global(.f1-tyre-badge) { transform: scale(.84); }
   .startTyreCard > footer { grid-template-columns: 106px minmax(0, 1fr); padding-top: 3px; }
   .startTyreCard > footer p { font-size: 9px; }
-  .racePreparation .raceStrategyWorkspace { grid-template-rows: 25px minmax(132px, .66fr) minmax(205px, 1fr); padding: 7px; }
-  .racePreparation .startTyreCard { grid-template-rows: 36px 47px minmax(40px, 1fr); padding: 4px 7px; }
-  .racePreparation .preRacePlanBoard { grid-template-rows: 38px minmax(0, 1fr) 27px; padding: 0; }
-  .preRacePlanRows { grid-template-rows: repeat(3, minmax(44px, 1fr)); }
+  /*
+   * Two equal driver bands. The old `.66fr / 1fr` split belonged to the previous
+   * two-card layout and, being later in the sheet, was overriding the equal
+   * split and squeezing the first driver's plans.
+   */
+  .racePreparation .raceStrategyWorkspace { grid-template-rows: 25px auto repeat(2, minmax(0, 1fr)); padding: 7px; }
+  .preRacePlanRows { grid-template-rows: repeat(3, minmax(0, 1fr)); }
   .preRacePlanRows > article { grid-template-columns: 92px minmax(0, 1fr) 102px; }
   .preRacePlanStint { height: 30px; }
   .raceDebriefArea .footer { padding-block: 7px; }
@@ -1473,6 +1697,7 @@
   .reportMessages { gap: 7px; }
   .reportMessages > article { padding-block: 9px; }
   .reportMessages p { font-size: 13px; line-height: 1.36; }
+  .reportBodyQualifying .reportMessages p { display: block; overflow: visible; font-size: 14px; line-height: 1.4; -webkit-line-clamp: unset; }
 }
 
 @media (prefers-reduced-motion: reduce) {

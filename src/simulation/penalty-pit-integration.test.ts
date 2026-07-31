@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { RacePenalty, RaceSnapshot } from "@/domain/race";
-import { createInitialSnapshot, PIT_BOX_DISTANCE, setCarPit, stepSnapshot } from "@/simulation/engine";
+import { createInitialSnapshot, PIT_ENTRY_START, setCarPit, stepSnapshot } from "@/simulation/engine";
 
 function timePenalty(snapshot: RaceSnapshot, carId: string, seconds: 5 | 10 = 5): RacePenalty {
   const car = snapshot.cars.find((candidate) => candidate.carId === carId)!;
@@ -51,6 +51,11 @@ function stopGoPenalty(snapshot: RaceSnapshot, carId: string): RacePenalty {
   };
 }
 
+/*
+ * Places the car just before the pit entry line. A car may only commit to the
+ * lane inside the entry window, so starting it past the box would skip the lane
+ * entirely; the caller steps forward to reach the box.
+ */
 function atPitBox(snapshot: RaceSnapshot, carId: string): RaceSnapshot {
   return {
     ...snapshot,
@@ -59,12 +64,27 @@ function atPitBox(snapshot: RaceSnapshot, carId: string): RaceSnapshot {
     cars: snapshot.cars.map((car) => car.carId === carId ? {
       ...car,
       currentLap: 2,
-      totalDistance: PIT_BOX_DISTANCE + 1,
-      lapDistance: PIT_BOX_DISTANCE + 1,
+      totalDistance: PIT_ENTRY_START + 2,
+      lapDistance: PIT_ENTRY_START + 2,
       currentSpeed: 120,
       reactionTime: 0,
     } : car),
   };
+}
+
+/**
+ * Steps until the car reaches its pit box. The lane run from the entry line
+ * takes several seconds at the 80 km/h limit, so tests that assert on service
+ * state have to arrive there first.
+ */
+function driveToBox(snapshot: RaceSnapshot, carId: string, maxTicks = 400): RaceSnapshot {
+  let current = snapshot;
+  for (let tick = 0; tick < maxTicks; tick += 1) {
+    current = stepSnapshot(current);
+    const car = current.cars.find((candidate) => candidate.carId === carId)!;
+    if (car.pitStatus === "PIT_STOP" || car.pitStatus === "PIT_EXIT" || car.pitStops > 0) break;
+  }
+  return current;
 }
 
 function scheduleAnyCar(snapshot: RaceSnapshot, carId: string, compound: "SOFT" | "MEDIUM" | "HARD"): RaceSnapshot {
@@ -98,7 +118,7 @@ describe("penalty pit-service integration", () => {
     snapshot = atPitBox(snapshot, carId);
     snapshot = { ...snapshot, penalties: [timePenalty(snapshot, carId)] };
     snapshot = setCarPit(snapshot, carId, "SOFT");
-    snapshot = stepSnapshot(snapshot);
+    snapshot = driveToBox(snapshot, carId);
     for (let index = 0; index < 25; index += 1) snapshot = stepSnapshot(snapshot);
     const car = snapshot.cars.find((candidate) => candidate.carId === carId)!;
     expect(car.pitServicePhase).toBe("PENALTY_HOLD");
@@ -113,8 +133,9 @@ describe("penalty pit-service integration", () => {
     snapshot = atPitBox(snapshot, carId);
     snapshot = { ...snapshot, penalties: [timePenalty(snapshot, carId)] };
     snapshot = setCarPit(snapshot, carId, "SOFT");
-    snapshot = stepSnapshot(snapshot);
-    for (let index = 0; index < 90; index += 1) snapshot = stepSnapshot(snapshot);
+    snapshot = driveToBox(snapshot, carId);
+    // 5s penalty hold plus the tyre change, with margin for the release.
+    for (let index = 0; index < 140; index += 1) snapshot = stepSnapshot(snapshot);
     const car = snapshot.cars.find((candidate) => candidate.carId === carId)!;
     expect(snapshot.penalties[0].status).toBe("SERVED");
     expect(car.tyreCompound).toBe("SOFT");
@@ -129,7 +150,7 @@ describe("penalty pit-service integration", () => {
     snapshot = atPitBox(snapshot, carId);
     snapshot = { ...snapshot, penalties: [timePenalty(snapshot, carId, 10)] };
     snapshot = setCarPit(snapshot, carId, "SOFT");
-    snapshot = stepSnapshot(snapshot);
+    snapshot = driveToBox(snapshot, carId);
     for (let index = 0; index < 80; index += 1) snapshot = stepSnapshot(snapshot);
 
     let car = snapshot.cars.find((candidate) => candidate.carId === carId)!;
@@ -155,7 +176,7 @@ describe("penalty pit-service integration", () => {
       penalties: [timePenalty(snapshot, carId, 5), timePenalty(snapshot, carId, 10)],
     };
     snapshot = setCarPit(snapshot, carId, "MEDIUM");
-    snapshot = stepSnapshot(snapshot);
+    snapshot = driveToBox(snapshot, carId);
     for (let index = 0; index < 120; index += 1) snapshot = stepSnapshot(snapshot);
 
     let car = snapshot.cars.find((candidate) => candidate.carId === carId)!;
@@ -206,7 +227,8 @@ describe("penalty pit-service integration", () => {
     snapshot = { ...snapshot, penalties: [stopGoPenalty(snapshot, carId)] };
     snapshot = scheduleAnyCar(snapshot, carId, "HARD");
 
-    for (let index = 0; index < 150; index += 1) {
+    // Lane run from the entry line plus the full ten-second stop-go hold.
+    for (let index = 0; index < 320; index += 1) {
       snapshot = stepSnapshot(snapshot);
       const car = snapshot.cars.find((candidate) => candidate.carId === carId)!;
       if (snapshot.penalties[0].status === "SERVED" && car.pitStatus === "PIT_EXIT") break;

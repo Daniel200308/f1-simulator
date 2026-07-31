@@ -80,15 +80,21 @@ export interface WeekendClassificationEntry {
   timedLap?: boolean;
 }
 
-export type QualifyingCarPhase = "GARAGE" | "OUT_LAP" | "PUSH_LAP" | "COOL_DOWN" | "IN_LAP" | "ABORTED_LAP" | "PIT_ENTRY";
+/*
+ * An in-lap is a single phase. A car that still has a flying lap left recovers
+ * on it and rejoins; a car that is finished takes the same lap to the pit
+ * entry. The old COOL_DOWN phase modelled the first case only and duplicated
+ * every traffic, yielding and telemetry rule that IN_LAP already had.
+ */
+export type QualifyingCarPhase = "GARAGE" | "OUT_LAP" | "PUSH_LAP" | "IN_LAP" | "ABORTED_LAP" | "PIT_ENTRY";
 export type QualifyingOutLapMode = "SLOW" | "BALANCED" | "FAST";
 export type QualifyingAttackMode = "SAFE" | "NORMAL" | "ATTACK" | "MAXIMUM";
-export type QualifyingEnergyMode = "CHARGE" | "BALANCED" | "QUALI";
+export type QualifyingEnergyMode = "CHARGE" | "QUALI";
 export type QualifyingTrafficLevel = "LOW" | "MEDIUM" | "HIGH";
 export type QualifyingReleaseRequest = "NONE" | "WAIT_FOR_GAP" | "HOLD";
 export type QualifyingTrafficResponse = "MAINTAIN_GAP" | "CREATE_GAP" | "LET_PASS" | "OVERTAKE_OUT_LAP";
 export type QualifyingFuelPlan = "ONE_LAP" | "TWO_LAPS" | "TWO_LAPS_MARGIN";
-export type QualifyingDisplayStatus = "GARAGE" | "OUT LAP" | "FLYING LAP" | "COOL DOWN" | "IN LAP" | "ABORTED LAP" | "PIT ENTRY" | "TRAFFIC" | "LAP DELETED";
+export type QualifyingDisplayStatus = "GARAGE" | "OUT LAP" | "FLYING LAP" | "IN LAP" | "ABORTED LAP" | "PIT ENTRY" | "TRAFFIC" | "LAP DELETED";
 export type QualifyingTrafficDecisionState = "NONE" | "YIELD" | "TRAFFIC" | "ABORTED";
 export type QualifyingSessionStatus = "READY" | "RUNNING" | "CHECKERED";
 export type QualifyingSimulationSpeed = 1 | 2 | 4 | 8 | 16;
@@ -111,6 +117,13 @@ export interface QualifyingCarState {
   attackMode: QualifyingAttackMode;
   energyMode: QualifyingEnergyMode;
   phaseStartProgress: number;
+  /*
+   * Set while a car is being held at the end of a phase (for example an out lap
+   * waiting for a gap before starting its flying lap). Position is derived from
+   * the elapsed phase fraction, so without this pin the extra waiting seconds
+   * would recompute a smaller fraction and rewind the marker down the track.
+   */
+  phaseHoldProgress?: number;
   releaseRequest: QualifyingReleaseRequest;
   releaseRequestedAtSeconds: number | null;
   trafficResponse: QualifyingTrafficResponse;
@@ -152,6 +165,19 @@ export interface QualifyingReleaseForecast {
   flyingLapStartsAtSeconds: number;
   finishMarginSeconds: number;
   canFinishBeforeChequered: boolean;
+}
+
+export type QualifyingAiRunPriority = "BANKER" | "BUILD" | "AT_RISK" | "FINAL_ATTACK" | "COMPLETE";
+
+export interface QualifyingAiRunPlan {
+  priority: QualifyingAiRunPriority;
+  position: number | null;
+  cutPosition: number | null;
+  marginToCutSeconds: number | null;
+  targetRuns: number;
+  preferFreshTyre: boolean;
+  minimumReleaseGapSeconds: number;
+  latestSafeReleaseInSeconds: number;
 }
 
 export interface LiveQualifyingState {
@@ -313,6 +339,58 @@ function setupFor(state: WeekendState, carId: string): CarSetup {
   return state.setups[carId] ?? initialSetupFor(state.seed, carId, state.playerTeamId);
 }
 
+/**
+ * How much of a car's qualifying pace is decided by its practice weekend.
+ * A well-executed FP programme leaves the car closer to its setup window; a
+ * scrappy one leaves performance on the table. The window is deliberately
+ * narrow: practice sharpens or blunts a car, it does not reorder the field.
+ */
+const PRACTICE_READINESS_MAX_GAIN_SECONDS = 0.1;
+const PRACTICE_READINESS_MAX_LOSS_SECONDS = 0.14;
+
+/**
+ * Rates how well a car used practice, from 0 (nothing learned) to 1 (fully
+ * dialled in).
+ *
+ * This deliberately measures *execution*, not pace. Practice classification is
+ * derived from the same performance table as qualifying, so rewarding FP
+ * position would amplify the existing hierarchy and let a strong car compound
+ * its advantage. What practice actually buys is a setup closer to its optimum
+ * and enough completed running to trust it, so those are the inputs.
+ */
+export function practiceReadinessFor(state: WeekendState, carId: string): number {
+  const practiceResults = state.results.filter((result) => !result.session.startsWith("Q"));
+  if (practiceResults.length === 0) return 0.5;
+
+  // How close the car's setup sits to its own optimum window. A perfect setup
+  // scores 1; roughly two clicks off on every axis scores 0.
+  const setupConvergence = clamp(1 - setupPenalty(setupFor(state, carId), optimalSetupFor(state.seed, carId)) / 1.1, 0, 1);
+
+  // Sessions actually completed. Skipping practice leaves the crew guessing.
+  const sessionsRun = (["FP1", "FP2", "FP3"] as const)
+    .filter((session) => practiceResults.some((result) => result.session === session
+      && result.entries.some((entry) => entry.carId === carId && entry.laps > 0))).length;
+  const programmeCompletion = sessionsRun / 3;
+
+  // FP3 is the session run in qualifying trim, so completing it matters most.
+  const fp3Complete = practiceResults.some((result) => result.session === "FP3"
+    && result.entries.some((entry) => entry.carId === carId && entry.laps > 0));
+
+  return clamp(setupConvergence * 0.6 + programmeCompletion * 0.28 + (fp3Complete ? 0.12 : 0), 0, 1);
+}
+
+/**
+ * Converts practice readiness into a qualifying lap-time delta. Negative is
+ * faster, so a strong practice weekend returns a gain.
+ */
+function practiceReadinessLapDelta(state: WeekendState, carId: string): number {
+  const readiness = practiceReadinessFor(state, carId);
+  // 0.5 readiness is neutral; above gains, below loses.
+  return readiness >= 0.5
+    ? -((readiness - 0.5) / 0.5) * PRACTICE_READINESS_MAX_GAIN_SECONDS
+    : ((0.5 - readiness) / 0.5) * PRACTICE_READINESS_MAX_LOSS_SECONDS;
+}
+
 function driverLapTime(
   state: WeekendState,
   carId: string,
@@ -333,10 +411,12 @@ function driverLapTime(
   // mistakes may create an upset but cannot routinely erase the whole field.
   const performanceGain = 0.58 - performancePenalty;
   const setupLoss = setupPenalty(setupFor(state, carId), optimalSetupFor(state.seed, carId));
+  // Practice only pays off in qualifying, where the setup window matters most.
+  const practiceReadinessDelta = session.startsWith("Q") ? practiceReadinessLapDelta(state, carId) : 0;
   const evolution = state.completedSessions.length * 0.08;
   const variationWindow = session === "Q2" ? 0.13 : session === "Q3" ? 0.11 : 0.16;
   const variation = signedNoise(state.seed, DRIVERS.findIndex((candidate) => candidate.id === carId) + sessionIndex * 31, run + 17) * (variationWindow / driver.consistency);
-  const base = 91.25 - performanceGain - practiceGain - qualifyingGain - evolution + setupLoss + variation;
+  const base = 91.25 - performanceGain - practiceGain - qualifyingGain - evolution + setupLoss + practiceReadinessDelta + variation;
   return roundMillis(base);
 }
 
@@ -383,7 +463,8 @@ function qualifyingDurationSeconds(session: QualifyingSession): number {
 }
 
 const QUALIFYING_BLANKET_TEMPERATURE_C = 82;
-const QUALIFYING_MAX_TRAFFIC_LOSS_SECONDS = 0.78;
+const QUALIFYING_MAX_TRAFFIC_LOSS_SECONDS = 1.65;
+const QUALIFYING_MAX_SLIPSTREAM_GAIN_SECONDS = 0.12;
 
 function uniformQualifyingTyreTemperatures(temperature: number): TyreTemperatureState {
   return { frontLeft: temperature, frontRight: temperature, rearLeft: temperature, rearRight: temperature };
@@ -460,7 +541,10 @@ function updateQualifyingLapSectorTiming(
   let trafficApplied = car.provisionalTrafficAppliedSeconds;
   for (let index = 0; index < 3; index += 1) {
     if (timing.currentSectorTimes[index] !== null || lapProgress + 0.000001 < completionFractions[index]) continue;
-    const trafficDelta = Math.max(0, trafficPenaltySeconds - trafficApplied);
+    // Traffic can contain a small straight-line tow as well as dirty-air loss.
+    // Apply the signed delta at the next timing loop so the three provisional
+    // sectors still add up to the exact final lap effect.
+    const trafficDelta = trafficPenaltySeconds - trafficApplied;
     timing = recordProvisionalSector(
       timing,
       live.timing,
@@ -525,7 +609,7 @@ function initialQualifyingCar(carId: string): QualifyingCarState {
     energyPercent: 100,
     outLapMode: "BALANCED",
     attackMode: "NORMAL",
-    energyMode: "QUALI",
+    energyMode: "CHARGE",
     phaseStartProgress: 0,
     releaseRequest: "HOLD",
     releaseRequestedAtSeconds: null,
@@ -588,6 +672,7 @@ function reconcileQualifyingEntrants(state: WeekendState, live: LiveQualifyingSt
 }
 
 function qualifyingPhaseProgress(car: QualifyingCarState): number {
+  if (car.phaseHoldProgress !== undefined) return clamp(car.phaseHoldProgress, 0, 1);
   if (car.phaseDurationSeconds <= 0) return 0;
   return clamp(1 - car.phaseRemainingSeconds / car.phaseDurationSeconds, 0, 1);
 }
@@ -616,6 +701,10 @@ function startQualifyingReturn(
   return {
     ...car,
     phase: lastRunNote === "ABORTED" ? "ABORTED_LAP" : "IN_LAP",
+    // The car is committed to the pit lane, so it has no flying laps left to
+    // run. This is also what distinguishes a returning in-lap from a recovery
+    // in-lap, which keeps its remaining attempts.
+    flyingLapsRemaining: 0,
     phaseDurationSeconds: durationSeconds,
     phaseRemainingSeconds: durationSeconds,
     phaseStartProgress: normalizedStart,
@@ -636,6 +725,188 @@ function startQualifyingReturn(
     provisionalLapOutcome: lastRunNote === "ABORTED" ? "ABORTED" : null,
     provisionalTrafficAppliedSeconds: 0,
   };
+}
+
+/**
+ * True while an in-lap is being used to recover between two flying laps. Such a
+ * car stays on the racing line and will rejoin, so it keeps flying-lap traffic
+ * duties; a returning in-lap is heading for the pit entry instead.
+ */
+export function isQualifyingRecoveryLap(car: QualifyingCarState): boolean {
+  return car.phase === "IN_LAP" && car.flyingLapsRemaining > 0;
+}
+
+/** Baseline recovery-lap length before traffic spacing is applied. */
+const QUALIFYING_RECOVERY_LAP_SECONDS = 64;
+/** Recovery laps hold at least this gap to each other so they do not convoy. */
+const QUALIFYING_RECOVERY_SPACING_SECONDS = 5;
+/** A flying lap needs roughly this long, so a recovery lap may not eat into it. */
+const QUALIFYING_FLYING_LAP_RESERVE_SECONDS = 96;
+/**
+ * A recovery lap must not rejoin the timing line inside this window of a car
+ * that is already on a flying lap, otherwise it arrives in its path.
+ */
+const QUALIFYING_RECOVERY_FLYING_CLEARANCE_SECONDS = 5;
+
+/**
+ * Starts the recovery in-lap between two flying laps and lengthens it so the
+ * car neither rejoins into a flying car's path nor bunches up with other
+ * recovering cars. Extending the lap is the tool a real driver has here: the
+ * lap is a cruise, so time is spent rather than pace.
+ */
+function beginQualifyingRecoveryLap(
+  state: WeekendState,
+  live: LiveQualifyingState,
+  car: QualifyingCarState,
+): QualifyingCarState {
+  const driverIndex = Math.max(0, DRIVERS.findIndex((driver) => driver.id === car.carId));
+  const jitter = Math.round(hashNoise(state.seed, 2_540 + driverIndex, car.completedRuns) * 6);
+  const baseDuration = QUALIFYING_RECOVERY_LAP_SECONDS + jitter;
+
+  // The car may only be held out while a second attempt still fits. Deciding
+  // the budget first means spacing can never cost the car its lap.
+  const spacingBudgetSeconds = Math.max(
+    0,
+    live.remainingSeconds - QUALIFYING_FLYING_LAP_RESERVE_SECONDS - baseDuration,
+  );
+  if (spacingBudgetSeconds <= 0) {
+    return {
+      ...car,
+      phase: "IN_LAP",
+      phaseDurationSeconds: baseDuration,
+      phaseRemainingSeconds: baseDuration,
+      phaseStartProgress: 0,
+      energyMode: "CHARGE",
+    };
+  }
+
+  let durationSeconds = baseDuration;
+  for (const other of Object.values(live.cars)) {
+    if (other.carId === car.carId) continue;
+    // Never rejoin into the path of a car that is already on a flying lap.
+    if (other.phase === "PUSH_LAP") {
+      const otherFinishesInSeconds = other.phaseRemainingSeconds;
+      if (Math.abs(durationSeconds - otherFinishesInSeconds) < QUALIFYING_RECOVERY_FLYING_CLEARANCE_SECONDS) {
+        durationSeconds = otherFinishesInSeconds + QUALIFYING_RECOVERY_FLYING_CLEARANCE_SECONDS;
+      }
+      continue;
+    }
+    // Space recovery laps against each other, and against out laps that would
+    // start a flying lap at the same moment, so they do not form a convoy.
+    const otherRejoinSeconds = isQualifyingRecoveryLap(other) || other.phase === "OUT_LAP"
+      ? other.phaseRemainingSeconds
+      : null;
+    if (otherRejoinSeconds !== null && Math.abs(durationSeconds - otherRejoinSeconds) < QUALIFYING_RECOVERY_SPACING_SECONDS) {
+      durationSeconds = otherRejoinSeconds + QUALIFYING_RECOVERY_SPACING_SECONDS;
+    }
+  }
+
+  durationSeconds = clamp(Math.round(durationSeconds), baseDuration, Math.round(baseDuration + spacingBudgetSeconds));
+
+  return {
+    ...car,
+    phase: "IN_LAP",
+    phaseDurationSeconds: durationSeconds,
+    phaseRemainingSeconds: durationSeconds,
+    phaseStartProgress: 0,
+    energyMode: "CHARGE",
+  };
+}
+
+/**
+ * Re-times an in-progress recovery lap so the car does not reach the timing
+ * line alongside a flying car or another recovering car. Returns the number of
+ * seconds the lap should still take.
+ *
+ * Only extension is allowed: a car may cruise for longer, but it cannot
+ * conjure pace to arrive earlier. The clearance is applied inside the time the
+ * session has left, so protecting the gap never costs the car its attempt.
+ */
+function recoveryLapRemainingSeconds(
+  live: LiveQualifyingState,
+  car: QualifyingCarState,
+  remaining: number,
+): number {
+  if (remaining <= 0) return remaining;
+  /*
+   * The car may only wait inside the time that still leaves its own flying lap
+   * intact. Holding it out past that point would trade a real attempt for a
+   * cosmetic gap, which is a worse outcome than the gap itself.
+   */
+  const budget = live.remainingSeconds - QUALIFYING_FLYING_LAP_RESERVE_SECONDS - remaining;
+  if (budget <= 0) return remaining;
+
+  // Stable ordering keeps the resolution identical regardless of map order.
+  const others = Object.values(live.cars)
+    .filter((other) => other.carId !== car.carId)
+    .sort((left, right) => left.phaseRemainingSeconds - right.phaseRemainingSeconds || left.carId.localeCompare(right.carId));
+  const ceiling = remaining + budget;
+  let adjusted = remaining;
+
+  /*
+   * Pushing the arrival back past one car can move it into another's window, so
+   * the gap is resolved by repetition until it holds against every car. The
+   * pass count is bounded because each pass only ever moves the arrival later
+   * and the ceiling caps it.
+   */
+  /*
+   * Both constraints push the arrival later, so they are resolved together and
+   * repeated until nothing moves. Moving away from a flying car can land on
+   * another recovery lap's slot and vice versa; iterating settles that.
+   *
+   * A flying car is cleared on whichever side this car would arrive, because it
+   * owns the line. Between two recovery laps only the later one drops back:
+   * matching a car that arrives *later* would drag this one forward onto its
+   * slot, which is what locked pairs onto the same second.
+   */
+  for (let pass = 0; pass < others.length + 2; pass += 1) {
+    let moved = false;
+    for (const other of others) {
+      const flying = other.phase === "PUSH_LAP";
+      const clearance = flying
+        ? QUALIFYING_RECOVERY_FLYING_CLEARANCE_SECONDS
+        : isQualifyingRecoveryLap(other) || other.phase === "OUT_LAP"
+          ? QUALIFYING_RECOVERY_SPACING_SECONDS
+          : 0;
+      if (clearance === 0) continue;
+      if (Math.abs(adjusted - other.phaseRemainingSeconds) >= clearance) continue;
+      /*
+       * Ties and near-ties are broken by car id so both cars in a pair reach the
+       * same verdict and exactly one of them moves. Without this the pair either
+       * both hold (staying locked together) or both move (staying locked at a
+       * new offset).
+       */
+      if (!flying) {
+        const thisCarGivesWay = other.phaseRemainingSeconds < adjusted
+          || (other.phaseRemainingSeconds === adjusted && other.carId.localeCompare(car.carId) < 0);
+        if (!thisCarGivesWay) continue;
+      }
+      // Round up so a fractional adjustment cannot collapse back onto the same
+      // whole second it was trying to escape.
+      const separated = Math.ceil(other.phaseRemainingSeconds + clearance);
+      if (separated <= adjusted || separated > ceiling) continue;
+      adjusted = separated;
+      moved = true;
+    }
+    if (!moved) break;
+  }
+
+  /*
+   * Clearing a flying car can land exactly on another recovery lap's arrival,
+   * because that constraint is allowed to move the car past a slot it would
+   * otherwise have respected. One final sweep nudges the arrival off any
+   * occupied second, which is the case that produced locked pairs.
+   */
+  const occupied = (candidate: number): boolean => others.some((other) =>
+    (isQualifyingRecoveryLap(other) || other.phase === "OUT_LAP")
+    && Math.abs(candidate - other.phaseRemainingSeconds) < QUALIFYING_RECOVERY_SPACING_SECONDS);
+  for (let nudge = 0; nudge < others.length && occupied(adjusted); nudge += 1) {
+    const next = adjusted + QUALIFYING_RECOVERY_SPACING_SECONDS;
+    if (next > ceiling) break;
+    adjusted = next;
+  }
+
+  return clamp(Math.round(adjusted), remaining, Math.round(ceiling));
 }
 
 function qualifyingOutLapDuration(state: WeekendState, car: QualifyingCarState): number {
@@ -661,8 +932,10 @@ function qualifyingTrackProgress(car: QualifyingCarState): number | null {
     return clamp((PIT_EXIT_END + (SILVERSTONE_CIRCUIT.lengthMeters - PIT_EXIT_END) * trackProgress) / SILVERSTONE_CIRCUIT.lengthMeters, 0, 1);
   }
   if (car.phase === "PUSH_LAP") return progress;
-  if (car.phase === "COOL_DOWN") return clamp(car.phaseStartProgress + (1 - car.phaseStartProgress) * progress, 0, 1);
   if (car.phase === "PIT_ENTRY") return null;
+  // A recovery in-lap continues around to the timing line; a returning in-lap
+  // runs only as far as the pit entry.
+  if (isQualifyingRecoveryLap(car)) return clamp(car.phaseStartProgress + (1 - car.phaseStartProgress) * progress, 0, 1);
   const distanceToPitEntry = forwardQualifyingProgress(car.phaseStartProgress, QUALIFYING_PIT_ENTRY_PROGRESS);
   return normalizeQualifyingProgress(car.phaseStartProgress + distanceToPitEntry * progress);
 }
@@ -695,7 +968,7 @@ function qualifyingSpeedTarget(car: QualifyingCarState): number {
     ? car.attackMode === "SAFE" ? 0.985 : car.attackMode === "ATTACK" ? 1.008 : car.attackMode === "MAXIMUM" ? 1.014 : 1
     : car.phase === "OUT_LAP"
       ? car.outLapMode === "SLOW" ? 0.65 : car.outLapMode === "FAST" ? 0.78 : 0.71
-      : car.phase === "COOL_DOWN" ? 0.6
+      : isQualifyingRecoveryLap(car) ? 0.6
         : car.phase === "ABORTED_LAP" ? 0.54
           : car.phase === "PIT_ENTRY" ? 0.42 : 0.68;
   const paceFactor = car.yielding ? Math.min(normalPaceFactor, 0.52) : normalPaceFactor;
@@ -738,7 +1011,7 @@ function advanceQualifyingTyreTemperatures(car: QualifyingCarState, nextSpeedKph
     ? 101 + (car.attackMode === "MAXIMUM" ? 3 : car.attackMode === "ATTACK" ? 1.5 : car.attackMode === "SAFE" ? -2 : 0)
     : car.phase === "OUT_LAP"
       ? car.outLapMode === "FAST" ? 98 : car.outLapMode === "SLOW" ? 90 : 94
-      : car.phase === "COOL_DOWN" ? 79 : 76;
+      : isQualifyingRecoveryLap(car) ? 79 : 76;
   const segmentOffset = segment.kind === "FAST" ? 2.4 : segment.kind === "MEDIUM" ? 1 : segment.kind === "SLOW" ? -0.6 : -2.4;
   const cornerHeat = corner.intensity * (3 + nextSpeedKph * 0.024);
   const leftOffset = corner.hotterSide === "LEFT" ? cornerHeat : corner.hotterSide === "RIGHT" ? -cornerHeat * 0.3 : 0;
@@ -772,7 +1045,6 @@ export interface QualifyingTrafficDecision {
   spacingFactor: number;
   flyingConflictCarId: string | null;
   flyingConflictGapSeconds: number | null;
-  shouldAbortFlyingLap: boolean;
 }
 
 const QUALIFYING_YIELD_APPROACH_SECONDS = 5.5;
@@ -798,7 +1070,6 @@ export function qualifyingTrafficDecision(live: LiveQualifyingState, car: Qualif
       spacingFactor: 1,
       flyingConflictCarId: null,
       flyingConflictGapSeconds: null,
-      shouldAbortFlyingLap: false,
     };
   }
   let gapAheadMeters = Number.POSITIVE_INFINITY;
@@ -833,7 +1104,7 @@ export function qualifyingTrafficDecision(live: LiveQualifyingState, car: Qualif
     ? "HIGH"
     : blocked || onTrackCars >= 10 ? "MEDIUM" : "LOW";
 
-  const eligibleToYield = car.phase === "OUT_LAP" || car.phase === "IN_LAP" || car.phase === "ABORTED_LAP" || car.phase === "COOL_DOWN";
+  const eligibleToYield = car.phase === "OUT_LAP" || car.phase === "IN_LAP" || car.phase === "ABORTED_LAP";
   let yieldingToCarId: string | null = null;
   let yieldingDurationSeconds = 0;
   let yieldCooldownSeconds = Math.max(0, car.yieldCooldownSeconds - 1);
@@ -889,7 +1160,6 @@ export function qualifyingTrafficDecision(live: LiveQualifyingState, car: Qualif
     && gapAheadSeconds <= 1
     && nearestAhead.timing.currentLapValid
     && nearestAhead.lastRunNote !== "TRACK LIMITS";
-  const flyingConflictSeconds = flyingConflict ? car.flyingConflictSeconds + 1 : 0;
 
   return {
     level,
@@ -903,7 +1173,6 @@ export function qualifyingTrafficDecision(live: LiveQualifyingState, car: Qualif
     spacingFactor,
     flyingConflictCarId: flyingConflict ? nearestAhead!.carId : null,
     flyingConflictGapSeconds: flyingConflict ? gapAheadSeconds : null,
-    shouldAbortFlyingLap: flyingConflictSeconds >= 3,
   };
 }
 
@@ -935,6 +1204,22 @@ function predictedPitExitGaps(live: LiveQualifyingState, outLapDurationSeconds: 
       if (pitExitGap < 1.2) mergeSafe = false;
       continue;
     }
+
+    // Cars can leave the pit exit several seconds apart yet converge at the
+    // timing line because their preparation laps use different pace modes.
+    // Compare the projected flying-lap start times before approving a release.
+    const nextFlyingStartSeconds = other.phase === "OUT_LAP"
+      ? other.phaseRemainingSeconds
+      : isQualifyingRecoveryLap(other)
+        ? other.phaseRemainingSeconds
+        : null;
+    if (nextFlyingStartSeconds !== null) {
+      const startGapSeconds = Math.abs(outLapDurationSeconds - nextFlyingStartSeconds);
+      nearestFlyingGap = Math.min(nearestFlyingGap, startGapSeconds);
+      const protectedStartGap = live.remainingSeconds <= 95 ? 0.8 : live.remainingSeconds <= 190 ? 0.95 : 1.05;
+      if (startGapSeconds < protectedStartGap) mergeSafe = false;
+    }
+
     const progress = qualifyingTrackProgress(other);
     if (progress === null) continue;
     const projectedMeters = Math.max(52, other.currentSpeedKph / 3.6) * arrivalSeconds;
@@ -995,6 +1280,7 @@ function startQualifyingRun(state: WeekendState, car: QualifyingCarState, durati
     phaseDurationSeconds: durationSeconds,
     phaseRemainingSeconds: durationSeconds,
     phaseStartProgress: 0,
+    energyMode: "CHARGE",
     tyreTemperatures: uniformQualifyingTyreTemperatures(QUALIFYING_BLANKET_TEMPERATURE_C),
     tyreTemperatureC: QUALIFYING_BLANKET_TEMPERATURE_C,
     currentSpeedKph: 0,
@@ -1025,20 +1311,70 @@ function startQualifyingRun(state: WeekendState, car: QualifyingCarState, durati
   };
 }
 
-function aiQualifyingRunTarget(state: WeekendState, live: LiveQualifyingState, carId: string): number {
-  if (live.session !== "Q1") return 2;
-  const driverIndex = Math.max(0, DRIVERS.findIndex((candidate) => candidate.id === carId));
+function qualifyingAiRunPlanFor(state: WeekendState, live: LiveQualifyingState, car: QualifyingCarState): QualifyingAiRunPlan {
+  const originalOrder = Object.keys(live.cars);
+  const classified = Object.values(live.cars).sort((left, right) => {
+    if (left.bestLapSeconds === null && right.bestLapSeconds === null) return originalOrder.indexOf(left.carId) - originalOrder.indexOf(right.carId);
+    if (left.bestLapSeconds === null) return 1;
+    if (right.bestLapSeconds === null) return -1;
+    return left.bestLapSeconds - right.bestLapSeconds || originalOrder.indexOf(left.carId) - originalOrder.indexOf(right.carId);
+  });
+  const position = classified.findIndex((candidate) => candidate.carId === car.carId) + 1 || null;
+  const cutPosition = qualifyingAdvanceLimit(live.session);
+  const cutCar = cutPosition === null ? null : classified[cutPosition - 1] ?? null;
+  const marginToCutSeconds = car.bestLapSeconds === null || cutCar?.bestLapSeconds === null || cutCar === null
+    ? null
+    : roundMillis(cutCar.bestLapSeconds - car.bestLapSeconds);
+  const estimatedLapSeconds = clamp(driverLapTime(state, car.carId, live.session, car.completedRuns), 84, 96);
+  const latestSafeReleaseInSeconds = Math.ceil(qualifyingOutLapDuration(state, car) + estimatedLapSeconds + 8);
+  const finalWindow = live.remainingSeconds <= latestSafeReleaseInSeconds + 42;
+  const belowCut = cutPosition !== null && position !== null && position > cutPosition;
+  const vulnerable = car.bestLapSeconds === null || belowCut || (marginToCutSeconds !== null && marginToCutSeconds < 0.32);
+  const comfortablySafe = car.bestLapSeconds !== null
+    && cutPosition !== null
+    && position !== null
+    && position <= Math.max(1, cutPosition - 2)
+    && marginToCutSeconds !== null
+    && marginToCutSeconds >= 0.58;
+  const driverIndex = Math.max(0, DRIVERS.findIndex((candidate) => candidate.id === car.carId));
   const extraRunSample = hashNoise(state.seed, 2_006 + driverIndex, SESSION_SEQUENCE.indexOf(live.session));
-  // A third run is an independent strategy choice. The old strength threshold
-  // gave slower cars both an extra random sample and the latest track surface.
-  return extraRunSample > 0.7 ? 3 : 2;
+  const targetRuns = live.session === "Q3"
+    ? 2
+    : vulnerable && car.completedRuns > 0 && extraRunSample > 0.55 ? 3 : 2;
+  const priority: QualifyingAiRunPriority = car.completedRuns >= targetRuns
+    ? "COMPLETE"
+    : finalWindow && vulnerable
+      ? "FINAL_ATTACK"
+      : car.bestLapSeconds === null
+        ? "BANKER"
+        : vulnerable
+          ? "AT_RISK"
+          : "BUILD";
+  const baseGap = qualifyingTargetGapSeconds(live);
+  const gapFactor = priority === "FINAL_ATTACK" ? 0.68 : priority === "AT_RISK" ? 0.82 : comfortablySafe ? 1.08 : 1;
+  return {
+    priority,
+    position,
+    cutPosition,
+    marginToCutSeconds,
+    targetRuns,
+    preferFreshTyre: live.session !== "Q1" || priority === "AT_RISK" || priority === "FINAL_ATTACK" || car.completedRuns === 0,
+    minimumReleaseGapSeconds: roundMillis(baseGap * gapFactor),
+    latestSafeReleaseInSeconds,
+  };
+}
+
+export function qualifyingAiRunPlan(state: WeekendState, carId: string): QualifyingAiRunPlan | null {
+  const live = state.qualifyingLive;
+  const car = live?.cars[carId];
+  return live && car ? qualifyingAiRunPlanFor(state, live, car) : null;
 }
 
 function aiReleaseTime(state: WeekendState, live: LiveQualifyingState, carId: string, run: number): number {
   const driverIndex = Math.max(0, DRIVERS.findIndex((driver) => driver.id === carId));
   const sessionIndex = SESSION_SEQUENCE.indexOf(live.session);
   const paceRank = season2026QualifyingStrength(carId);
-  const runTarget = aiQualifyingRunTarget(state, live, carId);
+  const runTarget = qualifyingAiRunPlanFor(state, live, live.cars[carId]).targetRuns;
   const windows = live.session === "Q1"
     ? runTarget === 3 ? [[28, 135], [390, 555], [770, 905]] : [[65, 205], [720, 910]]
     : live.session === "Q2" ? [[42, 190], [590, 735]] : [[28, 165], [480, 615]];
@@ -1084,6 +1420,35 @@ function qualifyingLapFor(
   };
 }
 
+function qualifyingTrafficLapDelta(car: QualifyingCarState, traffic: QualifyingTrafficDecision): number {
+  if (car.phase !== "PUSH_LAP" || traffic.gapAheadSeconds === null || traffic.gapAheadSeconds >= 2.8) return 0;
+  const telemetry = qualifyingDistanceForTelemetry(car);
+  if (!telemetry || telemetry.pitLane) return 0;
+  const segment = SILVERSTONE_CIRCUIT.segments[segmentIndexAtDistance(telemetry.distanceMeters)];
+  const gap = traffic.gapAheadSeconds;
+
+  if (gap <= 1) {
+    // A sub-one-second tow helps on a straight, but the following car still
+    // loses more through disturbed air and compromised corner approach. The
+    // lap continues; the accumulated timing loss replaces the old auto-abort.
+    const proximity = clamp(1 - gap, 0, 1);
+    const load = segment.kind === "FAST" ? 1.25 : segment.kind === "MEDIUM" ? 1.1 : segment.kind === "SLOW" ? 0.94 : 0.72;
+    const dirtyAirLoss = (0.11 + proximity * 0.14) * load;
+    const towGain = segment.kind === "STRAIGHT" ? (0.01 + proximity * 0.007) : 0;
+    return Math.max(0.07, dirtyAirLoss - towGain);
+  }
+
+  const proximity = clamp((2.8 - gap) / 1.8, 0, 1);
+  const dirtyAirLoss = segment.kind === "FAST"
+    ? 0.013 * proximity
+    : segment.kind === "MEDIUM"
+      ? 0.009 * proximity
+      : segment.kind === "SLOW" ? 0.006 * proximity : 0.0015 * proximity;
+  const towWindow = clamp(1 - Math.abs(gap - 1.65) / 0.85, 0, 1);
+  const slipstreamGain = segment.kind === "STRAIGHT" ? 0.008 * towWindow : 0;
+  return dirtyAirLoss - slipstreamGain;
+}
+
 function updateQualifyingCarOneSecond(
   state: WeekendState,
   live: LiveQualifyingState,
@@ -1111,28 +1476,38 @@ function updateQualifyingCarOneSecond(
     if (playerCar && playerSelectedSet && (playerSelectedSet.status === "NEW" || playerSelectedSet.status === "USED") && car.releaseRequest === "WAIT_FOR_GAP" && live.status === "RUNNING" && forecast?.canFinishBeforeChequered && gapReady) {
       return { car: startQualifyingRun(state, recovered, qualifyingOutLapDuration(state, recovered)), consumedCompound: recovered.selectedCompound, fittedTyreSetId: playerSelectedSet.id };
     }
+    const runPlan = qualifyingAiRunPlanFor(state, live, recovered);
     const releaseAt = aiReleaseTime(state, live, car.carId, car.completedRuns);
-    const runTarget = aiQualifyingRunTarget(state, live, car.carId);
+    const runTarget = runPlan.targetRuns;
     const enoughTime = Boolean(forecast?.canFinishBeforeChequered);
     const strategicWait = 7 + Math.round(hashNoise(state.seed, 2_037 + DRIVERS.findIndex((driver) => driver.id === car.carId), car.completedRuns) * 18);
     const trafficWindowOpen = Boolean(forecast?.mergeSafe && (
-      forecast.expectedGapSeconds >= forecast.targetGapSeconds
-      || (live.elapsedSeconds >= releaseAt + strategicWait && forecast.expectedGapSeconds >= forecast.targetGapSeconds * 0.82)
-      || (live.remainingSeconds < 190 && forecast.expectedGapSeconds >= forecast.targetGapSeconds * 0.65)
+      forecast.expectedGapSeconds >= runPlan.minimumReleaseGapSeconds
+      || (live.elapsedSeconds >= releaseAt + strategicWait && forecast.expectedGapSeconds >= runPlan.minimumReleaseGapSeconds * 0.86)
+      || (runPlan.priority === "FINAL_ATTACK" && forecast.expectedGapSeconds >= runPlan.minimumReleaseGapSeconds * 0.84)
     ));
     const pitExitProtection = 0.12;
     const pitExitBusy = Object.values(live.cars).some((candidate) => candidate.carId !== car.carId
       && candidate.phase === "OUT_LAP"
       && qualifyingPhaseProgress(candidate) < pitExitProtection);
-    if (!playerCar && live.status === "RUNNING" && car.completedRuns < runTarget && enoughTime && live.elapsedSeconds >= releaseAt && trafficWindowOpen && !pitExitBusy) {
+    const releaseWindowReached = live.elapsedSeconds >= releaseAt
+      || (runPlan.priority === "FINAL_ATTACK" && live.remainingSeconds <= runPlan.latestSafeReleaseInSeconds + 32);
+    if (!playerCar && live.status === "RUNNING" && car.completedRuns < runTarget && enoughTime && releaseWindowReached && trafficWindowOpen && !pitExitBusy) {
       const preferredCompound = aiCompoundFor(state, live, car.carId, car.completedRuns);
-      const selectedSet = selectableWeekendTyreSets(state.tyreInventory, car.carId, preferredCompound)[0]
-        ?? selectableWeekendTyreSets(state.tyreInventory, car.carId)[0];
+      const preferredSets = selectableWeekendTyreSets(state.tyreInventory, car.carId, preferredCompound);
+      const selectedSet = runPlan.preferFreshTyre
+        ? preferredSets.find((set) => set.status === "NEW") ?? preferredSets[0] ?? selectableWeekendTyreSets(state.tyreInventory, car.carId)[0]
+        : preferredSets.find((set) => set.status === "USED" && set.wearPercent <= 18) ?? preferredSets.find((set) => set.status === "NEW") ?? preferredSets[0] ?? selectableWeekendTyreSets(state.tyreInventory, car.carId)[0];
       if (!selectedSet) return { car: recovered, consumedCompound: null };
       const selectedCompound = selectedSet.compound;
       const driverIndex = Math.max(0, DRIVERS.findIndex((driver) => driver.id === car.carId));
       const outLapMode: QualifyingOutLapMode = hashNoise(state.seed, 2_130 + driverIndex, car.completedRuns) > 0.76 ? "FAST" : hashNoise(state.seed, 2_131 + driverIndex, car.completedRuns) < 0.16 ? "SLOW" : "BALANCED";
-      const attackMode: QualifyingAttackMode = live.session === "Q3" || car.completedRuns > 0 ? "ATTACK" : hashNoise(state.seed, 2_132 + driverIndex, car.completedRuns) > 0.84 ? "MAXIMUM" : "NORMAL";
+      const attackSample = hashNoise(state.seed, 2_132 + driverIndex, car.completedRuns);
+      const attackMode: QualifyingAttackMode = runPlan.priority === "FINAL_ATTACK"
+        ? attackSample > 0.58 ? "MAXIMUM" : "ATTACK"
+        : runPlan.priority === "AT_RISK" || live.session === "Q3" || car.completedRuns > 0
+          ? "ATTACK"
+          : attackSample > 0.9 ? "ATTACK" : "NORMAL";
       const fuelPlan: QualifyingFuelPlan = live.session === "Q3"
         ? "ONE_LAP"
         : hashNoise(state.seed, 2_133 + driverIndex, car.completedRuns) > 0.6 ? "TWO_LAPS" : "ONE_LAP";
@@ -1199,39 +1574,51 @@ function updateQualifyingCarOneSecond(
     tyreTemperatures,
     tyreTemperatureC: averageQualifyingTyreTemperature(tyreTemperatures),
   };
-  if (car.phase === "PUSH_LAP" && traffic.shouldAbortFlyingLap) {
-    const conflictCar = {
-      ...car,
-      ...trafficState,
-      ...telemetryState,
-      lastRunNote: "ABORTED" as const,
-      timing: invalidateQualifyingLapTiming(car.timing),
-      trafficDecisionState: "ABORTED" as const,
-      trafficDecisionMessage: `Gap below ${(traffic.flyingConflictGapSeconds ?? 1).toFixed(1)}s · lap aborted`,
-    };
-    return {
-      car: startQualifyingReturn(conflictCar, qualifyingTrackProgress(car) ?? qualifyingPhaseProgress(car), "ABORTED", true),
-      consumedCompound: null,
-    };
-  }
   if (car.phase === "OUT_LAP") {
-    const energyChange = car.outLapMode === "FAST" ? -0.08 : car.outLapMode === "SLOW" ? 0.16 : 0.06;
+    const energyChange = car.outLapMode === "FAST" ? 0.08 : car.outLapMode === "SLOW" ? 0.24 : 0.16;
     const warmed = updateQualifyingLapSectorTiming({
       ...car,
       ...trafficState,
       ...telemetryState,
       phaseRemainingSeconds: remaining,
+      /*
+       * Once a hold is applied it stays until the phase changes: the car is
+       * parked at the end of its preparation lap waiting for a gap, so its
+       * marker must not drift while it waits.
+       */
+      phaseHoldProgress: car.phaseHoldProgress,
       energyPercent: clamp(car.energyPercent + energyChange, 0, 100),
+      energyMode: "CHARGE" as const,
     }, live, remaining, 0, OUT_LAP_SECTOR_COMPLETION_FRACTIONS);
     if (remaining > 0) return { car: warmed, consumedCompound: null };
-    if (warmed.yielding && live.status === "RUNNING") {
-      return { car: { ...warmed, phaseRemainingSeconds: 1 }, consumedCompound: null };
-    }
+    /*
+     * Hold the car for one more second of running before it starts the flying
+     * lap. `phaseHoldProgress` pins the marker at the point already reached, so
+     * the extra second does not rewind the elapsed phase fraction and slide the
+     * car backwards down the lap.
+     */
+    const holdAtLine = () => ({
+      car: {
+        ...warmed,
+        phaseRemainingSeconds: 1,
+        /*
+         * The lap has run its full length by the time a hold is applied, so the
+         * marker is pinned as close to the phase end as it can get without
+         * reaching exactly 1, which would wrap the normalised track position back
+         * to the start line. The pin also has to sit at or ahead of the fraction
+         * the lap already reached, or the marker would step back by a hair. An
+         * existing pin is preserved so repeated held seconds cannot drift.
+         */
+        phaseHoldProgress: car.phaseHoldProgress ?? 0.99995,
+      },
+      consumedCompound: null,
+    });
+    if (warmed.yielding && live.status === "RUNNING") return holdAtLine();
     if (!playerCar
       && traffic.gapAheadSeconds !== null
       && traffic.gapAheadSeconds < targetGapSeconds * 0.82
       && live.remainingSeconds > 95) {
-      return { car: { ...warmed, phaseRemainingSeconds: 1 }, consumedCompound: null };
+      return holdAtLine();
     }
     if (live.status === "CHECKERED") {
       return { car: startQualifyingReturn(warmed, 0), consumedCompound: null };
@@ -1262,13 +1649,11 @@ function updateQualifyingCarOneSecond(
   }
 
   if (car.phase === "PUSH_LAP") {
-    const trafficLoss = traffic.level === "HIGH"
-      ? Math.max(0.012, (1.45 - (traffic.gapAheadSeconds ?? 1.45)) * 0.052)
-      : traffic.level === "MEDIUM" && traffic.gapAheadSeconds !== null && traffic.gapAheadSeconds < 2.8 ? 0.006 : 0;
+    const trafficDelta = qualifyingTrafficLapDelta(car, traffic);
     const deployRate = car.attackMode === "SAFE" ? 0.22 : car.attackMode === "ATTACK" ? 0.34 : car.attackMode === "MAXIMUM" ? 0.4 : 0.28;
     const nextTrafficPenalty = roundMillis(Math.min(
       QUALIFYING_MAX_TRAFFIC_LOSS_SECONDS,
-      car.trafficPenaltySeconds + trafficLoss,
+      Math.max(-QUALIFYING_MAX_SLIPSTREAM_GAIN_SECONDS, car.trafficPenaltySeconds + trafficDelta),
     ));
     const pushing = updateQualifyingLapSectorTiming({
       ...car,
@@ -1276,6 +1661,7 @@ function updateQualifyingCarOneSecond(
       ...telemetryState,
       phaseRemainingSeconds: remaining,
       energyPercent: clamp(car.energyPercent - deployRate, 0, 100),
+      energyMode: "QUALI" as const,
       trafficPenaltySeconds: nextTrafficPenalty,
     }, live, remaining, nextTrafficPenalty);
     if (remaining > 0) return { car: pushing, consumedCompound: null };
@@ -1301,29 +1687,43 @@ function updateQualifyingCarOneSecond(
     };
     return {
       car: flyingLapsRemaining > 0 && live.status === "RUNNING"
-        ? {
-            ...completedLap,
-            phase: "COOL_DOWN",
-            phaseDurationSeconds: 64,
-            phaseRemainingSeconds: 64,
-            phaseStartProgress: 0,
-          }
+        ? beginQualifyingRecoveryLap(state, live, completedLap)
         : startQualifyingReturn(completedLap, 0),
       consumedCompound: null,
       sessionTiming: finalized.sessionTiming,
     };
   }
 
-  if (car.phase === "COOL_DOWN") {
+  if (isQualifyingRecoveryLap(car)) {
+    /*
+     * A recovery lap is re-timed every second, not just when it starts. Flying
+     * laps begin and end while this car is circulating, so a one-off estimate
+     * goes stale immediately. Stretching the lap is what a driver does here:
+     * the lap is a cruise, so waiting costs nothing but time.
+     */
+    const adjustedRemaining = recoveryLapRemainingSeconds(live, car, remaining);
+    /*
+     * Position is derived from `phaseStartProgress` plus elapsed phase fraction,
+     * so simply extending the clock would recompute a *smaller* fraction and
+     * teleport the marker backwards. Re-anchor the phase at the distance already
+     * covered instead: the car keeps its place on track and spends the extra
+     * time covering what is left.
+     */
+    const stretched = adjustedRemaining > remaining;
+    const reanchoredStart = stretched
+      ? qualifyingTrackProgress(car) ?? car.phaseStartProgress
+      : car.phaseStartProgress;
     const cooled = {
       ...car,
       ...trafficState,
       ...telemetryState,
-      phaseRemainingSeconds: remaining,
+      phaseStartProgress: reanchoredStart,
+      phaseDurationSeconds: stretched ? adjustedRemaining : car.phaseDurationSeconds,
+      phaseRemainingSeconds: adjustedRemaining,
       energyPercent: clamp(car.energyPercent + 0.34, 0, 100),
       energyMode: "CHARGE" as const,
     };
-    if (remaining > 0) return { car: cooled, consumedCompound: null };
+    if (adjustedRemaining > 0) return { car: cooled, consumedCompound: null };
     if (cooled.flyingLapsRemaining > 0 && live.status === "RUNNING") {
       const projectedLap = qualifyingLapFor(state, live, cooled);
       const provisionalSectorTargets = qualifyingSectorTargets(state, cooled, projectedLap.lapSeconds);
@@ -1358,6 +1758,7 @@ function updateQualifyingCarOneSecond(
     ...telemetryState,
     phaseRemainingSeconds: remaining,
     energyPercent: clamp(car.energyPercent + 0.2, 0, 100),
+    energyMode: "CHARGE" as const,
   };
   if (remaining > 0) return { car: returning, consumedCompound: null };
   if (car.phase === "IN_LAP" || car.phase === "ABORTED_LAP") {
@@ -1801,11 +2202,10 @@ export function qualifyingCarProgress(car: QualifyingCarState): number {
 }
 
 export function qualifyingDisplayStatus(car: QualifyingCarState): QualifyingDisplayStatus {
-  if ((car.phase === "COOL_DOWN" || car.phase === "IN_LAP") && car.lastRunNote === "TRACK LIMITS") return "LAP DELETED";
+  if (car.phase === "IN_LAP" && car.lastRunNote === "TRACK LIMITS") return "LAP DELETED";
   if (car.phase === "PUSH_LAP" && car.trafficLevel === "HIGH") return "TRAFFIC";
   if (car.phase === "OUT_LAP") return "OUT LAP";
   if (car.phase === "PUSH_LAP") return "FLYING LAP";
-  if (car.phase === "COOL_DOWN") return "COOL DOWN";
   if (car.phase === "IN_LAP") return "IN LAP";
   if (car.phase === "ABORTED_LAP") return "ABORTED LAP";
   if (car.phase === "PIT_ENTRY") return "PIT ENTRY";
@@ -1930,22 +2330,11 @@ export function setQualifyingFuelPlan(state: WeekendState, carId: string, plan: 
   };
 }
 
-export function setQualifyingEnergyMode(state: WeekendState, carId: string, mode: QualifyingEnergyMode): WeekendState {
-  const live = state.qualifyingLive;
-  const car = live?.cars[carId];
-  if (!live || !car || !playerCarIdsFor(state.playerTeamId).includes(carId) || car.phase === "PUSH_LAP") return state;
-  return {
-    ...state,
-    qualifyingLive: { ...live, cars: { ...live.cars, [carId]: { ...car, energyMode: mode } } },
-  };
-}
-
 export function releaseQualifyingCar(state: WeekendState, carId: string): WeekendState {
   const live = state.qualifyingLive;
   const car = live?.cars[carId];
-  const forecast = qualifyingReleaseForecast(state, carId);
   const selectedSet = weekendTyreSetById(state.tyreInventory, carId, car?.selectedTyreSetId ?? null);
-  if (!live || !car || !selectedSet || (selectedSet.status !== "NEW" && selectedSet.status !== "USED") || live.status !== "RUNNING" || car.phase !== "GARAGE" || !forecast?.canFinishBeforeChequered || !forecast.mergeSafe) return state;
+  if (!live || !car || !selectedSet || (selectedSet.status !== "NEW" && selectedSet.status !== "USED") || live.status !== "RUNNING" || car.phase !== "GARAGE") return state;
   if (!playerCarIdsFor(state.playerTeamId).includes(carId)) return state;
   const tyreInventory = fitWeekendTyreSet(state.tyreInventory, carId, selectedSet.id, live.session);
   return {
@@ -2012,6 +2401,10 @@ export function abortQualifyingLap(state: WeekendState, carId: string): WeekendS
   };
 }
 
+/**
+ * Converts a preparation lap into a recovery in-lap: the attempt is given up
+ * for now, but the car stays out and keeps its remaining flying laps.
+ */
 export function coolDownQualifyingCar(state: WeekendState, carId: string): WeekendState {
   const live = state.qualifyingLive;
   const car = live?.cars[carId];
@@ -2028,7 +2421,10 @@ export function coolDownQualifyingCar(state: WeekendState, carId: string): Weeke
         ...live.cars,
         [carId]: {
           ...car,
-          phase: "COOL_DOWN",
+          phase: "IN_LAP",
+          // Keeping at least one flying lap is what marks this as a recovery
+          // lap rather than a return to the garage.
+          flyingLapsRemaining: Math.max(1, car.flyingLapsRemaining),
           phaseDurationSeconds: durationSeconds,
           phaseRemainingSeconds: durationSeconds,
           phaseStartProgress: startProgress,
@@ -2094,7 +2490,18 @@ function tickLiveQualifyingOneSecond(state: WeekendState): WeekendState {
       );
     }
     if (updated.sessionTiming) sessionTiming = updated.sessionTiming;
-    nextCars[carId] = updated.car;
+    const automaticEnergyMode: QualifyingEnergyMode = updated.car.phase === "PUSH_LAP" ? "QUALI" : "CHARGE";
+    /*
+     * A hold pin belongs to the phase that set it. Clearing it on any phase
+     * change keeps the next phase running off its own clock, so one stale pin
+     * cannot freeze a marker for the rest of the session.
+     */
+    const holdCleared = updated.car.phase !== car.phase && updated.car.phaseHoldProgress !== undefined
+      ? { ...updated.car, phaseHoldProgress: undefined }
+      : updated.car;
+    nextCars[carId] = holdCleared.energyMode === automaticEnergyMode
+      ? holdCleared
+      : { ...holdCleared, energyMode: automaticEnergyMode };
   }
   const cars = reconcileLiveQualifyingSectorTones(nextCars, sessionTiming);
   const tyreUsage = weekendTyreUsageFromInventory(tyreInventory);

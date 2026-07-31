@@ -137,6 +137,76 @@ button { font: inherit; }
 .panel__header h2, .circuit-title h1 { margin: 5px 0 0; font-size: 15px; letter-spacing: -.01em; }
 .panel__counter { padding: 5px 7px; color: var(--muted); border: 1px solid var(--line); font: 9px var(--font-mono); letter-spacing: .06em; }
 .timing-panel { position: relative; min-height: 0; display: flex; flex-direction: column; }
+
+/*
+ * Leader-board masthead. The lap number is the headline of a race broadcast, so
+ * it is the largest thing here, centred, with the clock beneath it and a thin
+ * progress rule along the bottom edge. Sizes are fluid so the block scales with
+ * the column rather than clipping.
+ */
+.timing-masthead {
+  position: relative;
+  min-width: 0;
+  /* The panel is a flex column, so without this the masthead is the first thing
+     to be compressed and its clock row disappears. */
+  flex: 0 0 auto;
+  /* Content-sized rows so the lap number and clock always get their full
+     height; a squeezed panel used to clip the race time entirely. */
+  display: grid;
+  grid-template-rows: auto auto auto;
+  align-content: center;
+  justify-items: center;
+  gap: clamp(2px, .4vh, 5px);
+  padding: clamp(8px, 1.1vh, 14px) 12px clamp(10px, 1.2vh, 16px);
+  border-bottom: 1px solid rgba(148, 177, 190, .18);
+  background:
+    radial-gradient(circle at 50% -30%, rgba(32, 215, 231, .18), transparent 62%),
+    linear-gradient(180deg, rgba(10, 22, 28, .96), rgba(5, 12, 16, .98));
+}
+.timing-masthead__label {
+  color: var(--accent);
+  font: 950 clamp(8px, .62vw, 10px)/1 var(--font-mono);
+  letter-spacing: .28em;
+  text-indent: .28em;
+  text-shadow: 0 0 14px rgba(32, 215, 231, .5);
+}
+.timing-masthead__lap { min-width: 0; display: flex; align-items: baseline; justify-content: center; gap: 7px; }
+.timing-masthead__lap > strong {
+  color: #f7fcfd;
+  font: 950 clamp(30px, 3.4vw, 46px)/1 var(--font-mono);
+  font-variant-numeric: tabular-nums lining-nums;
+  letter-spacing: -.035em;
+  text-shadow: 0 2px 18px rgba(0, 0, 0, .8), 0 0 26px rgba(32, 215, 231, .22);
+}
+.timing-masthead__lap > span { display: grid; gap: 1px; text-align: left; }
+.timing-masthead__lap small { color: #7f959d; font: 900 clamp(8px, .58vw, 10px)/1 var(--font-mono); letter-spacing: .16em; }
+.timing-masthead__lap em { color: #93a9b1; font: 900 clamp(10px, .74vw, 13px)/1 var(--font-mono); font-style: normal; }
+.timing-masthead__clock { display: flex; align-items: baseline; gap: 8px; }
+.timing-masthead__clock small { color: #6d858e; font: 900 clamp(8px, .56vw, 9px)/1 var(--font-mono); letter-spacing: .14em; }
+.timing-masthead__clock strong {
+  color: #dcebee;
+  font: 950 clamp(13px, 1.1vw, 18px)/1 var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .04em;
+}
+/* Race distance completed, drawn as the panel's bottom rule. */
+.timing-masthead > i {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  background: rgba(148, 177, 190, .14);
+}
+.timing-masthead > i::after {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--race-progress, 0%);
+  background: linear-gradient(90deg, var(--accent), #7ef4fa);
+  box-shadow: 0 0 12px rgba(32, 215, 231, .7);
+  content: "";
+  transition: width .6s ease;
+}
 .timing-session-summary { min-height: 51px; display: grid; grid-template-columns: .72fr 1.28fr; border-bottom: 1px solid var(--line); background: linear-gradient(90deg, rgba(32,215,231,.045), transparent); }
 .timing-session-summary > span { min-width: 0; display: grid; align-content: center; gap: 4px; padding: 7px 10px; border-right: 1px solid rgba(148,177,190,.12); }
 .timing-session-summary > span:last-child { border-right: 0; }
@@ -224,22 +294,86 @@ button { font: inherit; }
 .track-start-sequence i.is-on { background: #ff2038; box-shadow: 0 0 10px rgba(255, 32, 56, .9); }
 .track-start-sequence span { display: block; margin-top: 3px; color: var(--muted); font: 8px var(--font-mono); letter-spacing: .15em; }
 .track-start-sequence.is-go span { color: var(--green); }
-.track-weather { position: relative; z-index: 1; width: 100%; margin-top: auto; padding: 11px 10px 10px 12px; overflow: hidden; border: 1px solid rgba(32,215,231,.16); border-left: 3px solid rgba(32, 215, 231, .82); background: radial-gradient(circle at 93% 12%, rgba(32,215,231,.13), transparent 34%), linear-gradient(112deg, rgba(9,20,26,.9), rgba(5,12,17,.52)); pointer-events: none; }
+/* Compact: this panel shares the rail with the radio, which needs the height
+   more than the surface readout does. */
+.track-weather { position: relative; z-index: 1; width: 100%; margin-top: auto; padding: 7px 9px 7px 10px; overflow: hidden; border: 1px solid rgba(32,215,231,.16); border-left: 3px solid rgba(32, 215, 231, .82); background: radial-gradient(circle at 93% 12%, rgba(32,215,231,.13), transparent 34%), linear-gradient(112deg, rgba(9,20,26,.9), rgba(5,12,17,.52)); pointer-events: none; }
 .track-weather::after { content: ""; position: absolute; top: -18px; right: 6px; width: 64px; height: 64px; border: 1px solid rgba(32,215,231,.12); border-radius: 50%; box-shadow: inset 0 0 0 10px rgba(32,215,231,.025), inset 0 0 0 20px rgba(32,215,231,.025); }
 .track-weather__title { position: relative; z-index: 1; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 4px 8px; }
 .track-weather__title span, .track-weather small { color: #8fa5ad; font: 900 9px var(--font-mono); letter-spacing: .08em; }
 .track-weather__title span { display: flex; align-items: center; gap: 6px; color: var(--accent); }
 .track-weather__title strong { color: #f0f6f7; font: 950 15px var(--font-mono); text-align: right; }
-.track-weather__sectors { position: relative; z-index: 1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; margin: 10px 0 9px; }
-.track-weather__sectors span { --surface-color: var(--green); min-width: 0; display: grid; grid-template-columns: 1fr auto; grid-template-rows: 14px 5px 10px; align-items: center; gap: 3px 4px; color: var(--surface-color); }
+/*
+ * One row per sector, stacked. A horizontal three-column split gave each sector
+ * a bar barely wider than its own label; stacking lets the bar run the full
+ * width of the panel, which is what makes the wetness readable at a glance.
+ */
+.track-weather__sectors { position: relative; z-index: 1; display: grid; grid-auto-rows: min-content; gap: 3px; margin: 6px 0 5px; }
+.track-weather__sectors span {
+  --surface-color: var(--green);
+  --wetness: 4%;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr) 40px;
+  align-items: center;
+  gap: 0 8px;
+  color: var(--surface-color);
+}
 .track-weather__sectors span.is-damp { --surface-color: var(--accent); }
 .track-weather__sectors span.is-wet { --surface-color: #5b9dff; }
 .track-weather__sectors span.is-heavy-wet { --surface-color: #315eff; }
 .track-weather__sectors span.is-cloudy, .track-weather__sectors span.is-light-rain { --surface-color: #5b9dff; }
 .track-weather__sectors span.is-heavy-rain { --surface-color: #315eff; }
-.track-weather__sectors i { grid-column: 1 / -1; position: relative; width: 100%; height: 4px; overflow: hidden; border-radius: 2px; background: rgba(126,151,160,.15); }
-.track-weather__sectors i::after { content: ""; position: absolute; inset: 0 auto 0 0; width: var(--wetness); background: var(--surface-color); box-shadow: 0 0 9px color-mix(in srgb,var(--surface-color) 66%,transparent); transition: width .5s ease; }
-.pit-timing-live { position: absolute; z-index: 8; top: 12px; right: calc(clamp(230px, 29%, 320px) + 14px); width: 232px; padding: 10px 12px 8px; border: 1px solid rgba(32,215,231,.36); border-top: 2px solid var(--accent); background: linear-gradient(145deg, rgba(5,17,22,.97), rgba(3,9,13,.97)); box-shadow: 0 14px 34px rgba(0,0,0,.42), 0 0 22px rgba(32,215,231,.08); }
+/* The bar sits between the sector label and its reading, and carries a moving
+   sheen whose speed follows how hard it is raining in that sector. */
+.track-weather__sectors b { grid-column: 1; grid-row: 1; color: #93a7ae; font: 900 11px/1 var(--font-mono); }
+.track-weather__sectors i {
+  grid-column: 2;
+  grid-row: 1;
+  position: relative;
+  width: 100%;
+  height: 7px;
+  overflow: hidden;
+  border-radius: 5px;
+  background: rgba(126, 151, 160, .16);
+  box-shadow: inset 0 0 0 1px rgba(148, 177, 190, .12);
+}
+.track-weather__sectors i::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--wetness);
+  border-radius: inherit;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--surface-color) 62%, transparent), var(--surface-color));
+  box-shadow: 0 0 10px color-mix(in srgb, var(--surface-color) 62%, transparent);
+  transition: width .5s ease;
+}
+.track-weather__sectors i::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 26px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .34), transparent);
+  opacity: calc(var(--rain-activity, 0) * .9);
+  animation: surface-sheen 2.1s linear infinite;
+  animation-duration: calc(2.6s - var(--rain-activity, 0) * 1.4s);
+}
+.track-weather__sectors strong { grid-column: 3; grid-row: 1; color: currentColor; font: 950 13px/1 var(--font-mono); font-variant-numeric: tabular-nums; text-align: right; }
+/* Hidden by default: the bar and its percentage already carry the reading, and
+   the per-sector condition word doubled the panel's height. */
+.track-weather__sectors em { display: none; }
+@keyframes surface-sheen { from { left: -26px; } to { left: 100%; } }
+/* Both player cars stack here, so a double pit stop shows two live timers. */
+.pit-timing-stack { position: absolute; z-index: 8; top: 12px; right: calc(clamp(230px, 29%, 320px) + 14px); width: 232px; display: grid; gap: 8px; }
+.pit-timing-live { padding: 10px 12px 8px; border: 1px solid rgba(32,215,231,.36); border-top: 2px solid var(--accent); background: linear-gradient(145deg, rgba(5,17,22,.97), rgba(3,9,13,.97)); box-shadow: 0 14px 34px rgba(0,0,0,.42), 0 0 22px rgba(32,215,231,.08); }
+
+/* The tyre-change clock pulses while the crew is on the car. */
+.pit-timing-live [data-tyre-change="true"][data-running="true"] strong { animation: tyre-change-pulse .62s ease-in-out infinite; }
+.pit-timing-live [data-tyre-change="true"][data-running="true"] small { color: var(--accent); }
+@keyframes tyre-change-pulse {
+  0%, 100% { color: #f4fbfc; text-shadow: 0 0 10px rgba(32, 215, 231, .35); }
+  50% { color: var(--accent); text-shadow: 0 0 20px rgba(32, 215, 231, .95); }
+}
 .pit-timing-live header, .pit-timing-live footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-family: var(--font-mono); }
 .pit-timing-live header span { color: var(--accent); font-size: 8px; letter-spacing: .11em; }
 .pit-timing-live header strong { color: #dce8eb; font-size: 10px; }
@@ -286,7 +420,8 @@ button { font: inherit; }
 .command-console__target { grid-area: target; }
 .visual-control--pace { grid-area: pace; }
 .visual-control--energy { grid-area: energy; }
-.visual-control--energy header { justify-content: flex-end; }
+/* Label left, live state right, matching the other command sections. */
+.visual-control--energy header { justify-content: space-between; }
 .visual-control--tyre { grid-area: tyre; }
 .pit-tyre-control { grid-area: pit; }
 .command-console__target { min-width: 0; display: grid; align-content: center; gap: 7px; padding-right: 10px; border-right: 1px solid var(--line); }
@@ -508,6 +643,35 @@ button { font: inherit; }
 .track-flag-panel { --flag-panel: var(--green); display: grid; grid-template-columns: 1fr; place-items: center; overflow: hidden; color: #03100b; text-align: center; background: linear-gradient(135deg, color-mix(in srgb, var(--flag-panel) 84%, #fff), var(--flag-panel)); box-shadow: inset 0 0 28px rgba(255,255,255,.18); }
 .track-flag-panel.condition--yellow { --flag-panel: #f4d335; color: #171300; }
 .track-flag-panel.condition--red { --flag-panel: #ff435b; color: #200006; }
+.track-flag-panel.status--chequered {
+  --flag-panel: #f5f8f9;
+  isolation: isolate;
+  color: #fff;
+  background-color: #05090c;
+  background-image:
+    linear-gradient(rgba(3, 8, 11, .28), rgba(3, 8, 11, .52)),
+    conic-gradient(from 90deg, #f4f7f8 25%, #070b0e 0 50%, #f4f7f8 0 75%, #070b0e 0);
+  background-position: 0 0, 0 0;
+  background-size: 100% 100%, 20px 20px;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.3), inset 0 0 28px rgba(0,0,0,.48), 0 0 24px rgba(255,255,255,.08);
+}
+.track-flag-panel.status--chequered .hud-stat-copy {
+  position: relative;
+  z-index: 1;
+  min-width: min(94%, 210px);
+  padding: 6px 10px;
+  border: 1px solid rgba(255,255,255,.22);
+  background: rgba(2,7,10,.68);
+  box-shadow: 0 5px 16px rgba(0,0,0,.38);
+}
+.track-flag-panel.status--chequered .hud-stat-copy > strong {
+  overflow: visible;
+  color: #fff !important;
+  font-size: clamp(18px, 1.35vw, 24px);
+  text-overflow: clip;
+  text-shadow: 0 2px 4px #000, 0 0 10px rgba(255,255,255,.28);
+}
+.track-flag-panel.status--chequered .hud-stat-copy > small { color: #fff !important; opacity: .9; }
 .track-flag-panel .hud-stat-copy { min-height: 54px; grid-template-rows: minmax(28px, auto) 11px; place-items: center; align-content: center; gap: 4px; }
 .track-flag-panel .hud-stat-copy > small { color: currentColor !important; opacity: .7; }
 .track-flag-panel .hud-stat-copy > strong { max-width: 100%; overflow: hidden; color: currentColor !important; font: 950 clamp(22px, 1.65vw, 29px)/.95 var(--font-mono); letter-spacing: .02em; text-overflow: ellipsis; text-shadow: none; white-space: nowrap; }
@@ -516,10 +680,18 @@ button { font: inherit; }
 .track-flag-panel.status--sc-ending .hud-stat-copy > strong { max-width: 190px; font-size: clamp(14px, 1.08vw, 19px); line-height: 1; white-space: normal; }
 .track-flag-panel .pit-lane-state { align-self: center; margin: 0; font-size: 9px !important; font-weight: 900; letter-spacing: .13em; }
 .track-flag-panel.is-flashing { animation: flag-panel-flash .55s ease-in-out 3; }
+.track-flag-panel.is-chequered { animation: chequered-panel-flash .9s steps(2, end) infinite; }
 @keyframes flag-panel-flash { 50% { color: #fff; background: #05090b; box-shadow: inset 0 0 0 3px var(--flag-panel), 0 0 24px color-mix(in srgb,var(--flag-panel) 70%,transparent); } }
+@keyframes chequered-panel-flash {
+  50% {
+    background-position: 0 0, 10px 10px;
+    box-shadow: inset 0 0 0 2px rgba(255,255,255,.56), inset 0 0 34px rgba(255,255,255,.22), 0 0 28px rgba(255,255,255,.16);
+  }
+}
 .broadcast-control-message { min-width: 0; display: grid; grid-template-rows: 8px 15px minmax(0,1fr); align-content: stretch; gap: 1px; padding: 3px 16px 4px !important; border-top: 3px solid var(--green); background: linear-gradient(110deg, rgba(75,222,149,.08), rgba(9,16,20,.9) 45%, rgba(10,21,26,.94)); }
 .broadcast-control-message.flag--yellow { border-top-color: var(--yellow); background: linear-gradient(110deg, rgba(244,211,94,.13), rgba(9,16,20,.92) 46%, rgba(10,21,26,.94)); }
 .broadcast-control-message.flag--red { border-top-color: var(--red); background: linear-gradient(110deg, rgba(255,82,105,.16), rgba(9,16,20,.92)); }
+.broadcast-control-message.flag--chequered { border-top-color: #f5f8f9; background: linear-gradient(110deg, rgba(255,255,255,.12), rgba(9,16,20,.94) 46%, rgba(10,21,26,.96)); }
 .control-message-meta { min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .control-message-meta > span { min-width: 0; overflow: hidden; color: #ff7772; font: 900 9px/1 var(--font-mono); letter-spacing: .075em; text-overflow: ellipsis; white-space: nowrap; }
 .control-message-meta > span:last-child { color: #8298a0; font-size: 8px; text-align: right; }
@@ -552,7 +724,37 @@ button { font: inherit; }
 .reset-button--icon { width: 31px; height: 31px; display: grid; place-items: center; padding: 0; border-radius: 50%; }
 
 .status-column { grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) minmax(160px, .52fr); }
-.car-card { position: relative; display: grid; grid-template-rows: 36px 43px minmax(102px, 1fr) 82px 18px; gap: 3px; padding: 8px 10px; border-color: rgba(148,177,190,.15); background: linear-gradient(145deg, rgba(11, 23, 29, .98), rgba(5, 12, 16, .98)); }
+/*
+ * Both the thermal map and the energy block are content-sized. The thermal row's
+ * own minimums total 110px, so a fixed 102px track let it overflow downwards and
+ * print over the battery readout underneath it.
+ */
+.car-card { position: relative; display: grid; grid-template-rows: 36px 43px minmax(112px, 1fr) minmax(82px, auto) 18px; gap: 3px; padding: 8px 10px; border-color: rgba(148,177,190,.15); background: linear-gradient(145deg, rgba(11, 23, 29, .98), rgba(5, 12, 16, .98)); }
+
+/*
+ * A car that is out of the race shows why it is out and nothing else. Live
+ * telemetry for a stopped car reads as if it were still running.
+ */
+.car-card--out {
+  grid-template-rows: 36px minmax(0, 1fr);
+  filter: grayscale(.55);
+  opacity: .82;
+}
+.car-card--out::before { background: var(--red); opacity: .5; }
+.car-card--out .car-position { color: #6d7f87; }
+.car-card__out-state {
+  min-width: 0;
+  display: grid;
+  align-content: center;
+  justify-items: start;
+  gap: 6px;
+  padding: 12px 2px;
+  border-top: 1px solid rgba(255, 82, 105, .22);
+}
+.car-card__out-state strong { color: var(--red); font: 950 22px/1 var(--font-mono); letter-spacing: .06em; }
+.car-card__out-state small { min-width: 0; overflow: hidden; color: #c3d0d4; font: 800 12px/1.35 var(--font-mono); text-overflow: ellipsis; }
+.car-card__out-state span { color: #7f939b; font: 800 11px/1 var(--font-mono); letter-spacing: .05em; }
+.status-chip--out { color: var(--red); border-color: rgba(255, 82, 105, .45); background: rgba(255, 82, 105, .12); }
 .car-card::before { content: ""; position: absolute; top: 8px; bottom: 8px; left: 0; width: 2px; border-radius: 0 2px 2px 0; background: var(--team-color); box-shadow: 0 0 10px color-mix(in srgb, var(--team-color) 68%, transparent); opacity: .6; }
 .car-card:hover, .car-card.is-selected { border-color: color-mix(in srgb, var(--team-color) 58%, rgba(32,215,231,.45)); background: linear-gradient(145deg, rgba(16, 34, 40, .98), rgba(5, 13, 18, .99)); }
 .car-card.is-selected { box-shadow: inset 0 2px 0 var(--team-color), inset 0 0 28px color-mix(in srgb, var(--team-color) 8%, transparent), 0 16px 50px rgba(0,0,0,.25); }
@@ -624,17 +826,73 @@ button { font: inherit; }
 .car-card__health-grid { align-items: end; margin: 0; }
 
 /* Live electrical energy surface: a large battery silhouette replaces the old circular SOC dial. */
-.energy-telemetry { --energy-status: var(--green); min-width: 0; display: grid; grid-template-columns: minmax(136px, 1.18fr) minmax(116px, 1fr); grid-template-rows: minmax(50px, 1fr) 14px 3px; gap: 2px 8px; padding: 5px 1px 0; border-top: 1px solid rgba(148,177,190,.14); color: #dce8eb; }
+/*
+ * Two rows since the decorative per-segment energy strip was removed. The rows
+ * are content-sized: a fixed 14px second row was shorter than the vitals strip
+ * it holds, which pushed the battery block over the flow diagram.
+ */
+/*
+ * Battery readout on the left, car aero state on the right. Both blocks are
+ * vertically centred in a single row: the previous two-row layout left the
+ * battery pinned to the top with dead space beneath it.
+ */
+.energy-telemetry { --energy-status: var(--green); min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); align-items: center; gap: 8px; padding: 7px 1px; border-top: 1px solid rgba(148,177,190,.14); color: #dce8eb; }
 .energy-telemetry[data-alert="true"] { background: linear-gradient(90deg, color-mix(in srgb, var(--energy-status) 7%, transparent), transparent 62%); }
-.energy-battery-readout { min-width: 0; grid-column: 1; grid-row: 1 / 3; display: grid; grid-template-columns: 48px minmax(0,1fr); grid-template-rows: minmax(45px,1fr) 14px; gap: 1px 7px; align-content: center; align-items: center; color: var(--energy-status); }
+/* Icon beside the reading, the whole block centred in its cell. */
+.energy-battery-readout { min-width: 0; grid-column: 1; display: grid; grid-template-columns: minmax(0, 46px) minmax(0, 1fr); align-content: center; align-items: center; gap: 2px 8px; color: var(--energy-status); }
 .energy-battery-icon { grid-row: 1; color: var(--energy-status); filter: drop-shadow(0 0 8px color-mix(in srgb,var(--energy-status) 42%,transparent)); transition: color .2s ease; }
-.energy-battery-shell { min-width: 0; height: 45px; display: grid; grid-template-columns: 1fr auto; grid-template-rows: 13px 23px 5px; align-content: center; gap: 0 4px; padding: 1px; }
+/* `line-height: 1` on a 25px numeral clipped its descender box, so the rows are
+   content-sized and the value carries its own leading. */
+.energy-battery-shell { min-width: 0; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto 5px; align-content: center; gap: 1px 4px; padding: 1px 1px 2px; }
 .energy-battery-shell > span { grid-column: 1; color: #d9e7ea; font: 900 8px var(--font-mono); letter-spacing: .08em; }
-.energy-battery-shell > strong { grid-column: 1 / -1; color: #f7fbfc; font: 950 25px/1 var(--font-mono); text-shadow: 0 1px 7px #000; }
+.energy-battery-shell > strong { grid-column: 1 / -1; color: #f7fbfc; font: 950 25px/1.12 var(--font-mono); text-shadow: 0 1px 7px #000; }
 .energy-battery-shell > strong small { margin-left: 1px; color: var(--energy-status); font-size: 9px; }
 .energy-battery-shell > i { grid-column: 1 / -1; height: 5px; overflow: hidden; border-radius: 2px; background: rgba(121,151,163,.14); }
 .energy-battery-shell > i b { display: block; height: 100%; border-radius: inherit; background: var(--energy-status); box-shadow: 0 0 9px var(--energy-status); transition: width .32s linear, background .2s ease; }
 .energy-battery-state { grid-column: 1 / -1; align-self: end; color: var(--energy-status); font: 950 9px/1 var(--font-mono); letter-spacing: .11em; text-align: center; }
+
+/*
+ * Car side profile with its movable aero flaps. The flaps rotate about their
+ * inboard edge, so an open flap reads as a hinged panel rather than a moved
+ * block, and they pulse while a zone is active to mark it as a live state.
+ */
+.aero-wing-car {
+  --wing-tone: #4bde95;
+  min-width: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto 3px;
+  align-content: center;
+  gap: 3px;
+}
+.aero-wing-car[data-wing-state="OPEN"] { --wing-tone: var(--accent); }
+.aero-wing-car svg { width: 100%; height: auto; max-height: clamp(38px, 4.2vh, 52px); overflow: visible; }
+.aero-wing-car__body { fill: rgba(148, 177, 190, .16); stroke: rgba(190, 214, 220, .58); stroke-width: 1.6; }
+.aero-wing-car__halo { fill: none; stroke: rgba(190, 214, 220, .5); stroke-width: 2.4; stroke-linecap: round; }
+.aero-wing-car__wheel { fill: #0a1216; stroke: rgba(176, 200, 208, .5); stroke-width: 2.2; }
+.aero-wing-car__hub { fill: rgba(176, 200, 208, .42); }
+.aero-wing-car__plane { fill: rgba(190, 214, 220, .5); }
+
+/* Closed by default; each flap hinges from its inboard end when a zone opens. */
+.aero-wing-car__flap { fill: var(--wing-tone); transition: transform .24s ease-out, opacity .24s ease-out; }
+.aero-wing-car__flap--front { transform-origin: 38px 61px; }
+.aero-wing-car__flap--rear { transform-origin: 222px 27px; }
+.aero-wing-car[data-wing-state="OPEN"] .aero-wing-car__flap--front { animation: wing-flap-front 1s ease-in-out infinite; }
+.aero-wing-car[data-wing-state="OPEN"] .aero-wing-car__flap--rear { animation: wing-flap-rear 1s ease-in-out infinite; }
+@keyframes wing-flap-front {
+  0%, 100% { transform: rotate(-16deg); opacity: 1; filter: drop-shadow(0 0 6px color-mix(in srgb, var(--wing-tone) 70%, transparent)); }
+  50% { transform: rotate(-24deg); opacity: .58; filter: drop-shadow(0 0 12px var(--wing-tone)); }
+}
+@keyframes wing-flap-rear {
+  0%, 100% { transform: rotate(38deg); opacity: 1; filter: drop-shadow(0 0 6px color-mix(in srgb, var(--wing-tone) 70%, transparent)); }
+  50% { transform: rotate(52deg); opacity: .58; filter: drop-shadow(0 0 14px var(--wing-tone)); }
+}
+
+.aero-wing-car__state { min-width: 0; display: grid; justify-items: center; gap: 1px; }
+.aero-wing-car__state b { color: var(--wing-tone); font: 950 9px/1 var(--font-mono); letter-spacing: .1em; }
+.aero-wing-car__state small { min-width: 0; overflow: hidden; color: #7f959d; font: 800 8px/1.1 var(--font-mono); letter-spacing: .04em; text-overflow: ellipsis; white-space: nowrap; }
+/* Distance remaining inside the active zone. */
+.aero-wing-car > i { position: relative; height: 3px; overflow: hidden; border-radius: 2px; background: rgba(126, 151, 160, .16); }
+.aero-wing-car > i::after { position: absolute; inset: 0 auto 0 0; width: var(--zone-progress, 0%); border-radius: inherit; background: var(--wing-tone); box-shadow: 0 0 8px var(--wing-tone); content: ""; transition: width .3s linear; }
 .energy-telemetry[data-flow="harvest"] .energy-battery-icon { animation: battery-charge-breathe 1.05s ease-in-out infinite; }
 .energy-telemetry[data-flow="deploy"] .energy-battery-icon { animation: battery-deploy-breathe .72s ease-in-out infinite; }
 @keyframes battery-charge-breathe { 50% { filter: brightness(1.55) drop-shadow(0 0 10px var(--energy-status)); } }
@@ -644,7 +902,9 @@ button { font: inherit; }
 .energy-flow header span, .energy-flow header strong { overflow: hidden; font: 900 8px var(--font-mono); letter-spacing: .025em; text-overflow: ellipsis; white-space: nowrap; }
 .energy-flow header span { color: #7f969f; }
 .energy-flow header strong { color: var(--energy-status); }
-.energy-flow__path { min-width: 0; display: grid; grid-template-columns: minmax(34px,1fr) 12px minmax(39px,1fr) 12px minmax(34px,1fr); align-items: center; gap: 2px; }
+/* Battery and ICE either side of one flow arrow; the MGU-K rating in the middle
+   was a fixed spec value rather than live telemetry. */
+.energy-flow__path { min-width: 0; display: grid; grid-template-columns: minmax(0,1fr) 14px minmax(0,1fr); align-items: center; gap: 2px; }
 .energy-flow__path > span { min-width: 0; text-align: center; }
 .energy-flow__path small, .energy-flow__path b { display: block; overflow: hidden; font-family: var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
 .energy-flow__path small { color: #67808a; font-size: 7px; }
@@ -667,25 +927,21 @@ button { font: inherit; }
 .energy-vitals small { color: #718993; font-size: 6px; }
 .energy-vitals b { color: #e6f0f2; font-size: 8px; }
 .energy-vitals b.is-warning { color: var(--yellow); }
-.energy-track-plan { grid-column: 1 / -1; grid-row: 3; min-width: 0; display: flex; gap: 2px; }
-.energy-track-plan i { flex: 1 1 0; height: 3px; background: rgba(121,151,163,.18); }
-.energy-track-plan i[data-action="deploy"] { background: var(--green); box-shadow: 0 0 4px rgba(75,222,149,.45); }
-.energy-track-plan i[data-action="harvest"] { background: var(--accent); box-shadow: 0 0 4px rgba(32,215,231,.45); }
-.energy-track-plan i[data-action="coast"] { background: #398cff; }
-.energy-track-plan i[data-action="clipping_risk"] { background: var(--red); animation: energy-clip .7s steps(2,end) infinite; }
 
-.visual-control--energy > .energy-mode-rail { position: relative; display: grid; grid-template-columns: repeat(5, minmax(0,1fr)); gap: 5px; }
+/* Three usage levels sharing the row evenly. The old five-column track left the
+   buttons bunched against the left edge once the two extra maps were removed. */
+.visual-control--energy > .energy-mode-rail { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
 .visual-control--energy header .is-ovt-live { color: #ff5269; text-shadow: 0 0 10px rgba(255,82,105,.62); }
-.visual-control--energy > .energy-mode-rail::before { content: ""; position: absolute; top: 16px; right: 12px; left: 12px; height: 1px; background: linear-gradient(90deg, #20d7e7, #4bde95 36%, #ffd34d 62%, #ff5269); opacity: .36; }
-.visual-control--energy button { position: relative; z-index: 1; width: 100%; max-width: none; height: 34px; aspect-ratio: auto; grid-template-columns: 1fr; grid-template-rows: 13px 10px; place-items: center; gap: 1px; padding: 3px 2px; border-radius: 17px; background: #09141a; }
+.visual-control--energy button { position: relative; z-index: 1; width: 100%; max-width: none; height: 38px; aspect-ratio: auto; grid-template-columns: 1fr; grid-template-rows: 13px 12px; place-items: center; gap: 2px; padding: 4px 6px; border-radius: 19px; background: #09141a; }
 .visual-control--energy button::after { inset: 2px; border-radius: 14px; }
-.visual-control--energy button strong { max-width: 100%; font-size: 8px; letter-spacing: .04em; }
+.visual-control--energy button strong { max-width: 100%; font-size: 10px; letter-spacing: .04em; }
 .visual-control--energy .control-glyph--energy { width: 22px; height: 11px; padding: 2px 3px; }
 .visual-control--energy .control-glyph--energy i { width: 3px; height: 4px !important; }
 .visual-control--energy button[aria-pressed="true"] { transform: translateY(-2px); box-shadow: 0 0 14px color-mix(in srgb, var(--node-color) 46%, transparent); }
-.energy-node--harvest { --node-color: #20d7e7 !important; }
+/* Tight spends, balanced holds, save banks. */
+.energy-node--attack { --node-color: #ff5269 !important; }
+.energy-node--balanced { --node-color: #ffd34d !important; }
 .energy-node--conserve { --node-color: #4bde95 !important; }
-.energy-node--boost, .energy-node--overtake { --node-color: #ff5269 !important; }
 .car-health > span { font-size: 7px; }
 .car-health > i { height: 2px; margin-top: 3px; }
 .engineer-panel { padding: 12px 13px; border-top: 2px solid color-mix(in srgb,var(--team-color,var(--accent)) 70%,var(--accent)); background: linear-gradient(145deg, rgba(12,26,33,.98), rgba(5,12,16,.99)); }
@@ -851,12 +1107,16 @@ button { font: inherit; }
   backdrop-filter: blur(7px);
   pointer-events: none;
 }
-.track-intelligence-rail { position: absolute; z-index: 4; top: 0; right: 0; bottom: 0; width: clamp(230px, 29%, 320px); display: grid; grid-template-rows: minmax(0, 1fr) auto; gap: 10px; padding: 12px; overflow: hidden; border-left: 1px solid rgba(148,177,190,.08); background: linear-gradient(90deg, rgba(4,11,15,.04), rgba(4,11,15,.4) 25%, rgba(4,11,15,.72)); pointer-events: none; }
+/* Radio takes the remaining height; the surface panel is sized to its content so
+   it cannot crowd the messages out. */
+.track-intelligence-rail { position: absolute; z-index: 4; top: 0; right: 0; bottom: 0; width: clamp(230px, 29%, 320px); display: grid; grid-template-rows: minmax(0, 1fr) min-content; gap: 8px; padding: 10px; overflow: hidden; border-left: 1px solid rgba(148,177,190,.08); background: linear-gradient(90deg, rgba(4,11,15,.04), rgba(4,11,15,.4) 25%, rgba(4,11,15,.72)); pointer-events: none; }
 .track-radio > header { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-bottom: 6px; border-bottom: 1px solid rgba(148,177,190,.16); }
 .track-radio > header span { display: flex; align-items: center; gap: 6px; color: var(--radio-tone); font: 950 10px var(--font-mono); letter-spacing: .07em; }
 .track-radio > header strong { color: #a9bbc1; font: 900 9px var(--font-mono); letter-spacing: .07em; }
 .track-radio__messages { min-height: 0; display: grid; align-content: start; gap: 3px; padding: 4px 3px 0 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; pointer-events: auto; scrollbar-color: color-mix(in srgb,var(--radio-tone) 42%,transparent) transparent; scrollbar-width: thin; }
-.track-radio__message { min-width: 0; max-width: 100%; padding: 4px 0 3px; overflow: hidden; animation: radio-reveal .24s ease-out both; }
+/* `overflow: hidden` here cut the tail off a long call. The message grows to fit
+   its text and the list above it scrolls instead. */
+.track-radio__message { min-width: 0; max-width: 100%; padding: 4px 0 3px; animation: radio-reveal .24s ease-out both; }
 .track-radio__message + .track-radio__message { border-top: 1px solid rgba(148,177,190,.1); opacity: .78; }
 .track-radio__speaker { display: grid !important; grid-template-columns: 48px minmax(0,1fr); align-items: center !important; gap: 9px !important; }
 .track-radio__speaker > strong { display: grid; width: 48px; height: 29px; place-items: center; border: 1px solid color-mix(in srgb,var(--radio-tone) 68%,transparent); border-radius: 3px; color: #071014; background: var(--radio-tone); box-shadow: 0 0 14px color-mix(in srgb,var(--radio-tone) 26%,transparent); font: 950 15px/1 var(--font-mono); }
@@ -864,8 +1124,9 @@ button { font: inherit; }
 .track-radio__speaker b, .track-radio__speaker small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .track-radio__speaker b { color: #f0f6f7; font: 900 11px var(--font-mono); }
 .track-radio__speaker small { margin-top: 3px; color: var(--radio-tone); font: 850 8px var(--font-mono); letter-spacing: .06em; }
-.track-radio__message p { display: block; max-width: 100%; margin: 7px 0 0; overflow: visible; color: #eff5f6; font: 12px/1.42 var(--font-mono); overflow-wrap: anywhere; text-shadow: 0 1px 5px #000; }
-.track-intelligence-rail > .track-weather { min-height: 98px; margin-top: 0; }
+/* Fluid type so a long call stays readable without forcing the box taller. */
+.track-radio__message p { display: block; max-width: 100%; margin: 6px 0 0; color: #eff5f6; font: clamp(11px, .82vw, 13px)/1.4 var(--font-mono); overflow-wrap: anywhere; text-shadow: 0 1px 5px #000; }
+.track-intelligence-rail > .track-weather { min-height: 0; margin-top: 0; }
 .track-radio__message--warning p { color: #fff0a9; }
 .track-radio__message--urgent p { color: #ffb8c1; }
 .track-radio__standby { margin: 8px 0 3px; color: #94a8af; font: 10px/1.4 var(--font-mono); }
@@ -918,8 +1179,13 @@ button { font: inherit; }
 
 @media (prefers-reduced-motion: reduce) {
   .track-flag-panel.is-flashing { animation: none; }
+  .track-flag-panel.is-chequered { animation: none; }
   .track-radio__message { animation: none; }
-  .energy-flow__path > i b, .energy-track-plan i[data-action="clipping_risk"], .energy-battery-icon { animation: none; }
+  .energy-battery-icon, .track-weather__sectors i::after,
+  .pit-timing-live [data-tyre-change="true"][data-running="true"] strong { animation: none; }
+  /* Flaps still show their open angle, they simply stop pulsing. */
+  .aero-wing-car[data-wing-state="OPEN"] .aero-wing-car__flap--front { animation: none; transform: rotate(-20deg); }
+  .aero-wing-car[data-wing-state="OPEN"] .aero-wing-car__flap--rear { animation: none; transform: rotate(45deg); }
 }
 
 /* Shared legibility system: scale type, row rhythm and spacing without transforming the canvas. */
@@ -953,12 +1219,19 @@ button { font: inherit; }
 .control-message-detail {
   display: -webkit-box;
   overflow: hidden;
-  font-size: var(--ui-font-body);
-  line-height: 1.3;
+  /*
+   * A neutralisation notice now names the car and location before the
+   * instruction, so it needs a third line and a slightly tighter fluid size to
+   * stay whole. Two lines clipped the procedural half of the message.
+   */
+  font-size: clamp(9px, .66vw, 12px);
+  line-height: 1.22;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 4;
 }
-.broadcast-control-message { grid-template-rows: minmax(11px, auto) minmax(18px, auto) minmax(0, 1fr); }
+/* The detail line owns the remaining height so a four-line neutralisation
+   notice is not cut off by the fixed meta and headline rows above it. */
+.broadcast-control-message { grid-template-rows: minmax(10px, auto) minmax(16px, auto) minmax(0, 1fr); align-content: start; }
 .condition-reading strong { font-size: var(--ui-font-data); line-height: 1.15; }
 .speed-selector-label, .speed-step span { font-size: var(--ui-font-label); line-height: 1; }
 .speed-selector { width: 174px; }
@@ -994,12 +1267,32 @@ button { font: inherit; }
 .timing-list { overflow-x: hidden; overflow-y: auto; }
 
 .car-card {
-  grid-template-rows: minmax(38px, auto) minmax(46px, auto) minmax(94px, 1fr) minmax(78px, auto) minmax(24px, auto);
+  /*
+   * The thermal map needs 112px for its own rows; 94px let it overflow onto the
+   * battery block below. The identity row is `auto` so a two-line driver name
+   * grows the row instead of being clipped.
+   */
+  grid-template-rows: minmax(38px, auto) minmax(46px, auto) minmax(112px, 1fr) minmax(90px, auto) minmax(24px, auto);
   gap: var(--ui-space-xs);
   padding: var(--ui-space-md) 11px;
 }
 .car-card__top { grid-template-columns: 48px minmax(0,1fr) minmax(30px,auto) 38px; }
-.car-card__identity strong { font-size: clamp(13px, calc(13px * var(--ui-scale)), 16px); line-height: 1.25; }
+/*
+ * The driver name is the card's headline, so it is centred in the row and sized
+ * fluidly. `overflow-wrap` lets a long surname use a second line instead of
+ * being truncated.
+ */
+.car-card__identity { justify-self: center; text-align: center; }
+.car-card__identity strong {
+  overflow: visible;
+  font-size: clamp(15px, 1.15vw, 21px);
+  font-weight: 900;
+  line-height: 1.14;
+  letter-spacing: .01em;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: break-word;
+}
 .car-card__top .status-chip { max-width: 78px; overflow: hidden; font-size: var(--ui-font-label); line-height: 1.15; text-overflow: ellipsis; white-space: nowrap; }
 .car-number { font-size: var(--ui-font-body); line-height: 1; }
 .car-kpi-rail { grid-template-columns: 1fr 1.2fr 1.18fr .78fr; font-variant-numeric: tabular-nums; }

@@ -48,7 +48,8 @@ describe("OpenF1-style race control feed", () => {
       category: "Flag",
       flag: "YELLOW",
       headline: "YELLOW FLAG",
-      detail: "SECTOR 2 · REDUCE SPEED · OVERTAKING PROHIBITED",
+      // With no incident on file the sector is all the notice can name.
+      detail: "SECTOR 2 INCIDENT · REDUCE SPEED · NO OVERTAKING",
       scope: "Sector",
       sector: 2,
       message: "YELLOW FLAG IN TRACK SECTOR 2",
@@ -60,11 +61,11 @@ describe("OpenF1-style race control feed", () => {
     expect(latestRaceControlNotice(snapshot)).toMatchObject({
       flag: "VSC",
       headline: "VIRTUAL SAFETY CAR",
-      detail: "MAINTAIN POSITIVE DELTA · REDUCE SPEED · OVERTAKING PROHIBITED",
+      detail: "MAINTAIN POSITIVE DELTA · NO OVERTAKING",
     });
   });
 
-  it("shows only the active safety-car directive and suppresses incident copy", () => {
+  it("names the car and place that caused a neutralisation alongside the directive", () => {
     const initial = createInitialSnapshot(35);
     const incidentCar = initial.cars[5];
     const snapshot = {
@@ -91,9 +92,15 @@ describe("OpenF1-style race control feed", () => {
     const notice = latestRaceControlNotice(snapshot);
     expect(notice.headline).toBe("SAFETY CAR");
     expect(notice.detail).toContain("FOLLOW SAFETY CAR DELTA");
-    expect(notice.detail).not.toContain("INCIDENT");
-    expect(notice.detail).not.toContain("STOPPED");
-    expect(notice.detail).not.toContain("STOWE");
+    /*
+     * The pit wall needs to know why the race is neutralised, so the notice names
+     * the car, its number and where it stopped before the procedural instruction.
+     */
+    expect(notice.detail).toContain("STOPPED");
+    expect(notice.detail).toContain("STOWE");
+    expect(notice.detail).toMatch(/CAR \d+/);
+    // The stale investigation message still must not replace the directive.
+    expect(notice.detail).not.toContain("UNDER INVESTIGATION");
   });
 
   it("announces the lap-down wave-by without contradicting it with a no-overtaking instruction", () => {

@@ -107,21 +107,51 @@ function calculateActiveRacecraftDecision(context: RacecraftContext, field: read
   );
 
   const thermalProtection = car.thermalDeratePercent >= 2.5 || car.thermalRiskPercent >= 12;
+
+  /*
+   * Racecraft looks two cars ahead, not one. A driver who can see a train
+   * forming builds a run before the gap closes rather than reacting only once
+   * it is already inside a second, and a driver in the middle of a train knows
+   * that attacking is pointless while the car ahead is itself blocked.
+   */
+  const secondAhead = field[index - 2];
+  const gapToSecondAhead = ahead && secondAhead ? gapAhead + ahead.gapToCarAhead : Infinity;
+  const trainAhead = Number.isFinite(gapToSecondAhead) && gapToSecondAhead <= 2.6;
+  const aheadIsBlocked = Boolean(ahead && ahead.gapToCarAhead <= 1.1);
+  /*
+   * Closing on a car that is still 1-2.5s away is worth preparing for: build
+   * charge now so the attack lands with a full battery. Only a genuinely low
+   * reserve triggers this, otherwise every car in the field would spend the race
+   * harvesting instead of racing.
+   */
+  const approachWindow = Boolean(ahead && gapAhead > 1.25 && gapAhead <= 2.6 && closingRateKph > 1.5);
+
   let intent: RacecraftIntent = "HOLD";
   if (!green || thermalProtection || car.batteryPercent < 18) intent = "HARVEST";
   else if (ahead && gapAhead <= 1.25 && overtakeProbability >= Math.max(0.38, defenceProbability + 0.05)) intent = "ATTACK";
   else if (behind && gapBehind <= 1.15 && defenceProbability >= 0.36) intent = "DEFEND";
+  else if (approachWindow && car.batteryPercent < 34) intent = "HARVEST";
 
   const battleStatus: BattleStatus = !green
     ? "CLEAR"
     : ahead && gapAhead <= 0.18
       ? "SIDE_BY_SIDE"
       : intent === "ATTACK" ? "ATTACKING" : intent === "DEFEND" ? "DEFENDING" : "CLEAR";
-  const recommendedPaceMode: PaceMode = intent === "ATTACK" ? "ATTACK" : intent === "DEFEND" ? "PUSH" : intent === "HARVEST" ? (thermalProtection ? "COOL" : "CONSERVE") : "STANDARD";
+  const recommendedPaceMode: PaceMode = intent === "ATTACK"
+    // Attacking behind a blocked car burns the tyre for nothing.
+    ? aheadIsBlocked && gapAhead > 0.6 ? "PUSH" : "ATTACK"
+    : intent === "DEFEND" ? "PUSH"
+      : intent === "HARVEST" ? (thermalProtection ? "COOL" : "CONSERVE")
+        : trainAhead && closingRateKph > 0 ? "PUSH" : "STANDARD";
+  /*
+   * Every car uses the same three usage levels the pit wall offers: tight,
+   * balanced and saving. OVERTAKE stays separate as the discrete passing boost.
+   */
   const recommendedEnergyMode: EnergyMode = intent === "ATTACK"
     ? car.energySystem?.overtakeEligible ? "OVERTAKE" : "ATTACK"
-    : intent === "DEFEND" ? "BOOST"
-      : intent === "HARVEST" ? "HARVEST" : car.batteryPercent < 38 ? "CONSERVE" : "BALANCED";
+    : intent === "DEFEND" ? "ATTACK"
+      : intent === "HARVEST" ? "CONSERVE"
+        : car.batteryPercent < 38 ? "CONSERVE" : "BALANCED";
   const recommendedRacingLineMode: RacingLineMode = intent === "ATTACK" ? "ATTACK" : intent === "DEFEND" ? "DEFEND" : "RACING";
   const dirtyAirCostSecondsPerLap = clamp(car.dirtyAirLoss * 88 + (gapAhead < 1.2 && segment.kind !== "STRAIGHT" ? (1.2 - gapAhead) * 0.18 : 0), 0, 1.8);
   const reasons: string[] = [];
@@ -130,6 +160,8 @@ function calculateActiveRacecraftDecision(context: RacecraftContext, field: read
   if (car.batteryPercent < 18) reasons.push(`Energy reserve is only ${Math.round(car.batteryPercent)}%.`);
   if (intent === "ATTACK" && ahead) reasons.push(`${ahead.carId} is ${gapAhead.toFixed(3)}s ahead with ${Math.round(overtakeProbability * 100)}% pass probability.`);
   if (intent === "DEFEND" && behind) reasons.push(`${behind.carId} is the immediate threat at ${gapBehind.toFixed(3)}s.`);
+  if (intent === "HARVEST" && approachWindow && ahead) reasons.push(`Building charge to attack ${ahead.carId} in ${gapAhead.toFixed(1)}s.`);
+  if (aheadIsBlocked && ahead) reasons.push(`${ahead.carId} is itself held up; waiting for a cleaner run.`);
   if (intent === "HOLD") reasons.push("No high-value attack or defence window is open.");
   if (lowGrip) reasons.push("Low grip reduces deployment and braking confidence.");
 

@@ -277,6 +277,42 @@ export const SILVERSTONE_OVERTAKE_DETECTION_DISTANCE = SILVERSTONE_CORNERS[16].d
 export const SILVERSTONE_OVERTAKE_ACTIVATION_DISTANCE = SILVERSTONE_CORNERS[17].distanceMeters - Math.min(34, CLUB_CORNER_GAP * 0.2);
 export const SILVERSTONE_OVERTAKE_ZONE_END_DISTANCE = SILVERSTONE_CIRCUIT.lengthMeters * 0.1;
 
+/**
+ * Silverstone's two movable-aerodynamic zones.
+ *
+ * Zone 1 runs down the Wellington Straight: the flap opens on the exit of
+ * Aintree (T5) and closes at the Brooklands (T6) braking point. Zone 2 runs down
+ * the Hangar Straight: it opens on the exit of Chapel (T14) and closes into
+ * Stowe (T15). The published circuit guide gives these as corner references
+ * rather than metre coordinates, so each zone is mapped onto this centreline
+ * with a short margin either side of the corner.
+ */
+export const SILVERSTONE_WING_ZONES = [
+  {
+    id: "WELLINGTON",
+    label: "Wellington Straight",
+    openAtMeters: SILVERSTONE_CORNERS[4].distanceMeters + 46,
+    closeAtMeters: SILVERSTONE_CORNERS[5].distanceMeters - 58,
+  },
+  {
+    id: "HANGAR",
+    label: "Hangar Straight",
+    openAtMeters: SILVERSTONE_CORNERS[13].distanceMeters + 52,
+    closeAtMeters: SILVERSTONE_CORNERS[14].distanceMeters - 74,
+  },
+] as const;
+
+export type SilverstoneWingZoneId = typeof SILVERSTONE_WING_ZONES[number]["id"];
+
+/**
+ * The wing zone a car is inside, or null on the rest of the lap. Zones never
+ * wrap the start line, so a plain range test is enough.
+ */
+export function wingZoneAtDistance(distanceMeters: number): typeof SILVERSTONE_WING_ZONES[number] | null {
+  const lapDistance = normalizeLapDistance(distanceMeters);
+  return SILVERSTONE_WING_ZONES.find((zone) => lapDistance >= zone.openAtMeters && lapDistance < zone.closeAtMeters) ?? null;
+}
+
 export const SILVERSTONE_SECTOR_ENDS = [
   SILVERSTONE_CORNERS[4].distanceMeters + 30,
   SILVERSTONE_CORNERS[10].distanceMeters,

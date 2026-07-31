@@ -32,7 +32,7 @@ function completedPitSpeedingInvestigation(snapshot: RaceSnapshot, index: number
 }
 
 describe("80 km/h pit-lane limiter", () => {
-  it("creates only the seeded two or three small limiter mistakes during a mass pit entry", () => {
+  it("creates only the seeded rare limiter mistakes during a mass pit entry", () => {
     let snapshot = createInitialSnapshot(421, "RUNNING");
     snapshot = {
       ...snapshot,
@@ -64,7 +64,10 @@ describe("80 km/h pit-lane limiter", () => {
     const penalties = snapshot.penalties.filter((penalty) => penalty.infringement === "PIT_SPEEDING");
     expect(penalties).toHaveLength(quota);
     expect(penalties.every((penalty) => penalty.type === "TIME_5")).toBe(true);
-    expect(snapshot.radioMessages.some((message) => message.source === "RACE CONTROL" && message.message.includes("KM/H IN 80 KM/H ZONE"))).toBe(true);
+    // Speeding is rare, so most seeds produce no incident and therefore no call.
+    if (quota > 0) {
+      expect(snapshot.radioMessages.some((message) => message.source === "RACE CONTROL" && message.message.includes("KM/H IN 80 KM/H ZONE"))).toBe(true);
+    }
   });
 
   it("keeps a normal car at or below 80 km/h and derives a realistic full pit-lane time", () => {

@@ -254,22 +254,11 @@ function evidenceCandidates(snapshot: RaceSnapshot, cars: readonly RaceCarState[
       });
     }
 
-    const newlyFinished = !previous.finished && car.finished;
-    const wetRace = snapshot.weather.condition === "LIGHT_RAIN" || snapshot.weather.condition === "HEAVY_RAIN"
-      || car.usedTyreCompounds.some((compound) => compound === "INTERMEDIATE" || compound === "WET");
-    const dryCompounds = new Set(car.usedTyreCompounds.filter((compound) => compound === "SOFT" || compound === "MEDIUM" || compound === "HARD"));
-    if (newlyFinished && !wetRace && dryCompounds.size < 2) {
-      candidates.push({
-        id: `${car.carId}:tyre-rule:finish`,
-        car,
-        infringement: "TYRE_RULE",
-        reason: "DRY-WEATHER TYRE REQUIREMENT",
-        evidence: `Only ${[...dryCompounds].join(", ") || "one dry compound"} used`,
-        severity: 1,
-        responsibility: 1,
-        repeatCount: 1,
-      });
-    }
+    /*
+     * The dry-weather two-compound requirement is intentionally not enforced.
+     * Strategy plans still build two compounds into a full race distance, but a
+     * one-compound race is no longer penalised or disqualified.
+     */
   }
 
   for (const event of incidentEvents) {

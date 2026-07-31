@@ -59,7 +59,8 @@ async function inspectStaticMap(page, label) {
   check(await canvas.getAttribute("data-label-treatment") === "WHITE_DARK_PLATE", `${label} uses high-contrast white labels with dark plates`);
   check(await canvas.getAttribute("data-label-anchoring") === "PERSISTENT_OFFSETS", `${label} preserves stable driver label directions`);
   const legend = map.getByLabel("Live circuit marker legend");
-  check(await legend.locator("span").count() === 8 && await legend.getByText("Yielding", { exact: true }).count() === 1 && await legend.getByText("Aborted", { exact: true }).count() === 1, `${label} legend matches all eight live marker states`);
+  // Cool-down is no longer a separate phase: a recovery lap is an in lap.
+  check(await legend.locator("span").count() === 7 && await legend.getByText("Yielding", { exact: true }).count() === 1 && await legend.getByText("Aborted", { exact: true }).count() === 1, `${label} legend matches all seven live marker states`);
   check(await map.locator("svg[class*='circuitBackdrop']").count() === 1 && await canvas.count() === 1, `${label} keeps one memoised SVG and one animated Canvas`);
 }
 

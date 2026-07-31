@@ -12,5 +12,8 @@ describe("race topbar track flag", () => {
     expect(getTrackFlagDisplay({ ...initial, raceControl: "SAFETY_CAR", safetyCarPhase: "BUNCHING" }).label).toBe("SAFETY CAR");
     expect(getTrackFlagDisplay({ ...initial, raceControl: "SAFETY_CAR", safetyCarPhase: "RESTART" }).label).toBe("SAFETY CAR ENDING");
     expect(getTrackFlagDisplay(initial, true)).toMatchObject({ label: "RED FLAG", tone: "red" });
+    expect(getTrackFlagDisplay(initial, false, true)).toMatchObject({ label: "CHEQUERED", tone: "chequered" });
+    expect(getTrackFlagDisplay({ ...initial, status: "FINISHED" })).toMatchObject({ label: "CHEQUERED", key: "chequered" });
+    expect(getTrackFlagDisplay({ ...initial, status: "FINISHED", raceControl: "RED_FLAG" })).toMatchObject({ label: "RED FLAG", tone: "red" });
   });
 });

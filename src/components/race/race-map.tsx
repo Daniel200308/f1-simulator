@@ -5,7 +5,8 @@ import type { CSSProperties } from "react";
 import type { Application, Container, Graphics, Text } from "pixi.js";
 import { CloudRain, Radar } from "lucide-react";
 
-import { DEFAULT_PLAYER_TEAM_ID, DRIVERS, TEAM_BY_ID } from "@/fixtures/grid";
+import type { RaceCarState } from "@/domain/race";
+import { DEFAULT_PLAYER_TEAM_ID, DRIVER_BY_ID, DRIVERS, playerCarIdsFor, TEAM_BY_ID } from "@/fixtures/grid";
 import { TeamRadioOverlay } from "@/components/race/team-radio-overlay";
 import { createTrackViewport, distanceToCenterline, projectTrackPoint } from "@/components/race/track-viewport";
 import { PIT_BOX_DISTANCE, PIT_ENTRY_START, PIT_EXIT_END } from "@/simulation/engine";
@@ -64,24 +65,43 @@ export function RaceMap({ startPhase, lightsOn, qualifyingState = null }: { star
   const playerTeamId = qualifyingState?.playerTeamId ?? snapshot?.playerTeamId ?? DEFAULT_PLAYER_TEAM_ID;
   const isQualifying = Boolean(qualifyingLive);
   const selectedCar = snapshot?.cars.find((car) => car.carId === selectedCarId);
-  const tyreChangeComplete = Boolean(selectedCar?.lastPitStopTime !== null
-    && selectedCar?.lastPitStopCompletedAt != null
-    && snapshot
-    && snapshot.elapsedTime - selectedCar.lastPitStopCompletedAt < 4.5);
-  const showPitTiming = Boolean(selectedCar && (selectedCar.pitStatus !== "TRACK" || tyreChangeComplete));
-  const displayedTyreChangeSeconds = tyreChangeComplete
-    ? selectedCar?.lastPitStopTime ?? 0
-    : selectedCar?.pitTyreServiceElapsedSeconds ?? selectedCar?.pitTimer ?? 0;
+  /*
+   * Pit timing is published for every player car in the pit lane, not just the
+   * selected one. A double stack is exactly the moment both timers matter.
+   */
+  const pitTimings = (snapshot ? playerCarIdsFor(snapshot.playerTeamId) : [])
+    .map((carId) => snapshot?.cars.find((car) => car.carId === carId))
+    .filter((car): car is RaceCarState => Boolean(car))
+    .map((car) => {
+      const tyreChangeComplete = Boolean(car.lastPitStopTime !== null
+        && car.lastPitStopCompletedAt != null
+        && snapshot
+        && snapshot.elapsedTime - car.lastPitStopCompletedAt < 4.5);
+      return {
+        car,
+        tyreChangeComplete,
+        visible: car.pitStatus !== "TRACK" || tyreChangeComplete,
+        // The tyre change is live while the car is stationary and frozen at its
+        // final time for a few seconds after release.
+        tyreChangeSeconds: tyreChangeComplete
+          ? car.lastPitStopTime ?? 0
+          : car.pitTyreServiceElapsedSeconds ?? car.pitTimer,
+        tyreChangeRunning: !tyreChangeComplete && car.pitStatus === "PIT_STOP",
+        pitLaneSeconds: car.pitStatus === "TRACK" ? car.lastPitLaneTime ?? 0 : car.pitLaneTimer,
+        servingPenaltyHold: car.pitServicePhase === "PENALTY_HOLD" || car.pitServicePhase === "STOP_GO_HOLD",
+      };
+    })
+    .filter((entry) => entry.visible);
   const servingPenaltyHold = selectedCar?.pitServicePhase === "PENALTY_HOLD" || selectedCar?.pitServicePhase === "STOP_GO_HOLD";
   const penaltyHoldElapsed = selectedCar?.penaltyHoldElapsedSeconds ?? 0;
   const penaltyHoldTarget = selectedCar?.penaltyHoldSeconds ?? 0;
-  const displayedPitLaneSeconds = selectedCar?.pitStatus === "TRACK"
-    ? selectedCar.lastPitLaneTime ?? 0
-    : selectedCar?.pitLaneTimer ?? 0;
   const sectorSurface = ([1, 2, 3] as const).map((sector) => {
     const state = snapshot?.weather.sectors?.find((candidate) => candidate.sector === sector);
     const wetness = state?.wetness ?? snapshot?.weather.trackWetness ?? 0;
-    return { sector, wetness, condition: surfaceConditionAt(wetness, state?.standingWater) };
+    // Live rain drives the bar's sheen speed, so a sector under an active cell
+    // reads as moving water rather than a static wetness level.
+    const rainIntensity = state?.rainIntensity ?? snapshot?.weather.rainIntensity ?? 0;
+    return { sector, wetness, rainIntensity, condition: surfaceConditionAt(wetness, state?.standingWater) };
   });
   const surfaceConditions = new Set(sectorSurface.map((sector) => sector.condition));
   const surfaceSummary = surfaceConditions.size > 1 ? "MIXED" : sectorSurface[0].condition.replace("_", " ");
@@ -471,7 +491,8 @@ export function RaceMap({ startPhase, lightsOn, qualifyingState = null }: { star
             } else if (car.phase === "OUT_LAP") {
               const trackProgress = (progress - 0.12) / 0.88;
               targetDistance = PIT_EXIT_END + (SILVERSTONE_CIRCUIT.lengthMeters - PIT_EXIT_END) * trackProgress;
-            } else if (car.phase === "COOL_DOWN") {
+            } else if (car.phase === "IN_LAP" && car.flyingLapsRemaining > 0) {
+              // Recovery in-lap: still circulating towards the timing line.
               const trackProgress = car.phaseStartProgress + (1 - car.phaseStartProgress) * progress;
               targetDistance = trackProgress * SILVERSTONE_CIRCUIT.lengthMeters;
             } else if (car.phase === "IN_LAP" && progress > 0.86) {
@@ -509,7 +530,7 @@ export function RaceMap({ startPhase, lightsOn, qualifyingState = null }: { star
             marker.label.visible = true;
             marker.label.tint = selected ? 0x20d7e7 : 0xffffff;
             marker.ring.clear();
-            const phaseColor = car.phase === "PUSH_LAP" ? 0xff334f : car.phase === "IN_LAP" || car.phase === "COOL_DOWN" ? 0x36dc79 : 0x20d7e7;
+            const phaseColor = car.phase === "PUSH_LAP" ? 0xff334f : car.phase === "IN_LAP" ? 0x36dc79 : 0x20d7e7;
             marker.ring.circle(0, 0, marker.isPlayer ? 10 : 8).stroke({ width: selected ? 3 : 1.8, color: phaseColor, alpha: 0.96 });
             if (selected) {
               const activeHost = hostRef.current;
@@ -684,7 +705,22 @@ export function RaceMap({ startPhase, lightsOn, qualifyingState = null }: { star
         <TeamRadioOverlay />
         <div aria-live="polite" className="track-weather">
           <div className="track-weather__title"><span><CloudRain aria-hidden="true" size={15} /> LOCAL SURFACE</span><strong>{surfaceSummary}</strong></div>
-          <div className="track-weather__sectors">{sectorSurface.map((sector) => <span className={`is-${sector.condition.toLowerCase().replace("_", "-")}`} key={sector.sector} title={`Sector ${sector.sector}: ${Math.round(sector.wetness * 100)}% wet`}><b>S{sector.sector}</b><strong>{Math.round(sector.wetness * 100)}%</strong><i style={{ "--wetness": `${Math.max(4, sector.wetness * 100)}%` } as CSSProperties} /><em>{sector.condition.replace("_", " ")}</em></span>)}</div>
+          <div className="track-weather__sectors">{sectorSurface.map((sector) => (
+            <span
+              className={`is-${sector.condition.toLowerCase().replace("_", "-")}`}
+              key={sector.sector}
+              style={{
+                "--wetness": `${Math.max(4, sector.wetness * 100)}%`,
+                "--rain-activity": Math.min(1, sector.rainIntensity * 1.6).toFixed(2),
+              } as CSSProperties}
+              title={`Sector ${sector.sector}: ${Math.round(sector.wetness * 100)}% wet · rain ${Math.round(sector.rainIntensity * 100)}%`}
+            >
+              <b>S{sector.sector}</b>
+              <i aria-hidden="true" />
+              <strong>{Math.round(sector.wetness * 100)}%</strong>
+              <em>{sector.condition.replace("_", " ")}</em>
+            </span>
+          ))}</div>
           <small><Radar aria-hidden="true" size={13} />{snapshot?.weather.rainIntensity ? `RAIN CELL ${Math.round(snapshot.weather.rainIntensity * 100)}%` : snapshot?.weather.forecastRainInMinutes != null ? `ARRIVAL ${snapshot.weather.forecastRainInMinutes} MIN` : "RADAR CLEAR"}</small>
         </div>
       </aside>}
@@ -692,16 +728,41 @@ export function RaceMap({ startPhase, lightsOn, qualifyingState = null }: { star
         <section>
           <header><span>QUALIFYING LIVE</span><strong>{qualifyingLive?.session}</strong></header>
           <div><span><small>ON TRACK</small><strong>{Object.values(qualifyingLive?.cars ?? {}).filter((car) => car.phase !== "GARAGE").length}</strong></span><span><small>CUT LINE</small><strong>{qualifyingCut ? `P${qualifyingCut}` : "POLE"}</strong></span></div>
-          <ol>{(["OUT_LAP", "PUSH_LAP", "COOL_DOWN", "IN_LAP"] as const).map((phase) => <li key={phase}><i data-phase={phase} /><span>{phase === "PUSH_LAP" ? "FLYING LAP" : phase.replace("_", " ")}</span><strong>{qualifyingClassification.filter((entry) => entry.phase === phase).length}</strong></li>)}</ol>
+          <ol>{(["OUT_LAP", "PUSH_LAP", "IN_LAP"] as const).map((phase) => <li key={phase}><i data-phase={phase} /><span>{phase === "PUSH_LAP" ? "FLYING LAP" : phase.replace("_", " ")}</span><strong>{qualifyingClassification.filter((entry) => entry.phase === phase).length}</strong></li>)}</ol>
           <footer>DRY QUALIFYING · PIT LANE OPEN</footer>
         </section>
       </aside>}
       {(startPhase === "LIGHTS" || startPhase === "GO") && <div className={`track-start-sequence ${startPhase === "GO" ? "is-go" : ""}`} data-track-start-phase={startPhase}><div>{Array.from({ length: 5 }, (_, index) => <i className={index < lightsOn ? "is-on" : ""} key={index} />)}</div><span>{startPhase === "GO" ? "LIGHTS OUT" : "START"}</span></div>}
-      {!isQualifying && selectedCar && showPitTiming && (
-        <div aria-live="assertive" className={`pit-timing-live ${tyreChangeComplete ? "is-tyre-complete" : ""}`} data-pit-status={tyreChangeComplete ? "TYRE_COMPLETE" : selectedCar.pitStatus} role="status">
-          <header><span>{tyreChangeComplete ? "TYRE CHANGE COMPLETE" : "LIVE PIT STOP"}</span><strong>{tyreChangeComplete ? "RELEASED" : selectedCar.pitStatus.replace("PIT_", "")}</strong></header>
-          <div><span><small>TOTAL PIT</small><strong>{displayedPitLaneSeconds.toFixed(1)}<em>s</em></strong></span><i /><span><small>TYRE CHANGE</small><strong>{displayedTyreChangeSeconds.toFixed(2)}<em>s</em></strong></span></div>
-          <footer><span>2025 BENCH 2.08s · TYRE TARGET {(selectedCar.pitTyreServiceTargetSeconds ?? selectedCar.pitStopTargetSeconds).toFixed(2)}s</span><b>{tyreChangeComplete ? "WHEELS ON" : servingPenaltyHold ? "WAITING" : selectedCar.pitStopIssue.replace("_", " ")}</b></footer>
+      {!isQualifying && pitTimings.length > 0 && (
+        <div className="pit-timing-stack" aria-label="Live pit stop timing">
+          {pitTimings.map((entry) => (
+            <div
+              aria-live="assertive"
+              className={`pit-timing-live ${entry.tyreChangeComplete ? "is-tyre-complete" : ""}`}
+              data-pit-status={entry.tyreChangeComplete ? "TYRE_COMPLETE" : entry.car.pitStatus}
+              key={entry.car.carId}
+              role="status"
+            >
+              <header>
+                <span>{DRIVER_BY_ID.get(entry.car.driverId)?.shortName ?? entry.car.carId.toUpperCase()} · {entry.tyreChangeComplete ? "COMPLETE" : "LIVE PIT STOP"}</span>
+                <strong>{entry.tyreChangeComplete ? "RELEASED" : entry.car.pitStatus.replace("PIT_", "")}</strong>
+              </header>
+              <div>
+                <span><small>TOTAL PIT</small><strong>{entry.pitLaneSeconds.toFixed(1)}<em>s</em></strong></span>
+                <i />
+                {/* The tyre change is the number the pit wall watches, so it
+                    pulses while the crew is actually on the car. */}
+                <span data-tyre-change="true" data-running={entry.tyreChangeRunning}>
+                  <small>TYRE CHANGE</small>
+                  <strong>{entry.tyreChangeSeconds.toFixed(2)}<em>s</em></strong>
+                </span>
+              </div>
+              <footer>
+                <span>TYRE TARGET {(entry.car.pitTyreServiceTargetSeconds ?? entry.car.pitStopTargetSeconds).toFixed(2)}s</span>
+                <b>{entry.tyreChangeComplete ? "WHEELS ON" : entry.servingPenaltyHold ? "WAITING" : entry.car.pitStopIssue.replace("_", " ")}</b>
+              </footer>
+            </div>
+          ))}
         </div>
       )}
       {!isQualifying && selectedCar && servingPenaltyHold && <div aria-live="assertive" className="penalty-service-live" role="timer" style={{ "--penalty-progress": `${penaltyHoldTarget > 0 ? Math.min(100, penaltyHoldElapsed / penaltyHoldTarget * 100) : 0}%` } as CSSProperties}>

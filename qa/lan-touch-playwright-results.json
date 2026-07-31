@@ -1,0 +1,61 @@
+{
+  "target": "http://192.168.0.7:3000",
+  "passed": [
+    "phone-390x844 starts with a different constructor selected",
+    "phone-390x844 team selection reacts to touch",
+    "phone-390x844 confirm control has a usable touch target",
+    "phone-390x844 confirm control is not covered by an overlay",
+    "phone-390x844 ENTER WEEKEND advances to FP1",
+    "phone-390x844 RUN FP1 remains interactive after LAN entry",
+    "phone-390x844 report stays within the viewport",
+    "phone-390x844 report stacks driver cards for readable touch use",
+    "tablet-1024x768 starts with a different constructor selected",
+    "tablet-1024x768 team selection reacts to touch",
+    "tablet-1024x768 confirm control has a usable touch target",
+    "tablet-1024x768 confirm control is not covered by an overlay",
+    "tablet-1024x768 ENTER WEEKEND advances to FP1",
+    "tablet-1024x768 RUN FP1 remains interactive after LAN entry",
+    "tablet-1024x768 report stays within the viewport",
+    "desktop-1440x900 starts with a different constructor selected",
+    "desktop-1440x900 team selection reacts to mouse",
+    "desktop-1440x900 confirm control has a usable touch target",
+    "desktop-1440x900 confirm control is not covered by an overlay",
+    "desktop-1440x900 ENTER WEEKEND advances to FP1",
+    "desktop-1440x900 RUN FP1 remains interactive after LAN entry",
+    "desktop-1440x900 report stays within the viewport"
+  ],
+  "failures": [],
+  "consoles": [
+    {
+      "viewport": "phone-390x844",
+      "type": "warning",
+      "text": "[.WebGL-0x12c0048f000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+    },
+    {
+      "viewport": "phone-390x844",
+      "type": "warning",
+      "text": "[.WebGL-0x12c00499200]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+    }
+  ],
+  "requests": [],
+  "viewports": {
+    "phone-390x844": {
+      "innerWidth": 390,
+      "innerHeight": 844,
+      "scrollWidth": 390,
+      "scrollHeight": 3658
+    },
+    "tablet-1024x768": {
+      "innerWidth": 1024,
+      "innerHeight": 768,
+      "scrollWidth": 1024,
+      "scrollHeight": 768
+    },
+    "desktop-1440x900": {
+      "innerWidth": 1440,
+      "innerHeight": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    }
+  }
+}

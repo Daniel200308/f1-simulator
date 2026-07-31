@@ -60,6 +60,89 @@ async function assertViewportFit(page, label) {
   results.viewports[label] = metrics;
 }
 
+async function assertCommandPanelComposition(controls, label) {
+  const geometry = await controls.evaluate((rail) => {
+    const box = (element) => {
+      const rect = element?.getBoundingClientRect();
+      return rect ? { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height } : null;
+    };
+    const sections = [...rail.querySelectorAll("section[class*='controlSection']")].map((section) => ({
+      control: section.getAttribute("data-control"),
+      ...box(section),
+    }));
+    const tyreMeters = [...rail.querySelectorAll("[aria-label='Live tyre temperatures'] [role='meter']")].map(box);
+    const meterLabels = [...rail.querySelectorAll("[role='meter']")].map((meter) => meter.getAttribute("aria-label"));
+    const tyreChoices = [...rail.querySelectorAll("button[data-tyre-choice='true']")]
+      .filter((button) => button.offsetParent !== null)
+      .map((button) => ({
+        life: button.textContent?.trim() ?? "",
+        selected: button.getAttribute("aria-pressed") === "true",
+        setCount: Number(button.getAttribute("data-set-count") ?? 0),
+        setId: button.getAttribute("data-set-id") ?? "",
+        setNumber: button.getAttribute("data-set-number") ?? "",
+        status: button.getAttribute("data-status") ?? "",
+      }));
+    const physicalTyreSets = [...rail.querySelectorAll("button[data-tyre-set-choice='true']")].map((button) => ({
+      ...box(button),
+      life: button.textContent?.trim() ?? "",
+      status: button.getAttribute("data-status") ?? "",
+    }));
+    const controlCore = rail.querySelector("[class*='controlCore']");
+    const coreBox = box(controlCore);
+    const coreSections = [...(controlCore?.querySelectorAll(":scope > section[class*='controlSection']") ?? [])].map(box).filter(Boolean);
+    const coreTopSpace = coreBox && coreSections.length > 0 ? Math.min(...coreSections.map((section) => section.top)) - coreBox.top : null;
+    const coreBottomSpace = coreBox && coreSections.length > 0 ? coreBox.bottom - Math.max(...coreSections.map((section) => section.bottom)) : null;
+    const coreBalance = coreTopSpace !== null && coreBottomSpace !== null ? Math.abs(coreTopSpace - coreBottomSpace) : null;
+    const operationControls = [...(controlCore?.querySelectorAll("[class*='segmentOptions'], [class*='orbOptions']") ?? [])].map((control) => {
+      const bounds = box(control);
+      const section = box(control.closest("section"));
+      const buttonWidths = [...control.querySelectorAll("button")].map((button) => button.getBoundingClientRect().width);
+      return bounds && section ? { ...bounds, maxButtonWidth: Math.max(...buttonWidths), centreOffset: Math.abs((bounds.left + bounds.right) / 2 - (section.left + section.right) / 2) } : null;
+    }).filter(Boolean);
+    return {
+      controlCore: coreBox,
+      coreBalance,
+      meterLabels,
+      operationControls,
+      release: box(rail.querySelector("[aria-label$='Release Now']")),
+      sections,
+      speedRing: box(rail.querySelector("[class*='speedRing']")),
+      physicalTyreSets,
+      tyreChoices,
+      tyreMeters,
+    };
+  });
+  check(geometry.meterLabels.length === 5
+    && geometry.meterLabels.some((name) => name?.startsWith("Live speed"))
+    && ["Front Left", "Front Right", "Rear Left", "Rear Right"].every((position) => geometry.meterLabels.some((name) => name?.startsWith(position))),
+  `${label} exposes one speed and four labelled tyre meters`, geometry.meterLabels);
+  check(geometry.speedRing && Math.abs(geometry.speedRing.width - geometry.speedRing.height) < 1.5, `${label} keeps the speed infographic circular`, geometry.speedRing);
+  check(geometry.tyreMeters.length === 4 && geometry.tyreMeters.every((meter) => meter && Math.abs(meter.width - meter.height) < 1.5), `${label} keeps all four tyre-temperature meters circular`, geometry.tyreMeters);
+  check(geometry.release && geometry.release.width >= 44 && geometry.release.height >= 44, `${label} keeps the release click target at least 44px`, geometry.release);
+  check(geometry.tyreChoices.length === 5, `${label} renders exactly five combined tyre choices`, geometry.tyreChoices);
+  check(geometry.physicalTyreSets.length >= 2 && geometry.physicalTyreSets.every((set) => /\d+%/.test(set.life) && /^(NEW|USED)$/.test(set.status)), `${label} exposes selectable physical sets with life and state`, geometry.physicalTyreSets);
+  // Compound buttons name their compound; remaining life is asserted on the
+  // physical-set row above, which is where a set is actually selected.
+  check(geometry.tyreChoices.every((choice) => choice.setCount === 0 || (/[A-Z]{3,}/.test(choice.life)
+    && !/\d+%/.test(choice.life)
+    && choice.setId.length > 0
+    && /^\d+$/.test(choice.setNumber)
+    && /^(NEW|USED)$/.test(choice.status))),
+  `${label} keeps the compound name and exact set metadata on every available tyre choice`, geometry.tyreChoices);
+  const tyres = geometry.sections.find((section) => section.control === "tyres");
+  const otherSections = geometry.sections.filter((section) => section.control !== "tyres");
+  check(tyres
+    && otherSections.length === 5
+    && tyres.bottom >= Math.max(...otherSections.map((section) => section.bottom)) - 1
+    && tyres.height <= 140,
+  `${label} keeps the compound and physical-set selector at the bottom of the rail`, geometry.sections);
+  check(geometry.controlCore && geometry.coreBalance !== null && geometry.coreBalance <= 5,
+    `${label} vertically centres the operation controls`, { core: geometry.controlCore, balance: geometry.coreBalance });
+  check(geometry.operationControls.length === 5
+    && geometry.operationControls.every((control) => control.centreOffset <= 3 && control.maxButtonWidth < geometry.controlCore.width * .46),
+  `${label} centres compact operation buttons without stretching them across the rail`, geometry.operationControls);
+}
+
 async function assertControlLabelsFit(controls, label) {
   const clipped = await controls.locator("button span").evaluateAll((nodes) => nodes
     .filter((node) => node.offsetParent !== null)
@@ -80,20 +163,34 @@ async function checkQualifyingWorkspace(page, label, screenshotPrefix) {
   check(await canvas.getAttribute("data-label-anchoring") === "PERSISTENT_OFFSETS", `${label} uses persistent driver-label anchors`);
   check(await canvas.getAttribute("data-marker-language") === "PHASE_CODED", `${label} uses phase-coded map markers`);
   check(await panel.getByLabel("Live circuit marker legend").getByText(/Flying Lap/i).count() === 1, `${label} shows the compact map legend`);
-  check(await panel.getByLabel("Live circuit marker legend").locator("span").count() === 7, `${label} legend covers flying, out, in, pit-entry, cool-down, yielding and player states`);
+  // Cool-down is no longer a separate phase: a recovery lap is an in lap.
+  check(await panel.getByLabel("Live circuit marker legend").locator("span").count() === 7, `${label} legend covers flying, out, in, pit-entry, yielding, manual-abort and player states`);
   check(await tower.locator("[data-sector-cell='true']").count() === 66, `${label} keeps S1 S2 S3 for all 22 drivers in the leaderboard`);
 
   check(await tabs.getByRole("button").count() === 2, `${label} exposes two compact player-driver tabs`);
   check(await controls.locator("[data-car-id]").count() === 0, `${label} does not duplicate large driver control rows`);
-  for (const group of ["RELEASE", "OUT LAP PACE", "FLYING LAP ATTACK", "FUEL PLAN", "LAP ACTION", "ENERGY MODE"]) {
+  for (const group of ["PIT RELEASE", "OUT LAP PACE", "FLYING ATTACK", "FUEL PLAN", "LAP ACTION", "TYRE SELECTION"]) {
     check(await controls.getByText(group, { exact: true }).count() === 1, `${label} shows one compact ${group} control group`);
   }
+  check(await controls.getByText("ACTIVE SET", { exact: true }).count() === 0, `${label} removes the duplicate Active Set card`);
+  check(await controls.getByText("BATTERY STRATEGY", { exact: true }).count() === 0
+    && await controls.getByRole("button", { name: /set energy mode/i }).count() === 0,
+  `${label} removes Battery Strategy and manual energy controls`);
+  check(await controls.getByText("NEXT ACTION", { exact: true }).count() === 0, `${label} removes the Next Action strip`);
+  check(await controls.getByRole("group", { name: /pit release controls/i }).getByRole("button").count() === 1, `${label} exposes one release action`);
   await assertControlLabelsFit(controls, label);
+  await assertCommandPanelComposition(controls, label);
 
   const initialCarId = await controls.getAttribute("data-car-id");
-  const charge = controls.getByRole("button", { name: /set energy mode CHARGE/i });
-  await charge.click();
-  check(await charge.getAttribute("aria-pressed") === "true", `${label} energy selector gives strong selected-state feedback`);
+  const initialTyreChoices = controls.locator("button[data-tyre-choice='true']");
+  check(await initialTyreChoices.count() === 5, `${label} exposes exactly five merged tyre buttons for the first player car`);
+  const initialTyreSet = controls.locator("button[data-tyre-choice='true'][data-compound='SOFT']");
+  await initialTyreSet.click();
+  const initialSetId = await initialTyreSet.getAttribute("data-set-id");
+  await initialTyreSet.click();
+  const cycledSetId = await initialTyreSet.getAttribute("data-set-id");
+  check(Boolean(initialSetId && cycledSetId && initialSetId !== cycledSetId), `${label} cycles the first driver's Soft button through exact physical sets`, { initialSetId, cycledSetId });
+  check(await controls.locator("button[data-tyre-choice='true'][aria-pressed='true']").count() === 1, `${label} keeps exactly one physical tyre set selected for the first player car`);
   const attack = controls.getByRole("button", { name: /set flying lap attack Attack/i });
   await attack.click();
   check(await attack.getAttribute("aria-pressed") === "true", `${label} flying attack selector updates the active driver`);
@@ -106,6 +203,13 @@ async function checkQualifyingWorkspace(page, label, screenshotPrefix) {
   await otherTab.click();
   const switchedCarId = await controls.getAttribute("data-car-id");
   check(Boolean(initialCarId && switchedCarId && initialCarId !== switchedCarId), `${label} switches LEC and HAM through compact tabs`, { initialCarId, switchedCarId });
+  check(await controls.locator("button[data-tyre-choice='true']").count() === 5, `${label} exposes exactly five merged tyre buttons after switching drivers`);
+  const switchedTyreSet = controls.locator("button[data-tyre-choice='true'][data-compound='SOFT']");
+  await switchedTyreSet.click();
+  check(await switchedTyreSet.getAttribute("aria-pressed") === "true"
+    && Boolean(await switchedTyreSet.getAttribute("data-set-id"))
+    && await controls.locator("button[data-tyre-choice='true'][aria-pressed='true']").count() === 1,
+  `${label} selects one exact physical tyre set for the second player car`);
   await controls.getByRole("button", { name: /Release Now/i }).click();
 
   await page.getByRole("button", { name: "Set simulation speed to 16 times" }).click();

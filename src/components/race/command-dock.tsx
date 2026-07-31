@@ -14,12 +14,16 @@ const PACE_OPTIONS: readonly { mode: PaceMode; label: string; hint: string; leve
   { mode: "CONSERVE", label: "Conserve", hint: "Save fuel", level: 2 },
   { mode: "COOL", label: "Cool", hint: "Reduce temps", level: 1 },
 ];
+/*
+ * Every car, player and AI, deploys on the straights and harvests through the
+ * corners automatically. The only choice the pit wall makes is how hard that
+ * automatic pattern leans on the battery, so this is a three-step usage scale
+ * rather than a set of deployment maps.
+ */
 const ENERGY_OPTIONS: readonly { mode: EnergyMode; label: string; shortLabel: string; hint: string; level: number }[] = [
-  { mode: "HARVEST", label: "Harvest", shortLabel: "HAR", hint: "Recovery-biased map · the driver still deploys automatically on straights", level: 1 },
-  { mode: "CONSERVE", label: "Conserve", shortLabel: "CON", hint: "Reserve-biased map · automatic deployment and braking recovery", level: 2 },
-  { mode: "BALANCED", label: "Balanced", shortLabel: "BAL", hint: "Neutral automatic deployment and braking recovery", level: 3 },
-  { mode: "ATTACK", label: "Attack", shortLabel: "ATK", hint: "Deployment-biased map · braking recovery remains automatic", level: 4 },
-  { mode: "BOOST", label: "Boost", shortLabel: "BST", hint: "Maximum deployment tendency · braking recovery remains automatic", level: 4 },
+  { mode: "ATTACK", label: "Tight", shortLabel: "TIGHT", hint: "Spend the battery hard on every straight · shortest reserve", level: 4 },
+  { mode: "BALANCED", label: "Balanced", shortLabel: "BAL", hint: "Match deployment to recovery lap by lap", level: 3 },
+  { mode: "CONSERVE", label: "Save", shortLabel: "SAVE", hint: "Deploy on the straights but keep a reserve in hand", level: 2 },
 ];
 const TYRE_OPTIONS: readonly { mode: TyreMode; label: string; hint: string; grip: number }[] = [
   { mode: "GRIP", label: "Grip", hint: "Use tyre", grip: 4 },
@@ -94,11 +98,11 @@ export function CommandDock({ car, controls, pitLaneOpen }: { car?: RaceCarState
         <div>{PACE_OPTIONS.map((option) => <button aria-label={`Set pace ${option.mode}`} aria-pressed={car?.paceMode === option.mode} className="command-node" disabled={!enabled} key={option.mode} onClick={() => car && controls.setPace(car.carId, option.mode)} title={option.hint} type="button"><LevelGlyph kind="pace" level={option.level} /><strong>{option.label}</strong></button>)}</div>
       </section>
 
-      <section aria-label="Energy deployment tendency" className="visual-control visual-control--energy">
-        <header><span>ENERGY TENDENCY</span><b className={car?.overtakeActive ? "is-ovt-live" : ""}>{car?.overtakeActive ? "OVT LIVE" : car?.energySystem?.overtakeEligible ? "OVT READY" : "AUTO OVT"}</b></header>
-        <div className="energy-mode-rail">{ENERGY_OPTIONS.map((option) => {
-          return <button aria-label={`Set energy tendency ${option.mode}`} aria-pressed={car?.energyMode === option.mode} className={`command-node energy-node energy-node--${option.mode.toLowerCase()}`} disabled={!enabled} key={option.mode} onClick={() => car && controls.setEnergyMode(car.carId, option.mode)} title={`${option.label} · ${option.hint}`} type="button"><LevelGlyph kind="energy" level={option.level} /><strong>{option.shortLabel}</strong></button>;
-        })}</div>
+      <section aria-label="Battery usage" className="visual-control visual-control--energy">
+        <header><span>BATTERY USAGE</span><b className={car?.overtakeActive ? "is-ovt-live" : ""}>{car?.overtakeActive ? "OVT LIVE" : car?.energySystem?.overtakeEligible ? "OVT READY" : "AUTO DEPLOY"}</b></header>
+        <div className="energy-mode-rail">{ENERGY_OPTIONS.map((option) => (
+          <button aria-label={`Set battery usage ${option.label}`} aria-pressed={car?.energyMode === option.mode} className={`command-node energy-node energy-node--${option.mode.toLowerCase()}`} disabled={!enabled} key={option.mode} onClick={() => car && controls.setEnergyMode(car.carId, option.mode)} title={`${option.label} · ${option.hint}`} type="button"><LevelGlyph kind="energy" level={option.level} /><strong>{option.shortLabel}</strong></button>
+        ))}</div>
       </section>
 
       <section className="visual-control visual-control--tyre">

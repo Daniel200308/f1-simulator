@@ -7,6 +7,7 @@ import {
   createWeekendState,
   holdQualifyingCar,
   liveQualifyingClassification,
+  qualifyingAiRunPlan,
   qualifyingCarProgress,
   qualifyingDisplayStatus,
   qualifyingCutPosition,
@@ -18,7 +19,6 @@ import {
   setLiveQualifyingSpeed,
   setQualifyingCompound,
   setQualifyingAttackMode,
-  setQualifyingEnergyMode,
   setQualifyingFuelPlan,
   setQualifyingOutLapMode,
   setQualifyingTrafficResponse,
@@ -193,12 +193,11 @@ describe("standard Formula 1 weekend", () => {
     weekend = setQualifyingCompound(weekend, "ferrari-1", "MEDIUM");
     weekend = startLiveQualifying(weekend);
     weekend = setQualifyingOutLapMode(weekend, "ferrari-1", "FAST");
-    weekend = setQualifyingEnergyMode(weekend, "ferrari-1", "QUALI");
     weekend = releaseQualifyingCar(weekend, "ferrari-1");
     expect(weekend.qualifyingLive?.cars["ferrari-1"].phase).toBe("OUT_LAP");
     expect(weekend.qualifyingLive?.cars["ferrari-1"].selectedCompound).toBe("MEDIUM");
     expect(weekend.qualifyingLive?.cars["ferrari-1"].outLapMode).toBe("FAST");
-    expect(weekend.qualifyingLive?.cars["ferrari-1"].energyMode).toBe("QUALI");
+    expect(weekend.qualifyingLive?.cars["ferrari-1"].energyMode).toBe("CHARGE");
     expect(weekend.tyreUsage["ferrari-1"].MEDIUM).toBe(1);
 
     weekend = tickLiveQualifying(weekend, 210);
@@ -206,7 +205,7 @@ describe("standard Formula 1 weekend", () => {
     expect(weekend.qualifyingLive?.cars["ferrari-1"].tyreConditionPercent).toBeLessThan(100);
     expect(weekend.qualifyingLive?.cars["ferrari-1"].energyPercent).toBeLessThan(100);
     expect(liveQualifyingClassification(weekend).find((entry) => entry.carId === "ferrari-1")?.bestLapSeconds).not.toBeNull();
-    expect(["COOL_DOWN", "IN_LAP"]).toContain(weekend.qualifyingLive?.cars["ferrari-1"].phase);
+    expect(weekend.qualifyingLive?.cars["ferrari-1"].phase).toBe("IN_LAP");
 
     weekend = tickLiveQualifying(weekend, 1_200);
     expect(weekend.currentSession).toBe("Q2");
@@ -315,6 +314,7 @@ describe("standard Formula 1 weekend", () => {
     weekend = releaseQualifyingCar(weekend, "mclaren-1");
     weekend = recallQualifyingCar(weekend, "mclaren-1");
     expect(weekend.qualifyingLive?.cars["mclaren-1"].phase).toBe("IN_LAP");
+    expect(weekend.qualifyingLive?.cars["mclaren-1"].energyMode).toBe("CHARGE");
     const returnDuration = weekend.qualifyingLive!.cars["mclaren-1"].phaseDurationSeconds;
     weekend = tickLiveQualifying(weekend, returnDuration);
     expect(weekend.qualifyingLive?.cars["mclaren-1"].phase).toBe("PIT_ENTRY");
@@ -350,6 +350,7 @@ describe("standard Formula 1 weekend", () => {
     weekend = tickLiveQualifying(weekend, 12);
     weekend = abortQualifyingLap(weekend, carId);
     expect(weekend.qualifyingLive?.cars[carId].phase).toBe("ABORTED_LAP");
+    expect(weekend.qualifyingLive?.cars[carId].energyMode).toBe("CHARGE");
     expect(qualifyingDisplayStatus(weekend.qualifyingLive!.cars[carId])).toBe("ABORTED LAP");
     expect(weekend.qualifyingLive!.cars[carId].phaseStartProgress).toBeGreaterThan(0);
     const energyBeforeRecovery = weekend.qualifyingLive!.cars[carId].energyPercent;
@@ -364,15 +365,27 @@ describe("standard Formula 1 weekend", () => {
     const carId = "ferrari-1";
     weekend = selectFreshTyre(weekend, carId);
     weekend = setQualifyingFuelPlan(weekend, carId, "ONE_LAP");
+    expect(weekend.qualifyingLive!.cars[carId].energyMode).toBe("CHARGE");
     weekend = releaseQualifyingCar(weekend, carId);
     const phases = [weekend.qualifyingLive!.cars[carId].phase];
+    const energyByPhase = new Map([[weekend.qualifyingLive!.cars[carId].phase, weekend.qualifyingLive!.cars[carId].energyMode]]);
     for (let second = 0; second < 360; second += 1) {
       weekend = tickLiveQualifying(weekend, 1);
       const phase = weekend.qualifyingLive!.cars[carId].phase;
-      if (phase !== phases.at(-1)) phases.push(phase);
+      if (phase !== phases.at(-1)) {
+        phases.push(phase);
+        energyByPhase.set(phase, weekend.qualifyingLive!.cars[carId].energyMode);
+      }
       if (phase === "GARAGE") break;
     }
     expect(phases).toEqual(["OUT_LAP", "PUSH_LAP", "IN_LAP", "PIT_ENTRY", "GARAGE"]);
+    expect([...energyByPhase.entries()]).toEqual([
+      ["OUT_LAP", "CHARGE"],
+      ["PUSH_LAP", "QUALI"],
+      ["IN_LAP", "CHARGE"],
+      ["PIT_ENTRY", "CHARGE"],
+      ["GARAGE", "CHARGE"],
+    ]);
   });
 
   it("supports hold, traffic response and a two-flying-lap fuel plan", () => {
@@ -396,12 +409,25 @@ describe("standard Formula 1 weekend", () => {
     weekend = releaseQualifyingCar(weekend, carId);
     expect(weekend.qualifyingLive?.cars[carId].flyingLapsRemaining).toBe(2);
     expect(weekend.qualifyingLive?.cars[carId].fuelLoadKg).toBeGreaterThan(3);
-    weekend = tickLiveQualifying(weekend, 500);
+    while (weekend.qualifyingLive!.cars[carId].phase === "OUT_LAP") weekend = tickLiveQualifying(weekend, 1);
+    expect(weekend.qualifyingLive!.cars[carId]).toMatchObject({ phase: "PUSH_LAP", energyMode: "QUALI" });
+    while (weekend.qualifyingLive!.cars[carId].phase === "PUSH_LAP") weekend = tickLiveQualifying(weekend, 1);
+    // A car with a flying lap left recovers on an in lap rather than pitting.
+    expect(weekend.qualifyingLive!.cars[carId]).toMatchObject({ phase: "IN_LAP", energyMode: "CHARGE" });
+    expect(weekend.qualifyingLive!.cars[carId].flyingLapsRemaining).toBeGreaterThan(0);
+    /*
+     * The recovery in-lap is stretched to keep clear of other traffic, so the
+     * second attempt lands later than the old fixed-length cool-down. Run to the
+     * end of the segment rather than a fixed budget.
+     */
+    while (weekend.currentSession === "Q1" && weekend.qualifyingLive!.cars[carId].completedRuns < 2) {
+      weekend = tickLiveQualifying(weekend, 1);
+    }
     expect(weekend.qualifyingLive?.cars[carId].completedRuns).toBe(2);
     expect(weekend.qualifyingLive?.cars[carId].fuelLoadKg).toBeLessThan(1.5);
   });
 
-  it("lets the player switch an out lap directly to cool down", () => {
+  it("lets the player switch an out lap directly to a recovery in lap", () => {
     let weekend = createWeekendState(20_260_820, "ferrari");
     weekend = runWeekendSession(runWeekendSession(runWeekendSession(weekend)));
     weekend = startLiveQualifying(weekend);
@@ -409,7 +435,8 @@ describe("standard Formula 1 weekend", () => {
     weekend = releaseQualifyingCar(weekend, "ferrari-1");
     weekend = tickLiveQualifying(weekend, 8);
     weekend = coolDownQualifyingCar(weekend, "ferrari-1");
-    expect(weekend.qualifyingLive?.cars["ferrari-1"]).toMatchObject({ phase: "COOL_DOWN", lastRunNote: "ABORTED" });
+    expect(weekend.qualifyingLive?.cars["ferrari-1"]).toMatchObject({ phase: "IN_LAP", lastRunNote: "ABORTED" });
+    expect(weekend.qualifyingLive!.cars["ferrari-1"].flyingLapsRemaining).toBeGreaterThan(0);
   });
 
   it("uses the race telemetry speed profile and a blanket-to-push-to-cool tyre cycle", () => {
@@ -433,7 +460,7 @@ describe("standard Formula 1 weekend", () => {
         pushSpeeds.push(car.currentSpeedKph);
         pushTemperatures.push(car.tyreTemperatureC);
       }
-      if (car.phase === "COOL_DOWN" || car.phase === "IN_LAP" || car.phase === "PIT_ENTRY") coolTemperatures.push(car.tyreTemperatureC);
+      if (car.phase === "IN_LAP" || car.phase === "PIT_ENTRY") coolTemperatures.push(car.tyreTemperatureC);
     }
 
     expect(Math.min(...pushSpeeds)).toBeLessThan(135);
@@ -515,6 +542,66 @@ describe("standard Formula 1 weekend", () => {
     expect(denseTenSecondWindows).toHaveLength(0);
   });
 
+  it("changes AI run priority from banker to tyre-saving build or final attack around the cut", () => {
+    let weekend = createWeekendState(20_260_835, "ferrari");
+    weekend = runWeekendSession(runWeekendSession(runWeekendSession(weekend)));
+    weekend = startLiveQualifying(weekend);
+    const live = weekend.qualifyingLive!;
+    const targetId = "mercedes-1";
+
+    expect(qualifyingAiRunPlan(weekend, targetId)).toMatchObject({
+      priority: "BANKER",
+      preferFreshTyre: true,
+      cutPosition: 16,
+    });
+
+    const safeCars = Object.fromEntries(Object.entries(live.cars).map(([carId, car], index) => [carId, {
+      ...car,
+      phase: "GARAGE" as const,
+      completedRuns: 1,
+      bestLapSeconds: carId === targetId ? 87.9 : 88.25 + index * 0.09,
+    }]));
+    weekend = { ...weekend, qualifyingLive: { ...live, elapsedSeconds: 480, remainingSeconds: 600, cars: safeCars } };
+    const safePlan = qualifyingAiRunPlan(weekend, targetId)!;
+    expect(safePlan).toMatchObject({ priority: "BUILD", preferFreshTyre: false, targetRuns: 2 });
+    expect(safePlan.marginToCutSeconds).toBeGreaterThan(0.58);
+
+    const cutCars = Object.fromEntries(Object.entries(safeCars).map(([carId, car], index) => [carId, {
+      ...car,
+      bestLapSeconds: carId === targetId ? 91.4 : 88.2 + index * 0.08,
+    }]));
+    weekend = { ...weekend, qualifyingLive: { ...weekend.qualifyingLive!, elapsedSeconds: 850, remainingSeconds: 230, cars: cutCars } };
+    const attackPlan = qualifyingAiRunPlan(weekend, targetId)!;
+    expect(attackPlan.priority).toBe("FINAL_ATTACK");
+    expect(attackPlan.preferFreshTyre).toBe(true);
+    expect(attackPlan.position).toBeGreaterThan(attackPlan.cutPosition!);
+    expect(attackPlan.minimumReleaseGapSeconds).toBeLessThan(qualifyingReleaseForecast(weekend, targetId)!.targetGapSeconds);
+  });
+
+  it("releases a no-time AI car for its last viable attempt on a fresh set", () => {
+    let weekend = createWeekendState(20_260_836, "ferrari");
+    weekend = runWeekendSession(runWeekendSession(runWeekendSession(weekend)));
+    weekend = startLiveQualifying(weekend);
+    const live = weekend.qualifyingLive!;
+    const targetId = "mercedes-1";
+    const cars = Object.fromEntries(Object.entries(live.cars).map(([carId, car], index) => [carId, {
+      ...car,
+      phase: "GARAGE" as const,
+      completedRuns: 1,
+      bestLapSeconds: carId === targetId ? null : 88.1 + index * 0.08,
+    }]));
+    weekend = { ...weekend, qualifyingLive: { ...live, elapsedSeconds: 850, remainingSeconds: 230, cars } };
+
+    expect(qualifyingAiRunPlan(weekend, targetId)?.priority).toBe("FINAL_ATTACK");
+    weekend = tickLiveQualifying(weekend, 1);
+
+    const target = weekend.qualifyingLive!.cars[targetId];
+    expect(target.phase).toBe("OUT_LAP");
+    expect(["ATTACK", "MAXIMUM"]).toContain(target.attackMode);
+    expect(target.selectedTyreSetId).not.toBeNull();
+    expect(weekend.tyreInventory[targetId].find((set) => set.id === target.selectedTyreSetId)?.status).toBe("FITTED");
+  });
+
   it("reduces the target release gap as the final Q1 traffic rush approaches", () => {
     let weekend = createWeekendState(20_260_824, "ferrari");
     weekend = runWeekendSession(runWeekendSession(runWeekendSession(weekend)));
@@ -548,7 +635,8 @@ describe("standard Formula 1 weekend", () => {
     const live = weekend.qualifyingLive!;
     const yieldingCar = {
       ...live.cars["ferrari-1"],
-      phase: "COOL_DOWN" as const,
+      phase: "IN_LAP" as const,
+      flyingLapsRemaining: 1,
       phaseStartProgress: 0,
       phaseDurationSeconds: 100,
       phaseRemainingSeconds: 50,
@@ -590,10 +678,11 @@ describe("standard Formula 1 weekend", () => {
     expect(guarded.yieldCooldownSeconds).toBe(5);
   });
 
-  it("holds a pit release that would merge beside an approaching flying car", () => {
+  it("warns about an approaching flying car but lets the player make the manual release", () => {
     let weekend = createWeekendState(20_260_826, "ferrari");
     weekend = runWeekendSession(runWeekendSession(runWeekendSession(weekend)));
     weekend = startLiveQualifying(weekend);
+    weekend = selectFreshTyre(weekend, "ferrari-1");
     const live = weekend.qualifyingLive!;
     const flyingCar = {
       ...live.cars["ferrari-2"],
@@ -607,7 +696,8 @@ describe("standard Formula 1 weekend", () => {
     expect(forecast.nearestFlyingGapSeconds).not.toBeNull();
     expect(forecast.nearestFlyingGapSeconds!).toBeLessThan(3);
     expect(forecast.mergeSafe).toBe(false);
-    expect(releaseQualifyingCar(weekend, "ferrari-1")).toEqual(weekend);
+    weekend = releaseQualifyingCar(weekend, "ferrari-1");
+    expect(weekend.qualifyingLive?.cars["ferrari-1"].phase).toBe("OUT_LAP");
   });
 
   it("prevents a non-flying car from overtaking a flying car even when its stale speed is too high", () => {
@@ -631,10 +721,9 @@ describe("standard Formula 1 weekend", () => {
     const decision = qualifyingTrafficDecision({ ...live, cars: { "ferrari-1": outLapCar, "ferrari-2": flyingCar } }, outLapCar);
     expect(decision.gapAheadSeconds).toBeLessThan(1);
     expect(decision.spacingFactor).toBe(0.35);
-    expect(decision.shouldAbortFlyingLap).toBe(false);
   });
 
-  it("automatically aborts the following flying car in a persistent sub-one-second conflict and returns it physically", () => {
+  it("keeps both flying cars running in a sub-one-second conflict and penalises the following lap", () => {
     let weekend = createWeekendState(20_260_828, "ferrari");
     weekend = runWeekendSession(runWeekendSession(runWeekendSession(weekend)));
     weekend = startLiveQualifying(weekend);
@@ -660,19 +749,37 @@ describe("standard Formula 1 weekend", () => {
     weekend = { ...weekend, qualifyingLive: { ...live, cars: { "ferrari-1": following, "ferrari-2": ahead } } };
     weekend = tickLiveQualifying(weekend, 1);
     expect(weekend.qualifyingLive!.cars["ferrari-1"]).toMatchObject({
-      phase: "ABORTED_LAP",
-      lastRunNote: "ABORTED",
-      trafficDecisionState: "ABORTED",
+      phase: "PUSH_LAP",
+      trafficDecisionState: "TRAFFIC",
       trafficConflictCarId: "ferrari-2",
     });
+    expect(weekend.qualifyingLive!.cars["ferrari-1"].trafficPenaltySeconds).toBeGreaterThanOrEqual(0.07);
+    expect(weekend.qualifyingLive!.cars["ferrari-1"].flyingConflictSeconds).toBe(3);
     expect(weekend.qualifyingLive!.cars["ferrari-1"].bestLapSeconds).toBeNull();
-    const phases = [weekend.qualifyingLive!.cars["ferrari-1"].phase];
-    for (let second = 0; second < 120 && weekend.qualifyingLive!.cars["ferrari-1"].phase !== "GARAGE"; second += 1) {
-      weekend = tickLiveQualifying(weekend, 1);
-      const phase = weekend.qualifyingLive!.cars["ferrari-1"].phase;
-      if (phase !== phases.at(-1)) phases.push(phase);
-    }
-    expect(phases).toEqual(["ABORTED_LAP", "PIT_ENTRY", "GARAGE"]);
+    expect(weekend.qualifyingLive!.cars["ferrari-1"].lastRunNote).not.toBe("ABORTED");
+  });
+
+  it("warns when out-lap programmes converge but preserves the player's manual release", () => {
+    let weekend = createWeekendState(20_260_838, "ferrari");
+    weekend = runWeekendSession(runWeekendSession(runWeekendSession(weekend)));
+    weekend = startLiveQualifying(weekend);
+    weekend = selectFreshTyre(weekend, "ferrari-1");
+    const live = weekend.qualifyingLive!;
+    const candidateStart = qualifyingReleaseForecast(weekend, "ferrari-1")!.flyingLapStartsInSeconds;
+    const convergingOutLap = {
+      ...live.cars["ferrari-2"],
+      phase: "OUT_LAP" as const,
+      phaseDurationSeconds: 200,
+      phaseRemainingSeconds: candidateStart + 0.7,
+      currentSpeedKph: 205,
+    };
+    weekend = { ...weekend, qualifyingLive: { ...live, cars: { ...live.cars, "ferrari-2": convergingOutLap } } };
+
+    const forecast = qualifyingReleaseForecast(weekend, "ferrari-1")!;
+    expect(forecast.nearestFlyingGapSeconds).toBeCloseTo(0.7, 3);
+    expect(forecast.mergeSafe).toBe(false);
+    weekend = releaseQualifyingCar(weekend, "ferrari-1");
+    expect(weekend.qualifyingLive?.cars["ferrari-1"].phase).toBe("OUT_LAP");
   });
 
   it("requires an exact tyre set, fits it once and preserves its wear into later qualifying", () => {
@@ -779,18 +886,26 @@ describe("standard Formula 1 weekend", () => {
     }
   });
 
-  it("blocks an impossible late release and exposes a deleted-lap status", () => {
+  it("allows a late pit-wall gamble but does not start a flying lap after the chequered flag", () => {
     let weekend = createWeekendState(20_260_802, "ferrari");
     weekend = runWeekendSession(runWeekendSession(runWeekendSession(weekend)));
     weekend = startLiveQualifying(weekend);
+    weekend = selectFreshTyre(weekend, "ferrari-1");
     const live = weekend.qualifyingLive!;
     weekend = { ...weekend, qualifyingLive: { ...live, remainingSeconds: 90 } };
     const forecast = qualifyingReleaseForecast(weekend, "ferrari-1")!;
     expect(forecast.canFinishBeforeChequered).toBe(false);
-    expect(releaseQualifyingCar(weekend, "ferrari-1")).toEqual(weekend);
+    weekend = releaseQualifyingCar(weekend, "ferrari-1");
+    expect(weekend.qualifyingLive?.cars["ferrari-1"].phase).toBe("OUT_LAP");
+    weekend = tickLiveQualifying(weekend, 90);
+    expect(weekend.qualifyingLive?.status).toBe("CHECKERED");
+    expect(weekend.qualifyingLive?.cars["ferrari-1"].bestLapSeconds).toBeNull();
+    weekend = tickLiveQualifying(weekend, 30);
+    expect(weekend.qualifyingLive?.cars["ferrari-1"].phase).not.toBe("PUSH_LAP");
+    expect(weekend.qualifyingLive?.cars["ferrari-1"].bestLapSeconds).toBeNull();
     const deleted = {
       ...weekend.qualifyingLive!.cars["ferrari-1"],
-      phase: "COOL_DOWN" as const,
+      phase: "IN_LAP" as const,
       lastRunNote: "TRACK LIMITS" as const,
     };
     expect(qualifyingDisplayStatus(deleted)).toBe("LAP DELETED");

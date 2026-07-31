@@ -21,6 +21,39 @@ function CarCard({ car, selected, predictedPitPosition }: { car: RaceCarState; s
   const teamColor = `#${team.primaryColor.toString(16).padStart(6, "0")}`;
   const tacticalLabel = car.battleStatus === "ATTACKING" ? "ATK" : car.battleStatus === "DEFENDING" ? "DEF" : car.battleStatus === "SIDE_BY_SIDE" ? "DUEL" : car.racingLineMode === "RACING" ? "RUN" : car.racingLineMode;
   const activePenalty = snapshot?.penalties.find((penalty) => penalty.carId === car.carId && (penalty.status === "PENDING" || penalty.status === "SERVING"));
+  const disqualification = snapshot?.penalties.find((penalty) => penalty.carId === car.carId && penalty.type === "DISQUALIFICATION");
+  /*
+   * A car that is out of the race has no live telemetry worth showing, so the
+   * card collapses to the reason it is out rather than reporting speeds and
+   * temperatures that are no longer changing.
+   */
+  const outOfRace = car.incidentStatus === "RETIRED" || Boolean(disqualification);
+  if (outOfRace) {
+    const reason = disqualification ? "DISQUALIFIED" : "RETIRED";
+    const detail = disqualification?.reason
+      ?? (car.damageLevel >= 0.6 ? "Terminal damage" : car.incidentStatus === "RETIRED" ? "Car retired from the race" : "Out of the race");
+    return (
+      <button
+        className={`car-card car-card--out ${selected ? "is-selected" : ""}`}
+        data-out-reason={reason}
+        onClick={() => select(car.carId)}
+        style={{ "--team-color": teamColor } as CSSProperties}
+        type="button"
+      >
+        <div className="car-card__top">
+          <span className="car-position">—</span>
+          <div className="car-card__identity"><strong title={driver.name}>{driver.name}</strong></div>
+          <span className="status-chip status-chip--out">OUT</span>
+          <span className="car-number">#{driver.number.toString().padStart(2, "0")}</span>
+        </div>
+        <div className="car-card__out-state">
+          <strong>{reason}</strong>
+          <small>{detail}</small>
+          <span>LAP {car.currentLap} · {team.shortName}</span>
+        </div>
+      </button>
+    );
+  }
   const penaltyShort = activePenalty?.type === "TIME_5" ? "+5"
     : activePenalty?.type === "TIME_10" ? "+10"
       : activePenalty?.type === "DRIVE_THROUGH" ? "DT" : activePenalty?.type === "STOP_GO_10" ? "SG" : activePenalty ? "PEN" : null;

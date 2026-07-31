@@ -48,13 +48,14 @@ function WeatherGlyph({ label }: { label: string }) {
 }
 
 interface TrackFlagDisplay {
-  label: "GREEN" | "YELLOW" | "VIRTUAL SAFETY CAR" | "SAFETY CAR" | "SAFETY CAR ENDING" | "RED FLAG";
-  tone: "green" | "yellow" | "red";
+  label: "GREEN" | "YELLOW" | "VIRTUAL SAFETY CAR" | "SAFETY CAR" | "SAFETY CAR ENDING" | "RED FLAG" | "CHEQUERED";
+  tone: "green" | "yellow" | "red" | "chequered";
   key: string;
 }
 
-export function getTrackFlagDisplay(snapshot: RaceSnapshot | null, redFlag = false): TrackFlagDisplay {
+export function getTrackFlagDisplay(snapshot: RaceSnapshot | null, redFlag = false, chequered = false): TrackFlagDisplay {
   if (redFlag || snapshot?.raceControl === "RED_FLAG") return { label: "RED FLAG", tone: "red", key: `red-flag-${snapshot?.redFlagPhase ?? "active"}` };
+  if (chequered || snapshot?.status === "FINISHED") return { label: "CHEQUERED", tone: "chequered", key: "chequered" };
   if (snapshot?.raceControl === "YELLOW") return { label: "YELLOW", tone: "yellow", key: "yellow" };
   if (snapshot?.raceControl === "VSC") return { label: "VIRTUAL SAFETY CAR", tone: "yellow", key: "vsc" };
   if (snapshot?.raceControl === "SAFETY_CAR" && snapshot.safetyCarPhase === "RESTART") {
@@ -77,12 +78,17 @@ export function RaceTopbar({
   const weatherLabel = getWeatherLabel(snapshot);
   const playLabel = paused ? "Resume race" : "Pause race";
   const notice = snapshot ? latestRaceControlNotice(snapshot) : null;
-  const controlHeadline = notice?.headline ?? "TRACK CLEAR";
-  const controlDetail = notice?.detail ?? "RACE CONTROL MONITORING · PIT LANE OPEN";
+  const liveRedFlag = snapshot?.raceControl === "RED_FLAG";
+  const raceChequered = !liveRedFlag && Boolean(snapshot?.cars.some((car) => car.incidentStatus !== "RETIRED" && car.finishTime !== null));
+  const controlHeadline = raceChequered ? "CHEQUERED FLAG" : notice?.headline ?? "TRACK CLEAR";
+  const controlDetail = raceChequered
+    ? snapshot?.status === "FINISHED"
+      ? "RACE COMPLETE · FINAL CLASSIFICATION AVAILABLE"
+      : "LEADER FINISHED · REMAINING RUNNERS COMPLETE THE LAP"
+    : notice?.detail ?? "RACE CONTROL MONITORING · PIT LANE OPEN";
   const controlMessageTime = notice?.elapsedTime ?? 0;
   const controlMessageClock = `${Math.floor(controlMessageTime / 60).toString().padStart(2, "0")}:${Math.floor(controlMessageTime % 60).toString().padStart(2, "0")}`;
-  const liveRedFlag = snapshot?.raceControl === "RED_FLAG";
-  const flagDisplay = getTrackFlagDisplay(snapshot, liveRedFlag);
+  const flagDisplay = getTrackFlagDisplay(snapshot, liveRedFlag, raceChequered);
   const flashKey = `${flagDisplay.key}:${snapshot?.safetyCarLappedCarsMayOvertake ? "wave-by" : "standard"}`;
   const previousFlagState = useRef(flashKey);
   const [flagFlashing, setFlagFlashing] = useState(false);
@@ -116,7 +122,7 @@ export function RaceTopbar({
         </section>
 
         <section
-          className={`broadcast-status track-flag-panel condition--${flagDisplay.tone} status--${flagDisplay.key} ${flagFlashing ? "is-flashing" : ""}`}
+          className={`broadcast-status track-flag-panel condition--${flagDisplay.tone} status--${flagDisplay.key} ${raceChequered ? "is-chequered" : flagFlashing ? "is-flashing" : ""}`}
           aria-label={`Race control ${flagDisplay.label}, ${snapshot?.pitLaneOpen === false ? "pit lane closed" : "pit lane open"}`}
           aria-live="polite"
         >

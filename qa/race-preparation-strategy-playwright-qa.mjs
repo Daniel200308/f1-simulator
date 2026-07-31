@@ -62,22 +62,35 @@ async function checkRacePreparation(page, label, screenshot) {
   const finalGridCarVisible = await gridCars.nth(21).isVisible();
   check(finalGridCarVisible, `${label} keeps P22 visible`);
 
-  const tyreButtons = page.getByRole("button", { name: /start on/i });
-  check(await tyreButtons.count() === 10, `${label} exposes five compounds for both player cars`);
-  const softButtons = page.getByRole("button", { name: /start on SOFT/i });
-  check(await softButtons.count() === 2 && await softButtons.first().isEnabled(), `${label} allows a Soft race start`);
-  await softButtons.first().click();
-  check(await softButtons.first().getAttribute("aria-pressed") === "true", `${label} applies the Soft selection immediately`);
+  /*
+   * Compounds are browsed through per-driver tabs, and the sets of the selected
+   * compound are chosen directly. The previous layout offered a compound row plus
+   * fixed "new"/"used" buttons instead.
+   */
+  const compoundTabs = page.getByRole("group", { name: /compound$/ });
+  check(await compoundTabs.count() === 2, `${label} gives each player car its own compound tabs`);
+  check(await compoundTabs.first().getByRole("button").count() === 5, `${label} exposes five compounds for both player cars`);
 
-  const newSet = page.getByRole("button", { name: /NEW SET/i }).first();
-  const usedSet = page.getByRole("button", { name: /QUALI USED/i }).first();
-  check(await newSet.isVisible() && await usedSet.isVisible(), `${label} separates new and qualifying-used sets`);
-  if (await usedSet.isEnabled()) {
-    await usedSet.click();
-    check(await usedSet.getAttribute("aria-pressed") === "true", `${label} can select a used qualifying set`);
-  }
+  const softTab = compoundTabs.first().getByRole("button", { name: /show SOFT sets/i });
+  check(await softTab.isEnabled(), `${label} allows a Soft race start`);
+  await softTab.click();
+  check(await softTab.getAttribute("aria-pressed") === "true", `${label} applies the Soft selection immediately`);
 
-  const planRows = page.locator("[class*='preRacePlanRows'] > article");
+  const setButtons = page.locator("button[data-start-set-choice='true']");
+  check(await setButtons.count() > 0, `${label} lists the selected compound's sets`);
+  const setText = await setButtons.allInnerTexts();
+  check(setText.every((text) => /\d+%/.test(text)), `${label} reports remaining life on every selectable set`, setText.slice(0, 4));
+  const firstSet = setButtons.first();
+  await firstSet.click();
+  check(await firstSet.getAttribute("aria-pressed") === "true", `${label} can select an exact starting set`);
+
+  const startWeather = page.getByLabel("Race start conditions");
+  check(await startWeather.isVisible(), `${label} shows the conditions the race starts in`);
+
+  // Each driver now has its own plan block, so both are asserted.
+  const planBlocks = page.locator("[class*='preRacePlanRows']");
+  check(await planBlocks.count() === 2, `${label} shows a plan block for each player car`);
+  const planRows = planBlocks.first().locator("article");
   check(await planRows.count() === 3, `${label} displays Plan A, Plan B and Plan C`);
   const planFacts = await planRows.evaluateAll((rows) => rows.map((row) => ({
     label: row.textContent?.replace(/\s+/g, " ").trim(),
@@ -88,7 +101,9 @@ async function checkRacePreparation(page, label, screenshot) {
 
   const bounds = await containment(page, [
     "[class*='gridPair']:last-child article:last-child",
-    "[class*='startTyreCards'] article:nth-child(2)",
+    // Second driver band, addressed by its own type rather than sibling index:
+    // the conditions panel now sits between the header and the first band.
+    "[class*='driverStrategyRow']:last-of-type",
     "[class*='preRacePlanRows'] > article:nth-child(3)",
     "[class*='raceDebriefArea'] button",
   ]);

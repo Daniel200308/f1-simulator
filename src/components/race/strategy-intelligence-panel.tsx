@@ -79,6 +79,59 @@ function actionLabel(scenario: StrategyScenario): string {
   return "STAY OUT";
 }
 
+/**
+ * One alternative call, expressed as its cost against the recommendation.
+ * A comparison row answers "why not this one?" directly, which a second full
+ * card full of empty fields does not.
+ */
+function AlternativeRow({
+  scenario,
+  recommended,
+  onExecute,
+}: {
+  scenario: StrategyScenario;
+  recommended: StrategyScenario;
+  onExecute: (scenario: StrategyScenario) => void;
+}) {
+  const deltaSeconds = scenario.projectedRemainingTimeSeconds - recommended.projectedRemainingTimeSeconds;
+  const positionDelta = scenario.predictedFinishPosition - recommended.predictedFinishPosition;
+  const blocker = scenario.feasible ? null : scenario.reasons.find((reason) => /not|cannot|unavailable|closed|no /i.test(reason)) ?? "Not available right now";
+
+  return (
+    <article className={styles.alternativeRow} data-feasible={scenario.feasible}>
+      <span className={styles.alternativeIdentity}>
+        <TyreBadge compound={scenario.compound} size="small" title={`${scenario.compound} tyre`} />
+        <span><strong>{scenario.label}</strong><small>{scenario.compound}</small></span>
+      </span>
+
+      <span className={styles.alternativeCost} data-worse={deltaSeconds > 0}>
+        <small>VS CALL</small>
+        <strong>{scenario.feasible ? `${deltaSeconds >= 0 ? "+" : ""}${deltaSeconds.toFixed(1)}s` : "—"}</strong>
+      </span>
+
+      <span className={styles.alternativeCost} data-worse={positionDelta > 0}>
+        <small>FINISH</small>
+        <strong>{scenario.feasible ? `P${scenario.predictedFinishPosition}${positionDelta === 0 ? "" : ` (${positionDelta > 0 ? "+" : ""}${positionDelta})`}` : "—"}</strong>
+      </span>
+
+      <span className={styles.alternativeRisks}>
+        <b data-level={scenario.traffic.level.toLowerCase()}>TRAFFIC {scenario.traffic.level}</b>
+        <b data-level={scenario.tyreRisk.level.toLowerCase()}>TYRE {scenario.tyreRisk.level}</b>
+      </span>
+
+      <span className={styles.alternativeVerdict}>{blocker ?? scenario.reasons[0]}</span>
+
+      <button
+        className={styles.alternativeAction}
+        disabled={!scenario.feasible}
+        onClick={() => onExecute(scenario)}
+        title={scenario.feasible ? `Execute ${scenario.label}` : blocker ?? "Not available"}
+        type="button"
+      >{scenario.feasible ? "TAKE" : "N/A"}</button>
+    </article>
+  );
+}
+
 function ScenarioCard({
   scenario,
   onExecute,
@@ -99,7 +152,10 @@ function ScenarioCard({
       <header className={styles.scenarioHeader}>
         <span className={styles.scenarioIcon} aria-hidden="true"><Icon size={18} /></span>
         <div>
-          <span className={styles.scenarioIndex}>OPTION {scenario.rank.toString().padStart(2, "0")}</span>
+          {/* The card is now only used for the recommendation, so it names the
+              call rather than repeating an option number that appeared on
+              several cards at once. */}
+          <span className={styles.scenarioIndex}>{scenario.recommended ? "PIT WALL CALL" : `OPTION ${scenario.rank.toString().padStart(2, "0")}`}</span>
           <h3>{scenario.label}</h3>
         </div>
         <TyreBadge compound={scenario.compound} size="medium" />
@@ -356,10 +412,21 @@ export function StrategyIntelligencePanel({
 
         <PlanTimeline currentLap={car.currentLap} plans={racePlans} totalLaps={SILVERSTONE_CIRCUIT.totalLaps} />
 
-        <div className={styles.scenarioGrid}>
-          {assessment.scenarios.map((scenario) => (
-            <ScenarioCard key={scenario.id} onExecute={executeScenario} scenario={scenario} />
-          ))}
+        {/*
+         * The recommended call gets the full card; the alternatives collapse into
+         * comparison rows. Four equal cards gave the same visual weight to one
+         * actionable call and three that read "N/A · UNAVAILABLE", which buried
+         * the decision the panel exists to support.
+         */}
+        <div className={styles.scenarioLayout}>
+          <ScenarioCard onExecute={executeScenario} scenario={recommended} />
+          <div className={styles.alternativeList} aria-label="Alternative strategy calls">
+            {assessment.scenarios
+              .filter((scenario) => scenario.id !== recommended.id)
+              .map((scenario) => (
+                <AlternativeRow key={scenario.id} onExecute={executeScenario} recommended={recommended} scenario={scenario} />
+              ))}
+          </div>
         </div>
 
         <footer className={styles.dialogFooter}>
