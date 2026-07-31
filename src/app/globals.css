@@ -144,51 +144,46 @@ button { font: inherit; }
  * progress rule along the bottom edge. Sizes are fluid so the block scales with
  * the column rather than clipping.
  */
+/*
+ * Title on the left, lap count on the right, one line. The lap number stays the
+ * emphasis without dominating the panel.
+ */
 .timing-masthead {
   position: relative;
   min-width: 0;
   /* The panel is a flex column, so without this the masthead is the first thing
-     to be compressed and its clock row disappears. */
+     to be compressed. */
   flex: 0 0 auto;
-  /* Content-sized rows so the lap number and clock always get their full
-     height; a squeezed panel used to clip the race time entirely. */
   display: grid;
-  grid-template-rows: auto auto auto;
-  align-content: center;
-  justify-items: center;
-  gap: clamp(2px, .4vh, 5px);
-  padding: clamp(8px, 1.1vh, 14px) 12px clamp(10px, 1.2vh, 16px);
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: clamp(9px, 1.1vh, 13px) 13px;
   border-bottom: 1px solid rgba(148, 177, 190, .18);
   background:
-    radial-gradient(circle at 50% -30%, rgba(32, 215, 231, .18), transparent 62%),
+    radial-gradient(circle at 12% -40%, rgba(32, 215, 231, .16), transparent 58%),
     linear-gradient(180deg, rgba(10, 22, 28, .96), rgba(5, 12, 16, .98));
 }
 .timing-masthead__label {
+  min-width: 0;
+  overflow: hidden;
   color: var(--accent);
-  font: 950 clamp(8px, .62vw, 10px)/1 var(--font-mono);
-  letter-spacing: .28em;
-  text-indent: .28em;
-  text-shadow: 0 0 14px rgba(32, 215, 231, .5);
+  font: 950 clamp(10px, .78vw, 13px)/1.1 var(--font-mono);
+  letter-spacing: .2em;
+  text-overflow: ellipsis;
+  text-shadow: 0 0 14px rgba(32, 215, 231, .45);
+  white-space: nowrap;
 }
-.timing-masthead__lap { min-width: 0; display: flex; align-items: baseline; justify-content: center; gap: 7px; }
-.timing-masthead__lap > strong {
+.timing-masthead__lap { display: flex; align-items: baseline; gap: 5px; }
+.timing-masthead__lap small { color: #6d858e; font: 900 clamp(8px, .56vw, 9px)/1 var(--font-mono); letter-spacing: .14em; }
+.timing-masthead__lap strong {
   color: #f7fcfd;
-  font: 950 clamp(30px, 3.4vw, 46px)/1 var(--font-mono);
+  font: 950 clamp(17px, 1.5vw, 23px)/1 var(--font-mono);
   font-variant-numeric: tabular-nums lining-nums;
-  letter-spacing: -.035em;
-  text-shadow: 0 2px 18px rgba(0, 0, 0, .8), 0 0 26px rgba(32, 215, 231, .22);
+  letter-spacing: -.02em;
+  text-shadow: 0 0 18px rgba(32, 215, 231, .28);
 }
-.timing-masthead__lap > span { display: grid; gap: 1px; text-align: left; }
-.timing-masthead__lap small { color: #7f959d; font: 900 clamp(8px, .58vw, 10px)/1 var(--font-mono); letter-spacing: .16em; }
-.timing-masthead__lap em { color: #93a9b1; font: 900 clamp(10px, .74vw, 13px)/1 var(--font-mono); font-style: normal; }
-.timing-masthead__clock { display: flex; align-items: baseline; gap: 8px; }
-.timing-masthead__clock small { color: #6d858e; font: 900 clamp(8px, .56vw, 9px)/1 var(--font-mono); letter-spacing: .14em; }
-.timing-masthead__clock strong {
-  color: #dcebee;
-  font: 950 clamp(13px, 1.1vw, 18px)/1 var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  letter-spacing: .04em;
-}
+.timing-masthead__lap em { color: #8ba1a9; font: 900 clamp(9px, .66vw, 12px)/1 var(--font-mono); font-style: normal; }
 /* Race distance completed, drawn as the panel's bottom rule. */
 .timing-masthead > i {
   position: absolute;
@@ -857,14 +852,15 @@ button { font: inherit; }
  * block, and they pulse while a zone is active to mark it as a live state.
  */
 .aero-wing-car {
-  --wing-tone: #4bde95;
+  --wing-tone: #5d7a86;
+  --wing-open: #1f6fff;
   min-width: 0;
   display: grid;
-  grid-template-rows: minmax(0, 1fr) auto 3px;
+  grid-template-rows: minmax(0, 1fr) auto;
   align-content: center;
-  gap: 3px;
+  gap: 2px;
 }
-.aero-wing-car[data-wing-state="OPEN"] { --wing-tone: var(--accent); }
+.aero-wing-car[data-wing-state="OPEN"] { --wing-tone: var(--wing-open); }
 .aero-wing-car svg { width: 100%; height: auto; max-height: clamp(38px, 4.2vh, 52px); overflow: visible; }
 .aero-wing-car__body { fill: rgba(148, 177, 190, .16); stroke: rgba(190, 214, 220, .58); stroke-width: 1.6; }
 .aero-wing-car__halo { fill: none; stroke: rgba(190, 214, 220, .5); stroke-width: 2.4; stroke-linecap: round; }
@@ -872,27 +868,68 @@ button { font: inherit; }
 .aero-wing-car__hub { fill: rgba(176, 200, 208, .42); }
 .aero-wing-car__plane { fill: rgba(190, 214, 220, .5); }
 
-/* Closed by default; each flap hinges from its inboard end when a zone opens. */
-.aero-wing-car__flap { fill: var(--wing-tone); transition: transform .24s ease-out, opacity .24s ease-out; }
-.aero-wing-car__flap--front { transform-origin: 38px 61px; }
-.aero-wing-car__flap--rear { transform-origin: 222px 27px; }
-.aero-wing-car[data-wing-state="OPEN"] .aero-wing-car__flap--front { animation: wing-flap-front 1s ease-in-out infinite; }
-.aero-wing-car[data-wing-state="OPEN"] .aero-wing-car__flap--rear { animation: wing-flap-rear 1s ease-in-out infinite; }
-@keyframes wing-flap-front {
-  0%, 100% { transform: rotate(-16deg); opacity: 1; filter: drop-shadow(0 0 6px color-mix(in srgb, var(--wing-tone) 70%, transparent)); }
-  50% { transform: rotate(-24deg); opacity: .58; filter: drop-shadow(0 0 12px var(--wing-tone)); }
+/*
+ * Flap motion. Closed flaps sit flush on their main plane. Opening lifts the
+ * rear flap up and back from its leading edge — the way a real DRS flap swings
+ * open — instead of pivoting a bar about its centre, and the front flap makes
+ * the same, smaller movement. The eased keyframes overshoot slightly and settle,
+ * so the panel reads as a mechanism under load rather than a linear tween.
+ */
+.aero-wing-car__flap {
+  fill: var(--wing-tone);
+  transition: fill .3s ease, transform .34s cubic-bezier(.22, 1.4, .36, 1);
 }
-@keyframes wing-flap-rear {
-  0%, 100% { transform: rotate(38deg); opacity: 1; filter: drop-shadow(0 0 6px color-mix(in srgb, var(--wing-tone) 70%, transparent)); }
-  50% { transform: rotate(52deg); opacity: .58; filter: drop-shadow(0 0 14px var(--wing-tone)); }
+/* Hinge at each flap's leading edge. */
+.aero-wing-car__flap--front { transform-origin: 10px 61px; }
+.aero-wing-car__flap--rear { transform-origin: 221px 30px; }
+.aero-wing-car__slot { stroke: transparent; stroke-width: 1.4; stroke-linecap: round; transition: stroke .3s ease; }
+
+.aero-wing-car[data-wing-state="OPEN"] .aero-wing-car__flap--rear { animation: drs-open-rear 1.15s cubic-bezier(.32, 0, .28, 1) infinite; }
+.aero-wing-car[data-wing-state="OPEN"] .aero-wing-car__flap--front { animation: drs-open-front 1.15s cubic-bezier(.32, 0, .28, 1) infinite; }
+.aero-wing-car[data-wing-state="OPEN"] .aero-wing-car__slot { animation: drs-slot 1.15s ease-in-out infinite; }
+
+/*
+ * The flap swings up and rearward, briefly past its stop, then settles; the glow
+ * peaks with the opening rather than pulsing on its own clock.
+ */
+@keyframes drs-open-rear {
+  0% { transform: translate(0, 0) rotate(0deg); filter: drop-shadow(0 0 3px color-mix(in srgb, var(--wing-open) 50%, transparent)); }
+  32% { transform: translate(1px, -9px) rotate(-54deg); filter: drop-shadow(0 0 16px var(--wing-open)); }
+  46% { transform: translate(1px, -7.4px) rotate(-46deg); filter: drop-shadow(0 0 22px var(--wing-open)); }
+  74% { transform: translate(1px, -8px) rotate(-49deg); filter: drop-shadow(0 0 13px var(--wing-open)); }
+  100% { transform: translate(0, 0) rotate(0deg); filter: drop-shadow(0 0 3px color-mix(in srgb, var(--wing-open) 50%, transparent)); }
+}
+@keyframes drs-open-front {
+  0% { transform: translate(0, 0) rotate(0deg); filter: drop-shadow(0 0 3px color-mix(in srgb, var(--wing-open) 50%, transparent)); }
+  32% { transform: translate(0, -3.4px) rotate(-19deg); filter: drop-shadow(0 0 12px var(--wing-open)); }
+  46% { transform: translate(0, -2.8px) rotate(-16deg); filter: drop-shadow(0 0 17px var(--wing-open)); }
+  74% { transform: translate(0, -3px) rotate(-17deg); filter: drop-shadow(0 0 10px var(--wing-open)); }
+  100% { transform: translate(0, 0) rotate(0deg); filter: drop-shadow(0 0 3px color-mix(in srgb, var(--wing-open) 50%, transparent)); }
+}
+/* The slot gap only exists while the flap is up. */
+@keyframes drs-slot {
+  0%, 100% { stroke: transparent; }
+  40%, 66% { stroke: color-mix(in srgb, var(--wing-open) 76%, #dff0ff); }
 }
 
-.aero-wing-car__state { min-width: 0; display: grid; justify-items: center; gap: 1px; }
-.aero-wing-car__state b { color: var(--wing-tone); font: 950 9px/1 var(--font-mono); letter-spacing: .1em; }
-.aero-wing-car__state small { min-width: 0; overflow: hidden; color: #7f959d; font: 800 8px/1.1 var(--font-mono); letter-spacing: .04em; text-overflow: ellipsis; white-space: nowrap; }
-/* Distance remaining inside the active zone. */
-.aero-wing-car > i { position: relative; height: 3px; overflow: hidden; border-radius: 2px; background: rgba(126, 151, 160, .16); }
-.aero-wing-car > i::after { position: absolute; inset: 0 auto 0 0; width: var(--zone-progress, 0%); border-radius: inherit; background: var(--wing-tone); box-shadow: 0 0 8px var(--wing-tone); content: ""; transition: width .3s linear; }
+/* Airflow streaks past the open wing. */
+.aero-wing-car__flow path { fill: none; stroke: var(--wing-open); stroke-width: 1.5; stroke-linecap: round; opacity: 0; }
+.aero-wing-car[data-wing-state="OPEN"] .aero-wing-car__flow path { animation: drs-flow 1.15s linear infinite; }
+.aero-wing-car[data-wing-state="OPEN"] .aero-wing-car__flow path:nth-child(2) { animation-delay: .18s; }
+.aero-wing-car[data-wing-state="OPEN"] .aero-wing-car__flow path:nth-child(3) { animation-delay: .36s; }
+@keyframes drs-flow {
+  0% { opacity: 0; transform: translateX(26px) scaleX(.4); }
+  38% { opacity: .85; }
+  100% { opacity: 0; transform: translateX(-30px) scaleX(1.15); }
+}
+
+.aero-wing-car__state { min-width: 0; display: grid; justify-items: center; }
+.aero-wing-car__state b { color: var(--wing-tone); font: 950 10px/1 var(--font-mono); letter-spacing: .12em; transition: color .3s ease; }
+.aero-wing-car[data-wing-state="OPEN"] .aero-wing-car__state b { animation: drs-label 1.15s ease-in-out infinite; }
+@keyframes drs-label {
+  0%, 100% { color: color-mix(in srgb, var(--wing-open) 72%, #cfe3f5); text-shadow: none; }
+  46% { color: #dff0ff; text-shadow: 0 0 14px var(--wing-open); }
+}
 .energy-telemetry[data-flow="harvest"] .energy-battery-icon { animation: battery-charge-breathe 1.05s ease-in-out infinite; }
 .energy-telemetry[data-flow="deploy"] .energy-battery-icon { animation: battery-deploy-breathe .72s ease-in-out infinite; }
 @keyframes battery-charge-breathe { 50% { filter: brightness(1.55) drop-shadow(0 0 10px var(--energy-status)); } }
@@ -928,13 +965,35 @@ button { font: inherit; }
 .energy-vitals b { color: #e6f0f2; font-size: 8px; }
 .energy-vitals b.is-warning { color: var(--yellow); }
 
-/* Three usage levels sharing the row evenly. The old five-column track left the
-   buttons bunched against the left edge once the two extra maps were removed. */
-.visual-control--energy > .energy-mode-rail { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
+/*
+ * Three usage levels sharing the row evenly, filling the section's height rather
+ * than sitting as short pills with dead space above and below them.
+ */
+.visual-control--energy > .energy-mode-rail { min-height: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-content: stretch; gap: 6px; }
 .visual-control--energy header .is-ovt-live { color: #ff5269; text-shadow: 0 0 10px rgba(255,82,105,.62); }
-.visual-control--energy button { position: relative; z-index: 1; width: 100%; max-width: none; height: 38px; aspect-ratio: auto; grid-template-columns: 1fr; grid-template-rows: 13px 12px; place-items: center; gap: 2px; padding: 4px 6px; border-radius: 19px; background: #09141a; }
-.visual-control--energy button::after { inset: 2px; border-radius: 14px; }
-.visual-control--energy button strong { max-width: 100%; font-size: 10px; letter-spacing: .04em; }
+/* Glyph beside the label so the button reads on one line and can use the full
+   height of the row instead of stacking into a tall pill. */
+.visual-control--energy button {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  min-height: 40px;
+  aspect-ratio: auto;
+  display: grid;
+  grid-template-columns: auto auto;
+  grid-template-rows: minmax(0, 1fr);
+  align-items: center;
+  /* Glyph and label centred as a pair inside the pill. */
+  justify-content: center;
+  gap: 7px;
+  padding: 5px 8px;
+  border-radius: 12px;
+  background: #09141a;
+}
+.visual-control--energy button::after { inset: 2px; border-radius: 10px; }
+.visual-control--energy button strong { max-width: 100%; font-size: 11px; letter-spacing: .05em; }
 .visual-control--energy .control-glyph--energy { width: 22px; height: 11px; padding: 2px 3px; }
 .visual-control--energy .control-glyph--energy i { width: 3px; height: 4px !important; }
 .visual-control--energy button[aria-pressed="true"] { transform: translateY(-2px); box-shadow: 0 0 14px color-mix(in srgb, var(--node-color) 46%, transparent); }
@@ -1183,9 +1242,12 @@ button { font: inherit; }
   .track-radio__message { animation: none; }
   .energy-battery-icon, .track-weather__sectors i::after,
   .pit-timing-live [data-tyre-change="true"][data-running="true"] strong { animation: none; }
-  /* Flaps still show their open angle, they simply stop pulsing. */
-  .aero-wing-car[data-wing-state="OPEN"] .aero-wing-car__flap--front { animation: none; transform: rotate(-20deg); }
-  .aero-wing-car[data-wing-state="OPEN"] .aero-wing-car__flap--rear { animation: none; transform: rotate(45deg); }
+  /* Flaps hold their open position; only the cycling stops. */
+  .aero-wing-car[data-wing-state="OPEN"] .aero-wing-car__flap--front { animation: none; transform: translate(0, -3px) rotate(-17deg); }
+  .aero-wing-car[data-wing-state="OPEN"] .aero-wing-car__flap--rear { animation: none; transform: translate(1px, -8px) rotate(-49deg); }
+  .aero-wing-car[data-wing-state="OPEN"] .aero-wing-car__slot { animation: none; stroke: color-mix(in srgb, var(--wing-open) 76%, #dff0ff); }
+  .aero-wing-car[data-wing-state="OPEN"] .aero-wing-car__flow path { animation: none; opacity: 0; }
+  .aero-wing-car[data-wing-state="OPEN"] .aero-wing-car__state b { animation: none; }
 }
 
 /* Shared legibility system: scale type, row rhythm and spacing without transforming the canvas. */

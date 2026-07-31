@@ -1,5 +1,5 @@
 import type { BattleStatus, EnergyMode, PaceMode, RaceCarState, RaceControlStatus, RacingLineMode, WeatherState } from "@/domain/race";
-import { SILVERSTONE_CIRCUIT } from "@/simulation/track";
+import { normalizeLapDistance, SILVERSTONE_CIRCUIT, SILVERSTONE_WING_ZONES, wingZoneAtDistance } from "@/simulation/track";
 
 export type RacecraftIntent = "ATTACK" | "DEFEND" | "HARVEST" | "HOLD";
 
@@ -126,9 +126,31 @@ function calculateActiveRacecraftDecision(context: RacecraftContext, field: read
    */
   const approachWindow = Boolean(ahead && gapAhead > 1.25 && gapAhead <= 2.6 && closingRateKph > 1.5);
 
+  /*
+   * Overtakes are set up before the straight, not on it. A car about to reach a
+   * movable-aero zone with a rival inside the activation window commits early,
+   * and a car whose rival is on materially worse tyres presses that advantage
+   * even from a gap that would otherwise read as out of range.
+   */
+  const wingZone = wingZoneAtDistance(car.lapDistance);
+  const nextWingZone = SILVERSTONE_WING_ZONES.find((zone) => zone.openAtMeters > normalizeLapDistance(car.lapDistance));
+  const metresToWingZone = nextWingZone ? nextWingZone.openAtMeters - normalizeLapDistance(car.lapDistance) : Infinity;
+  const approachingWingZone = metresToWingZone <= 320;
+  const wingAttackWindow = Boolean(ahead && (wingZone || approachingWingZone) && gapAhead <= 1.0);
+  // A tyre-life edge is worth using even from further back.
+  const tyreAdvantage = ahead ? car.tyreLife - ahead.tyreLife : 0;
+  const tyreLeverage = Boolean(ahead && tyreAdvantage >= 18 && gapAhead <= 2.0 && !aheadIsBlocked);
+  // Defending into a zone means spending energy before the rival can use theirs.
+  const wingDefenceWindow = Boolean(behind && (wingZone || approachingWingZone) && gapBehind <= 1.0);
+
   let intent: RacecraftIntent = "HOLD";
   if (!green || thermalProtection || car.batteryPercent < 18) intent = "HARVEST";
+  // A zone with the rival in range outranks the generic probability test: this
+  // is the one place on the lap where a pass is genuinely available.
+  else if (wingAttackWindow && car.batteryPercent >= 24) intent = "ATTACK";
   else if (ahead && gapAhead <= 1.25 && overtakeProbability >= Math.max(0.38, defenceProbability + 0.05)) intent = "ATTACK";
+  else if (tyreLeverage && car.batteryPercent >= 30) intent = "ATTACK";
+  else if (wingDefenceWindow && car.batteryPercent >= 22) intent = "DEFEND";
   else if (behind && gapBehind <= 1.15 && defenceProbability >= 0.36) intent = "DEFEND";
   else if (approachWindow && car.batteryPercent < 34) intent = "HARVEST";
 
@@ -159,6 +181,8 @@ function calculateActiveRacecraftDecision(context: RacecraftContext, field: read
   if (thermalProtection) reasons.push(`Thermal protection costs ${car.thermalDeratePercent.toFixed(1)}% power.`);
   if (car.batteryPercent < 18) reasons.push(`Energy reserve is only ${Math.round(car.batteryPercent)}%.`);
   if (intent === "ATTACK" && ahead) reasons.push(`${ahead.carId} is ${gapAhead.toFixed(3)}s ahead with ${Math.round(overtakeProbability * 100)}% pass probability.`);
+  if (wingAttackWindow && ahead) reasons.push(`${wingZone ? `Inside the ${wingZone.label}` : `${Math.round(metresToWingZone)}m to the ${nextWingZone?.label}`} with ${ahead.carId} in range.`);
+  if (tyreLeverage && ahead) reasons.push(`${Math.round(tyreAdvantage)}% tyre advantage over ${ahead.carId}.`);
   if (intent === "DEFEND" && behind) reasons.push(`${behind.carId} is the immediate threat at ${gapBehind.toFixed(3)}s.`);
   if (intent === "HARVEST" && approachWindow && ahead) reasons.push(`Building charge to attack ${ahead.carId} in ${gapAhead.toFixed(1)}s.`);
   if (aheadIsBlocked && ahead) reasons.push(`${ahead.carId} is itself held up; waiting for a cleaner run.`);

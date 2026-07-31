@@ -14,13 +14,6 @@ function gapLabel(position: number, gap: number): string {
   return `+${gap.toFixed(3)}`;
 }
 
-function sessionTime(seconds: number): string {
-  const hours = Math.floor(seconds / 3_600);
-  const minutes = Math.floor((seconds % 3_600) / 60);
-  const secs = Math.floor(seconds % 60);
-  return [hours, minutes, secs].map((value) => value.toString().padStart(2, "0")).join(":");
-}
-
 export function TimingTower() {
   const snapshot = useRaceStore((state) => state.snapshot);
   const selectedCarId = useRaceStore((state) => state.selectedCarId);
@@ -39,20 +32,16 @@ export function TimingTower() {
   return (
     <aside className="panel timing-panel" data-gap-revision={timingGapRevision}>
       {/*
-        * One centred masthead instead of a plain title above a two-cell strip:
-        * the lap counter is the headline number of a race broadcast, so it leads
-        * and the clock sits under it.
+        * Title and lap count on one line. Stacking a large numeral above a "/ 52"
+        * and a clock made the block tall and top-heavy for the little it said.
         */}
       <header className="timing-masthead">
         <span className="timing-masthead__label">LEADER BOARD</span>
-        <div className="timing-masthead__lap">
+        <span className="timing-masthead__lap">
+          <small>LAP</small>
           <strong>{currentLap}</strong>
-          <span><small>LAP</small><em>/ 52</em></span>
-        </div>
-        <div className="timing-masthead__clock">
-          <small>RACE TIME</small>
-          <strong>{sessionTime(snapshot?.elapsedTime ?? 0)}</strong>
-        </div>
+          <em>/ 52</em>
+        </span>
         <i aria-hidden="true" style={{ "--race-progress": `${Math.min(100, (currentLap / 52) * 100)}%` } as CSSProperties} />
       </header>
       <div className="timing-head"><span title="Position">P</span><span title="Driver">DRIVER</span><span title="Tyre compound">TYRE</span><span title="Tyre life">LIFE</span><span title="Gap to the car ahead">GAP</span><span aria-hidden="true" /></div>
