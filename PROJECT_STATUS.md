@@ -171,7 +171,7 @@ Project Pitwall은 **Silverstone 단일 레이스 위크엔드를 처음부터 �
 | `main` | `444c4dc` | 동기화 | 기본 기준선 |
 | `develop` | `444c4dc` | 동기화 | 개발 기준선 |
 | `codex/next-development` | `444c4dc` | 동기화 | 초기 개발 기준선 |
-| `codex/race-weekend` | `87ebeac` | 동기화 | 이번 변경의 주 브랜치 |
+| `codex/race-weekend` | 최신 커밋 | 동기화 | 이번 변경의 주 브랜치 |
 | `codex/thermal-management-gameplay` | `98638b3` | 동기화 | 현재 시스템 문서화 |
 | `codex/product-design-telemetry-ui` | `693bf9a` | 동기화 | 라이브 텔레메트리 UI |
 | `codex/live-strategy-driver-controls` | `e533b54` | 동기화 | 전략·4휠 텔레메트리 |
