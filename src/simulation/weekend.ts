@@ -3,7 +3,7 @@ import { DEFAULT_PLAYER_TEAM_ID, DRIVER_BY_ID, DRIVERS, playerCarIdsFor, TEAM_BY
 import { season2026PracticePenaltySeconds, season2026QualifyingPenaltySeconds, season2026QualifyingStrength } from "@/fixtures/season-2026-performance";
 import { qualifyingErrorRisk } from "@/simulation/driver-risk";
 import { PIT_BOX_DISTANCE, PIT_ENTRY_START, PIT_EXIT_END } from "@/simulation/engine";
-import { buildSessionDriverMessage, buildSessionEngineerMessage } from "@/simulation/message-library";
+import { buildSessionDriverMessage } from "@/simulation/message-library";
 import { hashNoise, signedNoise } from "@/simulation/random";
 import {
   beginQualifyingLapTiming,
@@ -221,7 +221,6 @@ export interface WeekendCarReport {
   energyDeploymentPercent: number;
   energyProgramme: "RECOVERY MAP" | "RACE ENERGY" | "QUALIFYING DEPLOY";
   driverMessage: string;
-  engineerMessage: string;
 }
 
 export interface WeekendSessionReport {
@@ -1952,7 +1951,6 @@ function sessionReportFor(state: WeekendState, result: WeekendSessionResult): We
       bestLapSeconds: hasTimedLap ? entry?.bestLapSeconds ?? null : null,
     };
     const driverMessage = buildSessionDriverMessage(messageContext);
-    const engineerMessage = buildSessionEngineerMessage(messageContext);
     return {
       carId,
       position: hasTimedLap ? entry?.position ?? null : null,
@@ -1966,7 +1964,6 @@ function sessionReportFor(state: WeekendState, result: WeekendSessionResult): We
       energyDeploymentPercent,
       energyProgramme,
       driverMessage,
-      engineerMessage,
     };
   });
   const activeReports = reports.filter((report) => report.position !== null);
@@ -1978,7 +1975,7 @@ function sessionReportFor(state: WeekendState, result: WeekendSessionResult): We
       ? "No player car recorded a timed lap in this segment."
       : qualifying
         ? `Best car P${bestPosition}. The lap and balance notes point to the next decision.`
-        : `Best car P${bestPosition}. Both drivers have given us a clear direction for the next setup step.`,
+        : `Best car P${bestPosition}. Both drivers have said how the car felt out there.`,
     cars: reports,
   };
 }

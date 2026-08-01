@@ -1,9 +1,12 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 import { ArrowLeftRight, Shield, Swords } from "lucide-react";
 
-import type { EnergyMode, PaceMode, RaceCarState, TeamOrderType, TyreCompound, TyreMode } from "@/domain/race";
+import type { EnergyMode, PaceMode, RaceCarState, TeamOrderType, TyreCompound, TyreMode, TyreSetState } from "@/domain/race";
 import { TyreBadge } from "@/components/race/tyre-badge";
+import { tyreSetLabel, tyreSetNumber } from "@/components/race/format";
 import { DEFAULT_PLAYER_TEAM_ID, DRIVER_BY_ID, playerCarIdsFor, TEAM_BY_ID } from "@/fixtures/grid";
 import { useRaceStore } from "@/store/race-store";
 
@@ -38,9 +41,14 @@ export interface CommandDockControls {
   setEnergyMode: (carId: string, mode: EnergyMode) => void;
   setTyreMode: (carId: string, mode: TyreMode) => void;
   setTeamOrder: (order: TeamOrderType) => void;
-  box: (carId: string, compound: TyreCompound) => void;
+  box: (carId: string, compound: TyreCompound, tyreSetId?: string) => void;
   servePenalty: (carId: string) => void;
   stayOut: (carId: string) => void;
+}
+
+/** Freshest usable set first, so the default choice is the obvious one. */
+function orderedSets(sets: readonly TyreSetState[]): readonly TyreSetState[] {
+  return [...sets].sort((left, right) => right.condition - left.condition || tyreSetNumber(left.id) - tyreSetNumber(right.id));
 }
 
 function LevelGlyph({ level, kind }: { level: number; kind: "pace" | "energy" | "tyre" }) {
@@ -51,12 +59,40 @@ export function CommandDock({ car, controls, pitLaneOpen }: { car?: RaceCarState
   const snapshot = useRaceStore((state) => state.snapshot);
   const selectedCarId = useRaceStore((state) => state.selectedCarId);
   const setSelectedCarId = useRaceStore((state) => state.setSelectedCarId);
+  // Which compound's set list is open. Null keeps the dock exactly as before.
+  const [openCompound, setOpenCompound] = useState<TyreCompound | null>(null);
+  const pitSectionRef = useRef<HTMLElement>(null);
   const driver = car ? DRIVER_BY_ID.get(car.driverId) : undefined;
   const team = car ? TEAM_BY_ID.get(car.teamId) : undefined;
   const playerCarIds = playerCarIdsFor(snapshot?.playerTeamId ?? DEFAULT_PLAYER_TEAM_ID);
   const enabled = Boolean(car && car.teamId === snapshot?.playerTeamId && !car.finished && car.incidentStatus !== "RETIRED");
   const tyreSetsFor = (compound: TyreCompound) => car?.tyreSets?.filter((set) => set.compound === compound) ?? [];
-  const availableSetsFor = (compound: TyreCompound) => tyreSetsFor(compound).filter((set) => set.status === "AVAILABLE" || set.status === "USED").length;
+  const usableSetsFor = (compound: TyreCompound) => orderedSets(
+    tyreSetsFor(compound).filter((set) => set.status === "AVAILABLE" || set.status === "USED" || set.status === "RESERVED"),
+  );
+  const availableSetsFor = (compound: TyreCompound) => usableSetsFor(compound).length;
+  const canCallPit = Boolean(enabled && car?.pitStatus === "TRACK" && pitLaneOpen);
+  // Derived rather than synced: a pit call that is no longer possible closes the
+  // list without an extra render pass.
+  const activeCompound = canCallPit ? openCompound : null;
+  const openSets = activeCompound ? usableSetsFor(activeCompound) : [];
+
+  // Close the set list on outside click or Escape, like any transient popover.
+  useEffect(() => {
+    if (!activeCompound) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (!pitSectionRef.current?.contains(event.target as Node)) setOpenCompound(null);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpenCompound(null);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [activeCompound]);
 
   return (
     <div className="command-console">
@@ -110,13 +146,67 @@ export function CommandDock({ car, controls, pitLaneOpen }: { car?: RaceCarState
         <div>{TYRE_OPTIONS.map((option) => <button aria-label={`Set tyre management ${option.mode}`} aria-pressed={car?.tyreMode === option.mode} className="command-node" disabled={!enabled} key={option.mode} onClick={() => car && controls.setTyreMode(car.carId, option.mode)} title={option.hint} type="button"><LevelGlyph kind="tyre" level={option.grip} /><strong>{option.label}</strong></button>)}</div>
       </section>
 
-      <section className="pit-tyre-control">
+      <section className="pit-tyre-control" ref={pitSectionRef}>
         <header><span>NEXT TYRE</span><b>{pitLaneOpen ? "PIT OPEN" : "PIT CLOSED"}</b></header>
         <div className="pit-tyre-control__buttons">{PIT_COMPOUNDS.map((compound) => {
           const available = availableSetsFor(compound);
           const isScheduled = car?.scheduledPitCompound === compound;
-          return <button aria-label={`Box for ${compound}, ${available} sets available`} aria-pressed={isScheduled} className="tyre-select-button" disabled={!enabled || car?.pitStatus !== "TRACK" || !pitLaneOpen || (available === 0 && !isScheduled)} key={compound} onClick={() => car && controls.box(car.carId, compound)} title={`${compound} · ${available} fresh set${available === 1 ? "" : "s"}`} type="button"><TyreBadge compound={compound} size="large" /></button>;
-        })}<button aria-label="Stay out" className="stay-out-control" disabled={!enabled || car?.pitStatus !== "TRACK" || !car?.scheduledPitCompound} onClick={() => car && controls.stayOut(car.carId)} title="Cancel pit call" type="button"><b>×</b></button></div>
+          return <button
+            aria-expanded={activeCompound === compound}
+            aria-haspopup="true"
+            aria-label={`Choose ${compound} set, ${available} available`}
+            aria-pressed={isScheduled}
+            className="tyre-select-button"
+            data-compound={compound}
+            disabled={!canCallPit || (available === 0 && !isScheduled)}
+            key={compound}
+            onClick={() => setOpenCompound((current) => current === compound ? null : compound)}
+            title={`${compound} · ${available} set${available === 1 ? "" : "s"} · choose set and life`}
+            type="button"
+          >
+            <TyreBadge compound={compound} size="large" />
+            <b className="tyre-select-button__count">{available}</b>
+          </button>;
+        })}<button aria-label="Stay out" className="stay-out-control" disabled={!enabled || car?.pitStatus !== "TRACK" || !car?.scheduledPitCompound} onClick={() => { setOpenCompound(null); if (car) controls.stayOut(car.carId); }} title="Cancel pit call" type="button"><b>×</b></button></div>
+
+        {/* The chosen compound's remaining sets, each with its life, so the pit
+            wall picks an exact set instead of only a compound. */}
+        {activeCompound && car && (
+          <div aria-label={`${activeCompound} tyre sets`} className="tyre-set-picker" role="group">
+            <header>
+              <span><TyreBadge compound={activeCompound} size="small" />{activeCompound}</span>
+              <span className="tyre-set-picker__meta">
+                <b>{openSets.length} SET{openSets.length === 1 ? "" : "S"} LEFT</b>
+                <button aria-label="Close tyre set list" onClick={() => setOpenCompound(null)} type="button">×</button>
+              </span>
+            </header>
+            {openSets.length === 0
+              ? <p className="tyre-set-picker__empty">NO SETS REMAINING</p>
+              : <div className="tyre-set-picker__grid">{openSets.map((set) => {
+                const isScheduledSet = car.scheduledPitTyreSetId === set.id;
+                const life = Math.round(set.condition);
+                // Stint laps accumulate as a fraction of a lap, so the label has
+                // to be rounded before it reaches the UI.
+                const laps = Math.round(set.lapsUsed);
+                return <button
+                  aria-label={`Box for ${activeCompound} set ${tyreSetLabel(set.id)}, ${life} percent life, ${laps} laps used`}
+                  aria-pressed={isScheduledSet}
+                  data-freshness={laps === 0 ? "NEW" : "USED"}
+                  data-life={life >= 85 ? "FRESH" : life >= 60 ? "WORN" : "LOW"}
+                  data-set-id={set.id}
+                  key={set.id}
+                  onClick={() => { controls.box(car.carId, activeCompound, set.id); setOpenCompound(null); }}
+                  style={{ "--set-life": `${life}%` } as CSSProperties}
+                  title={`${activeCompound} set ${tyreSetLabel(set.id)} · ${life}% life · ${laps} lap${laps === 1 ? "" : "s"}`}
+                  type="button"
+                >
+                  <span><b>#{tyreSetLabel(set.id)}</b><strong>{life}%</strong></span>
+                  <i aria-hidden="true"><em /></i>
+                  <small>{laps === 0 ? "NEW" : `${laps}L USED`}</small>
+                </button>;
+              })}</div>}
+          </div>
+        )}
       </section>
     </div>
   );

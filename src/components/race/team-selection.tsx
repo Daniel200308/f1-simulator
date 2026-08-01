@@ -4,6 +4,7 @@ import type { CSSProperties } from "react";
 import { ChevronRight, RadioTower, Users } from "lucide-react";
 
 import { DRIVERS, TEAM_BY_ID, TEAMS } from "@/fixtures/grid";
+import { season2026TeamCarRating } from "@/fixtures/season-2026-performance";
 
 import styles from "./team-selection.module.css";
 
@@ -20,14 +21,18 @@ function colorHex(value: number): string {
 export function TeamSelection({ selectedTeamId, onSelect, onConfirm }: TeamSelectionProps) {
   const selectedTeam = TEAM_BY_ID.get(selectedTeamId) ?? TEAMS[0];
   const selectedDrivers = DRIVERS.filter((driver) => driver.teamId === selectedTeam.id);
+  const carRating = season2026TeamCarRating(selectedTeam.id);
 
   return (
     <div className={styles.backdrop}>
       <main className={styles.selector} style={{ "--selected-team": colorHex(selectedTeam.primaryColor) } as CSSProperties}>
+        {/* The title block is the first thing a new player reads, so it is
+            centred and given the largest type in the panel. */}
         <header className={styles.header}>
-          <span className={styles.mark}><RadioTower aria-hidden="true" size={25} /></span>
-          <div><small>PROJECT PITWALL · CAREER SETUP</small><h1>Choose Your Team</h1><p>Your selection controls both cars through Practice, Qualifying and the Grand Prix.</p></div>
-          <b>ROUND 09<br /><span>SILVERSTONE</span></b>
+          <span className={styles.mark}><RadioTower aria-hidden="true" size={30} /></span>
+          <small>PROJECT PITWALL · CAREER SETUP</small>
+          <h1>Choose Your Team</h1>
+          <b>ROUND 09 <i aria-hidden="true" /> SILVERSTONE</b>
         </header>
 
         <section className={styles.workspace}>
@@ -46,7 +51,8 @@ export function TeamSelection({ selectedTeamId, onSelect, onConfirm }: TeamSelec
                   type="button"
                 >
                   <span>{String(index + 1).padStart(2, "0")}</span>
-                  <div><strong>{team.name}</strong><small>{team.shortName} · {drivers.map((driver) => driver.shortName).join(" / ")}</small></div>
+                  <strong>{team.name}</strong>
+                  <small>{drivers.map((driver) => driver.shortName).join(" · ")}</small>
                   <i />
                 </button>
               );
@@ -54,14 +60,21 @@ export function TeamSelection({ selectedTeamId, onSelect, onConfirm }: TeamSelec
           </div>
 
           <aside className={styles.teamBrief}>
-            <span>SELECTED CONSTRUCTOR</span>
-            <h2>{selectedTeam.name}</h2>
-            <p>Both race seats are linked to your pitwall. Setup decisions and tyre allocations carry through the full weekend.</p>
-            <div className={styles.performance}><span>CAR PERFORMANCE</span><strong>{Math.round(selectedTeam.performance * 100)}%</strong><i><b style={{ width: `${Math.min(100, selectedTeam.performance * 98)}%` }} /></i></div>
-            <div className={styles.driverPair}>
-              {selectedDrivers.map((driver) => <article key={driver.id}><span>#{driver.number}</span><div><strong>{driver.name}</strong><small>{driver.shortName} · RACE DRIVER</small></div></article>)}
+            {/* The brief scrolls internally on short viewports so the confirm
+                button below it is always reachable. */}
+            <div className={styles.briefBody}>
+              <span>SELECTED CONSTRUCTOR</span>
+              <h2>{selectedTeam.name}</h2>
+              <p>Both race seats are linked to your pitwall.</p>
+              {/* The engine's `performance` field is a lap-time multiplier with a
+                  0.02 total spread, so it is not a readable rating. This uses the
+                  normalised car rating instead. */}
+              <div className={styles.performance}><span>CAR PERFORMANCE</span><strong>{carRating}</strong><i><b style={{ width: `${carRating}%` }} /></i></div>
+              <div className={styles.driverPair}>
+                {selectedDrivers.map((driver) => <article key={driver.id}><span>#{driver.number}</span><strong>{driver.name}</strong><small>{driver.shortName} · RACE DRIVER</small></article>)}
+              </div>
+              <div className={styles.scope}><Users aria-hidden="true" size={17} /><span><b>2-CAR CONTROL</b><small>Shared strategy, independent setup and live team radio</small></span></div>
             </div>
-            <div className={styles.scope}><Users aria-hidden="true" size={17} /><span><b>2-CAR CONTROL</b><small>Shared strategy, independent setup and live team radio</small></span></div>
             <button className={styles.confirm} onClick={onConfirm} type="button">ENTER WEEKEND <ChevronRight aria-hidden="true" size={20} /></button>
           </aside>
         </section>

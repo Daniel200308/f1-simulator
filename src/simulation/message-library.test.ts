@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import {
   buildRaceDriverRadio,
   buildSessionDriverMessage,
-  buildSessionEngineerMessage,
   RACE_DRIVER_RADIO_VARIANT_CAPACITY,
   SESSION_DEBRIEF_VARIANT_CAPACITY,
   type RaceRadioSituation,
@@ -13,7 +12,6 @@ describe("motorsport message library", () => {
   it("provides well over the requested debrief variation capacity", () => {
     expect(SESSION_DEBRIEF_VARIANT_CAPACITY).toBeGreaterThanOrEqual(100);
     const driverMessages = new Set<string>();
-    const engineerMessages = new Set<string>();
     for (let seed = 1; seed <= 160; seed += 1) {
       const context = {
         seed,
@@ -34,13 +32,10 @@ describe("motorsport message library", () => {
         bestLapSeconds: 88 + (seed % 200) / 100,
       };
       driverMessages.add(buildSessionDriverMessage(context));
-      engineerMessages.add(buildSessionEngineerMessage(context));
     }
     expect(driverMessages.size).toBeGreaterThanOrEqual(100);
-    expect(engineerMessages.size).toBeGreaterThanOrEqual(100);
     expect([...driverMessages].every((message) => message.length < 330)).toBe(true);
-    expect([...engineerMessages].every((message) => message.length < 390)).toBe(true);
-    expect([...engineerMessages].join(" ")).not.toMatch(/Aero \d+%|mechanical \d+%|thermal margin \d+%/);
+    expect([...driverMessages].join(" ")).not.toMatch(/Aero \d+%|mechanical \d+%|thermal margin \d+%/);
   });
 
   it("changes the setup conversation with the dominant vehicle state", () => {
@@ -61,11 +56,11 @@ describe("motorsport message library", () => {
       thermalMarginPercent: 45,
       bestLapSeconds: 89.5,
     };
-    const front = buildSessionEngineerMessage({ ...base, balanceIssue: "high-speed understeer" });
-    const cooling = buildSessionEngineerMessage({ ...base, balanceIssue: "restricted cooling margin" });
+    const front = buildSessionDriverMessage({ ...base, balanceIssue: "high-speed understeer" });
+    const cooling = buildSessionDriverMessage({ ...base, balanceIssue: "restricted cooling margin" });
     expect(front).not.toBe(cooling);
     expect(front).toMatch(/front|steering|rotation|corner/i);
-    expect(cooling).toMatch(/thermal|temperature|heat|protection/i);
+    expect(cooling).toMatch(/thermal|temperature|heat|protection|hot/i);
   });
 
   it("gives qualifying drivers emotional, result-aware reactions without losing the car complaint", () => {

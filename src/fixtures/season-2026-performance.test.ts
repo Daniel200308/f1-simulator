@@ -8,12 +8,15 @@ import {
   F1_2026_POWER_SCALING_SNAPSHOT,
   F1_2026_TEAM_POWER,
   F1_2026_TEAM_STANDINGS,
+  CAR_PERFORMANCE_RATING_FLOOR,
   season2026DriverConsistency,
   season2026DriverPace,
   season2026FormAdjustmentSeconds,
   season2026PowerQualifyingPenaltySeconds,
   season2026QualifyingPenaltySeconds,
   season2026RawQualifyingPenaltySeconds,
+  season2026TeamCarDeficitSeconds,
+  season2026TeamCarRating,
   season2026TeamPerformance,
 } from "@/fixtures/season-2026-performance";
 
@@ -78,5 +81,31 @@ describe("2026 season performance snapshot", () => {
     expect(season2026QualifyingPenaltySeconds("red-bull-1", "Q3")).toBeCloseTo(verstappen * 0.92, 6);
     expect(season2026QualifyingPenaltySeconds("audi-2", "Q3")).toBeCloseTo(bortoleto, 6);
     expect(season2026QualifyingPenaltySeconds("audi-1", "Q3")).toBeCloseTo(hulkenberg, 6);
+  });
+
+  it("shows car performance on a spread-out rating rather than the lap-time multiplier", () => {
+    const ratings = F1_2026_TEAM_POWER.map(({ teamId }) => season2026TeamCarRating(teamId));
+    /*
+     * The engine multiplier only spans 0.02, so rendering it as a percentage put
+     * every team in the 98-100 band. The rating has to separate the field.
+     */
+    expect(Math.max(...ratings)).toBe(100);
+    expect(Math.min(...ratings)).toBe(CAR_PERFORMANCE_RATING_FLOOR);
+    expect(Math.max(...ratings) - Math.min(...ratings)).toBeGreaterThanOrEqual(40);
+    // Not clustered at the top: most teams sit clear of the leading trio.
+    expect(ratings.filter((rating) => rating >= 95).length).toBeLessThanOrEqual(3);
+    expect(new Set(ratings).size).toBeGreaterThanOrEqual(9);
+
+    // The order has to follow real car pace, fastest car highest.
+    const byDeficit = [...F1_2026_TEAM_POWER]
+      .map(({ teamId }) => ({ teamId, deficit: season2026TeamCarDeficitSeconds(teamId) }))
+      .sort((left, right) => left.deficit - right.deficit);
+    const rated = byDeficit.map(({ teamId }) => season2026TeamCarRating(teamId));
+    expect(rated).toEqual([...rated].sort((left, right) => right - left));
+    expect(season2026TeamCarRating("mercedes")).toBeGreaterThan(season2026TeamCarRating("williams"));
+    expect(season2026TeamCarRating("williams")).toBeGreaterThan(season2026TeamCarRating("cadillac"));
+
+    // Driver quality must not flatter a slow car: Cadillac has a 10-rated driver.
+    expect(season2026TeamCarRating("cadillac")).toBeLessThan(season2026TeamCarRating("haas"));
   });
 });

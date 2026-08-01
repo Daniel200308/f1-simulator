@@ -359,29 +359,58 @@ button { font: inherit; }
 .track-weather__sectors em { display: none; }
 @keyframes surface-sheen { from { left: -26px; } to { left: 100%; } }
 /* Both player cars stack here, so a double pit stop shows two live timers. */
-.pit-timing-stack { position: absolute; z-index: 8; top: 12px; right: calc(clamp(230px, 29%, 320px) + 14px); width: 232px; display: grid; gap: 8px; }
-.pit-timing-live { padding: 10px 12px 8px; border: 1px solid rgba(32,215,231,.36); border-top: 2px solid var(--accent); background: linear-gradient(145deg, rgba(5,17,22,.97), rgba(3,9,13,.97)); box-shadow: 0 14px 34px rgba(0,0,0,.42), 0 0 22px rgba(32,215,231,.08); }
+.pit-timing-stack { position: absolute; z-index: 8; top: 12px; right: calc(clamp(230px, 29%, 320px) + 14px); width: 276px; display: grid; gap: 10px; }
+.pit-timing-live { overflow: hidden; border: 1px solid rgba(32,215,231,.34); border-radius: 10px; background: linear-gradient(160deg, rgba(7,21,27,.98), rgba(2,8,11,.99)); box-shadow: 0 18px 40px rgba(0,0,0,.5), 0 0 24px rgba(32,215,231,.08); }
 
-/* The tyre-change clock pulses while the crew is on the car. */
-.pit-timing-live [data-tyre-change="true"][data-running="true"] strong { animation: tyre-change-pulse .62s ease-in-out infinite; }
-.pit-timing-live [data-tyre-change="true"][data-running="true"] small { color: var(--accent); }
-@keyframes tyre-change-pulse {
-  0%, 100% { color: #f4fbfc; text-shadow: 0 0 10px rgba(32, 215, 231, .35); }
-  50% { color: var(--accent); text-shadow: 0 0 20px rgba(32, 215, 231, .95); }
+/* Driver identity bar: the card has to be readable at a glance mid-race. */
+.pit-timing-live header { display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid rgba(148,177,190,.14); background: rgba(32,215,231,.09); font-family: var(--font-mono); }
+.pit-timing-live header b { color: #f2fafb; font: 950 19px/1 var(--font-mono); letter-spacing: -.02em; }
+.pit-timing-live header span { overflow: hidden; color: var(--accent); font: 900 10px var(--font-mono); letter-spacing: .1em; text-overflow: ellipsis; white-space: nowrap; }
+.pit-timing-live header strong { color: #cfe0e5; font: 900 10px var(--font-mono); letter-spacing: .06em; white-space: nowrap; }
+
+/*
+ * The wheel-change clock is the hero reading. It runs red and blinking while the
+ * crew is on the car, then locks to green once the wheels are on, so the state
+ * is obvious without reading any label.
+ */
+/* `overflow: visible` keeps the large number's glow from being measured as an
+   overflow of its own box. */
+.pit-timing-live__hero { padding: 11px 12px 12px; overflow: visible; text-align: center; }
+.pit-timing-live__hero small { display: block; color: #8ba3ac; font: 900 11px var(--font-mono); letter-spacing: .18em; }
+.pit-timing-live__hero strong { display: block; margin-top: 3px; padding-block: 2px; overflow: visible; color: #f4fbfc; font: 950 52px/1.06 var(--font-mono); font-variant-numeric: tabular-nums; letter-spacing: -.045em; }
+.pit-timing-live__hero em { margin-left: 3px; color: #90a7b0; font: 900 17px var(--font-mono); font-style: normal; }
+.pit-timing-live__hero i { display: block; height: 4px; margin-top: 10px; overflow: hidden; border-radius: 2px; background: rgba(148,177,190,.16); }
+.pit-timing-live__hero i b { display: block; height: 100%; border-radius: 2px; background: var(--accent); transition: width .1s linear; }
+.pit-timing-live__hero[data-running="true"] small { color: #ff8a99; }
+.pit-timing-live__hero[data-running="true"] strong { animation: tyre-change-blink .58s steps(1, end) infinite; }
+.pit-timing-live__hero[data-running="true"] i b { background: var(--red); box-shadow: 0 0 12px rgba(255,82,105,.7); }
+@keyframes tyre-change-blink {
+  0%, 49% { color: #ff2f48; text-shadow: 0 0 26px rgba(255,47,72,.85); }
+  50%, 100% { color: #ffd7dd; text-shadow: 0 0 10px rgba(255,47,72,.4); }
 }
-.pit-timing-live header, .pit-timing-live footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-family: var(--font-mono); }
-.pit-timing-live header span { color: var(--accent); font-size: 8px; letter-spacing: .11em; }
-.pit-timing-live header strong { color: #dce8eb; font-size: 10px; }
-.pit-timing-live > div { display: grid; grid-template-columns: 1fr 1px 1fr; align-items: center; gap: 10px; margin: 10px 0 8px; }
-.pit-timing-live > div > i { width: 1px; height: 32px; background: rgba(148,177,190,.18); }
-.pit-timing-live > div span { display: block; }
-.pit-timing-live > div small { display: block; color: #677f88; font: 7px var(--font-mono); letter-spacing: .08em; }
-.pit-timing-live > div strong { display: block; margin-top: 4px; color: #edf5f7; font: 950 20px/1 var(--font-mono); }
-.pit-timing-live > div em { margin-left: 2px; color: #6e858e; font-size: 8px; font-style: normal; }
-.pit-timing-live footer { padding-top: 7px; border-top: 1px solid rgba(148,177,190,.12); color: #667d86; font-size: 7px; }
-.pit-timing-live footer b { color: var(--green); }
-.pit-timing-live.is-tyre-complete { border-color: rgba(75,222,149,.9); border-top-color: var(--green); animation: pit-stop-complete 1.05s ease-in-out 3; }
-.pit-timing-live.is-tyre-complete header span, .pit-timing-live.is-tyre-complete > div strong, .pit-timing-live.is-tyre-complete footer b { color: var(--green); text-shadow: 0 0 12px rgba(75,222,149,.58); }
+
+/* Supporting numbers sit below the hero, clearly subordinate but still legible. */
+.pit-timing-live__rows { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 1px; background: rgba(148,177,190,.14); }
+.pit-timing-live__rows > span { display: grid; gap: 3px; padding: 8px 12px; background: rgba(4,12,16,.92); }
+.pit-timing-live__rows small { color: #7d949d; font: 900 10px var(--font-mono); letter-spacing: .1em; }
+.pit-timing-live__rows strong { color: #e9f2f4; font: 950 22px/1 var(--font-mono); font-variant-numeric: tabular-nums; }
+.pit-timing-live__rows em { margin-left: 2px; color: #7d949d; font: 900 11px var(--font-mono); font-style: normal; }
+
+.pit-timing-live footer { display: flex; align-items: center; gap: 7px; padding: 8px 12px; border-top: 1px solid rgba(148,177,190,.14); color: #c8d8dd; font: 900 11px var(--font-mono); letter-spacing: .1em; }
+.pit-timing-live footer i { width: 7px; height: 7px; border-radius: 50%; background: currentColor; box-shadow: 0 0 9px currentColor; }
+.pit-timing-live footer[data-state="APPROACH"] { color: #9fb4bc; }
+.pit-timing-live footer[data-state="LIVE"] { color: #ff8a99; }
+.pit-timing-live footer[data-state="LIVE"] i { animation: pit-status-blink .58s steps(1, end) infinite; }
+.pit-timing-live footer[data-state="ISSUE"] { color: var(--yellow); }
+.pit-timing-live footer[data-state="DONE"] { color: var(--green); }
+@keyframes pit-status-blink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: .2; } }
+
+/* Completed stop: the whole card turns green so a finished stop reads instantly. */
+.pit-timing-live.is-tyre-complete { border-color: rgba(75,222,149,.86); animation: pit-stop-complete 1.05s ease-in-out 3; }
+.pit-timing-live.is-tyre-complete header { border-bottom-color: rgba(75,222,149,.32); background: rgba(75,222,149,.12); }
+.pit-timing-live.is-tyre-complete header span { color: var(--green); }
+.pit-timing-live.is-tyre-complete .pit-timing-live__hero strong { color: var(--green); text-shadow: 0 0 20px rgba(75,222,149,.55); }
+.pit-timing-live.is-tyre-complete .pit-timing-live__hero i b { background: var(--green); box-shadow: 0 0 12px rgba(75,222,149,.6); }
 .penalty-service-live { --penalty-progress: 0%; position: absolute; z-index: 9; top: 126px; right: calc(clamp(230px, 29%, 320px) + 14px); width: 232px; padding: 10px 12px 11px; border: 1px solid rgba(255,82,105,.58); border-left: 3px solid var(--red); color: #fff; background: linear-gradient(145deg, rgba(34,7,13,.98), rgba(8,5,8,.98)); box-shadow: 0 16px 36px rgba(0,0,0,.55), 0 0 24px rgba(255,82,105,.13); animation: penalty-timer-in .2s ease-out both; }
 .penalty-service-live header { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--red); font: 950 9px/1 var(--font-mono); letter-spacing: .07em; }
 .penalty-service-live header strong { color: #ffb8c1; font-size: 8px; }
@@ -480,6 +509,44 @@ button { font: inherit; }
 .pit-tyre-control .stay-out-control { width: 42px; height: 42px; display: grid; place-items: center; padding: 0; border: 1px solid rgba(255,82,105,.55); border-radius: 50%; color: var(--red); background: radial-gradient(circle, rgba(255,82,105,.11), transparent 70%); }
 .pit-tyre-control .stay-out-control b { font: 500 20px var(--font-mono); }
 .pit-tyre-control .stay-out-control:hover:not(:disabled) { transform: scale(1.08); box-shadow: 0 0 12px rgba(255,82,105,.28); }
+/* The compound buttons stay exactly as they were; the set count is a small
+   badge, and choosing a compound opens its remaining sets above the dock. */
+/*
+ * The command strip and the map column above it both clip their overflow, so the
+ * set list opens as an overlay inside the dock rather than floating over the
+ * track map, where it would be clipped and unclickable. It covers the pit and
+ * tyre cells so the tiles get a full-height row instead of a 15px sliver.
+ */
+.pit-tyre-control { position: relative; z-index: 30; }
+.pit-tyre-control .tyre-select-button__count { position: absolute; right: 1px; bottom: 1px; min-width: 13px; height: 13px; display: grid; place-items: center; padding: 0 2px; border-radius: 7px; color: #040d11; background: #93a8b0; font: 900 8px var(--font-mono); font-variant-numeric: tabular-nums; }
+.pit-tyre-control .tyre-select-button[aria-expanded="true"] .tyre-select-button__count,
+.pit-tyre-control .tyre-select-button[aria-pressed="true"] .tyre-select-button__count { background: var(--accent); box-shadow: 0 0 8px rgba(32,215,231,.5); }
+.pit-tyre-control .tyre-select-button:disabled .tyre-select-button__count { background: #4a5a61; }
+.tyre-set-picker { position: absolute; z-index: 40; right: -2px; bottom: -3px; left: -2px; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 5px; min-height: calc(100% + 6px); padding: 6px 8px 7px; overflow: hidden; border: 1px solid rgba(32,215,231,.4); border-radius: 8px; background: linear-gradient(160deg, rgba(11,26,33,.99), rgba(4,11,15,1)); box-shadow: 0 10px 30px rgba(0,0,0,.6), 0 0 16px rgba(32,215,231,.13); animation: tyre-set-picker-in .14s ease-out both; }
+@keyframes tyre-set-picker-in { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+.tyre-set-picker header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0; color: var(--muted); font: 9px var(--font-mono); letter-spacing: .07em; }
+.tyre-set-picker header > span { display: flex; align-items: center; gap: 5px; color: #e6eff1; font-weight: 800; }
+.tyre-set-picker header b { color: var(--accent); font: 900 9px var(--font-mono); }
+.tyre-set-picker__meta { display: flex; align-items: center; gap: 6px; }
+.tyre-set-picker__meta button { width: 15px; height: 15px; display: grid; place-items: center; padding: 0; border: 1px solid rgba(148,177,190,.28); border-radius: 50%; color: #9cadb3; background: transparent; cursor: pointer; font: 500 12px/1 var(--font-mono); }
+.tyre-set-picker__meta button:hover { border-color: var(--red); color: var(--red); }
+.tyre-set-picker__grid { min-height: 0; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 3px; }
+.tyre-set-picker__grid button { --set-life-tone: var(--green); min-width: 0; min-height: 0; display: grid; align-content: center; justify-items: center; gap: 2px; padding: 3px; border: 1px solid rgba(148,177,190,.22); border-radius: 6px; color: #9cadb3; background: rgba(6,15,20,.86); cursor: pointer; transition: border-color .14s ease, transform .14s ease, background .14s ease; }
+.tyre-set-picker__grid button > span { min-width: 0; display: flex; align-items: baseline; gap: 3px; }
+.tyre-set-picker__grid button b, .tyre-set-picker__grid button strong, .tyre-set-picker__grid button small { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tyre-set-picker__grid button b { color: #8fa3aa; font: 800 8px var(--font-mono); }
+.tyre-set-picker__grid button strong { color: #f1f6f7; font: 900 12px/1 var(--font-mono); font-variant-numeric: tabular-nums; }
+.tyre-set-picker__grid button small { color: #7d9099; font: 800 7px/1 var(--font-mono); letter-spacing: .03em; }
+/* Life bar: green when the set is close to new, amber then red as it wears. */
+.tyre-set-picker__grid button i { width: 100%; height: 2px; overflow: hidden; border-radius: 2px; background: rgba(148,177,190,.18); }
+.tyre-set-picker__grid button i em { display: block; width: var(--set-life, 100%); height: 100%; background: var(--set-life-tone); box-shadow: 0 0 7px color-mix(in srgb, var(--set-life-tone) 60%, transparent); }
+.tyre-set-picker__grid button[data-life="WORN"] { --set-life-tone: var(--yellow); }
+.tyre-set-picker__grid button[data-life="LOW"] { --set-life-tone: var(--red); }
+.tyre-set-picker__grid button:hover, .tyre-set-picker__grid button[aria-pressed="true"] { transform: translateY(-1px); border-color: var(--accent); background: rgba(32,215,231,.12); }
+.tyre-set-picker__grid button[aria-pressed="true"] { box-shadow: inset 0 -2px 0 var(--accent); }
+.tyre-set-picker__grid button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.tyre-set-picker__empty { align-self: center; margin: 0; color: var(--red); font: 800 9px var(--font-mono); letter-spacing: .06em; text-align: center; }
+.tyre-set-picker footer { overflow: hidden; color: var(--muted); font: 800 7px var(--font-mono); letter-spacing: .06em; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
 .visual-control button:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
 .pit-tyre-control button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .command-target strong { display: block; margin-top: 6px; font: 700 12px var(--font-mono); }
@@ -1240,8 +1307,14 @@ button { font: inherit; }
   .track-flag-panel.is-flashing { animation: none; }
   .track-flag-panel.is-chequered { animation: none; }
   .track-radio__message { animation: none; }
-  .energy-battery-icon, .track-weather__sectors i::after,
-  .pit-timing-live [data-tyre-change="true"][data-running="true"] strong { animation: none; }
+  .energy-battery-icon, .track-weather__sectors i::after { animation: none; }
+  /*
+   * The blinking clock holds its red state instead of flashing, so the urgency
+   * still reads without motion.
+   */
+  .pit-timing-live__hero[data-running="true"] strong { animation: none; color: #ff2f48; }
+  .pit-timing-live footer[data-state="LIVE"] i { animation: none; }
+  .pit-timing-live.is-tyre-complete { animation: none; }
   /* Flaps hold their open position; only the cycling stops. */
   .aero-wing-car[data-wing-state="OPEN"] .aero-wing-car__flap--front { animation: none; transform: translate(0, -3px) rotate(-17deg); }
   .aero-wing-car[data-wing-state="OPEN"] .aero-wing-car__flap--rear { animation: none; transform: translate(1px, -8px) rotate(-49deg); }

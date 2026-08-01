@@ -3,7 +3,7 @@
 import { useState } from "react";
 import type { CSSProperties } from "react";
 import Image from "next/image";
-import { Activity, ChevronRight, CircleUserRound, Fan, Flag, Gauge, Headphones, Settings2, Timer, Trophy, Waves, Wrench, X } from "lucide-react";
+import { Activity, ChevronRight, CircleUserRound, Fan, Flag, Gauge, Headphones, Settings2, Timer, Trophy, Waves, X } from "lucide-react";
 
 import { formatLapTime } from "@/components/race/format";
 import { TyreBadge } from "@/components/race/tyre-badge";
@@ -14,7 +14,6 @@ import {
   CAR_SETUP_MINIMUM,
   currentWeekendRule,
   latestWeekendResult,
-  setupFeedbackFor,
   setupRecommendationFor,
   STANDARD_WEEKEND_RULES,
   type CarSetup,
@@ -67,13 +66,13 @@ function SetupControl({ carId, setup, state, onChange, slot }: { carId: string; 
   if (!driver) return null;
   const team = TEAM_BY_ID.get(driver.teamId);
   const tone = team ? `#${(slot === 0 ? team.primaryColor : team.accentColor).toString(16).padStart(6, "0")}` : "#20d7e7";
-  const controls: readonly { key: keyof CarSetup; label: string; detail: string; minimum: number; maximum: number; low: string; high: string; icon: typeof Gauge }[] = [
-    { key: "frontWing", label: "FRONT WING", detail: "AERO BALANCE", minimum: CAR_SETUP_MINIMUM, maximum: CAR_SETUP_MAXIMUM, low: "SPEED", high: "GRIP", icon: Gauge },
-    { key: "rearWing", label: "REAR WING", detail: "REAR LOAD", minimum: CAR_SETUP_MINIMUM, maximum: CAR_SETUP_MAXIMUM, low: "LOW DRAG", high: "STABILITY", icon: Gauge },
-    { key: "suspension", label: "SUSPENSION", detail: "DAMPER RESPONSE", minimum: CAR_SETUP_MINIMUM, maximum: CAR_SETUP_MAXIMUM, low: "SOFT", high: "FIRM", icon: Waves },
-    { key: "rideHeight", label: "RIDE HEIGHT", detail: "FLOOR PLATFORM", minimum: CAR_SETUP_MINIMUM, maximum: CAR_SETUP_MAXIMUM, low: "LOW", high: "SAFE", icon: Activity },
-    { key: "differential", label: "DIFFERENTIAL", detail: "TRACTION LOCK", minimum: CAR_SETUP_MINIMUM, maximum: CAR_SETUP_MAXIMUM, low: "OPEN", high: "LOCKED", icon: Settings2 },
-    { key: "cooling", label: "COOLING", detail: "BODYWORK APERTURE", minimum: CAR_SETUP_MINIMUM, maximum: CAR_SETUP_MAXIMUM, low: "TIGHT", high: "OPEN", icon: Fan },
+  const controls: readonly { key: keyof CarSetup; label: string; minimum: number; maximum: number; low: string; high: string; icon: typeof Gauge }[] = [
+    { key: "frontWing", label: "FRONT WING", minimum: CAR_SETUP_MINIMUM, maximum: CAR_SETUP_MAXIMUM, low: "SPEED", high: "GRIP", icon: Gauge },
+    { key: "rearWing", label: "REAR WING", minimum: CAR_SETUP_MINIMUM, maximum: CAR_SETUP_MAXIMUM, low: "LOW DRAG", high: "STABILITY", icon: Gauge },
+    { key: "suspension", label: "SUSPENSION", minimum: CAR_SETUP_MINIMUM, maximum: CAR_SETUP_MAXIMUM, low: "SOFT", high: "FIRM", icon: Waves },
+    { key: "rideHeight", label: "RIDE HEIGHT", minimum: CAR_SETUP_MINIMUM, maximum: CAR_SETUP_MAXIMUM, low: "LOW", high: "SAFE", icon: Activity },
+    { key: "differential", label: "DIFFERENTIAL", minimum: CAR_SETUP_MINIMUM, maximum: CAR_SETUP_MAXIMUM, low: "OPEN", high: "LOCKED", icon: Settings2 },
+    { key: "cooling", label: "COOLING", minimum: CAR_SETUP_MINIMUM, maximum: CAR_SETUP_MAXIMUM, low: "TIGHT", high: "OPEN", icon: Fan },
   ];
   return (
     <section className={styles.setupCar} data-slot={slot} style={{ "--driver-tone": tone } as CSSProperties}>
@@ -92,7 +91,7 @@ function SetupControl({ carId, setup, state, onChange, slot }: { carId: string; 
             const recommendationWidth = recommendation ? ((recommendation.maximum - recommendation.minimum) / (control.maximum - control.minimum)) * 100 : 0;
             return (
               <label key={control.key} style={{ "--control-progress": `${progress}%` } as CSSProperties}>
-                <span><Icon aria-hidden="true" size={18} /><i><b>{control.label}</b><small>{control.detail}</small></i><strong>{setup[control.key] > 0 ? `+${setup[control.key]}` : setup[control.key]}</strong></span>
+                <span><Icon aria-hidden="true" size={18} /><i><b>{control.label}</b></i><strong>{setup[control.key] > 0 ? `+${setup[control.key]}` : setup[control.key]}</strong></span>
                 <div className={styles.rangeControl} style={{ "--recommendation-start": `${recommendationStart}%`, "--recommendation-width": `${recommendationWidth}%` } as CSSProperties}>
                   <input
                     aria-label={`${driver.shortName} ${control.label}`}
@@ -104,8 +103,26 @@ function SetupControl({ carId, setup, state, onChange, slot }: { carId: string; 
                     value={setup[control.key]}
                   />
                   {recommendation ? <span className={styles.recommendationBand} title={`${recommendation.sourceSession} telemetry range ${recommendation.minimum} to ${recommendation.maximum}`} /> : null}
+                  {/*
+                   * Each end of the telemetry band labels itself, positioned at
+                   * that edge of the band. Putting both numbers in one centred
+                   * grid cell made them read as a single clump that could sit
+                   * outside the band it describes.
+                   */}
+                  {recommendation ? (
+                    <span className={styles.bandBounds} aria-hidden="true">
+                      <b data-edge="start">{recommendation.minimum}</b>
+                      <b data-edge="end">{recommendation.maximum}</b>
+                    </span>
+                  ) : null}
                 </div>
-                <small className={styles.rangeLegend}><i>{control.low}</i>{recommendation ? <b>{recommendation.sourceSession} RANGE {recommendation.minimum}–{recommendation.maximum}</b> : <b>BASELINE</b>}<i>{control.high}</i></small>
+                <small className={styles.rangeLegend}>
+                  <i>{control.low}</i>
+                  {recommendation
+                    ? <em title={`${recommendation.sourceSession} telemetry range`}>{recommendation.sourceSession}</em>
+                    : <em>BASELINE</em>}
+                  <i>{control.high}</i>
+                </small>
               </label>
             );
           })}
@@ -127,45 +144,32 @@ function concise(message: string, maximumCharacters = 180): string {
   return `${clipped.slice(0, Math.max(48, boundary)).replace(/[,:;\s]+$/u, "")}.`;
 }
 
-function dockSummary(message: string): string {
-  const firstSentence = message.split(/(?<=[.!?])\s+/u)[0]?.trim() ?? message.trim();
-  const clauses = firstSentence.split(/\s+[—–]\s+|:\s+/u).map((clause) => clause.trim()).filter(Boolean);
-  const actionableClause = clauses.at(-1) ?? firstSentence;
-  const sentence = `${actionableClause.charAt(0).toUpperCase()}${actionableClause.slice(1)}`;
-  return concise(sentence, 116);
-}
-
 function DebriefDock({ state }: { state: WeekendState }) {
   const playerCarIds = playerCarIdsFor(state.playerTeamId);
   const latestReport = state.sessionReports.at(-1);
   return (
     <section className={styles.debriefDock} aria-label="Garage debrief">
-      <header><Activity aria-hidden="true" size={18} /><div><b>GARAGE DEBRIEF</b><small>DRIVER FEEDBACK · ENGINEERING RESPONSE</small></div><strong>{state.setupKnowledge}% CONFIDENCE</strong></header>
+      <header><Activity aria-hidden="true" size={18} /><div><b>DRIVER DEBRIEF</b><small>HOW THE CAR FELT OUT THERE</small></div><strong>{state.setupKnowledge}% CONFIDENCE</strong></header>
       <div className={styles.debriefGrid}>
-        {playerCarIds.flatMap((carId, slot) => {
+        {playerCarIds.map((carId, slot) => {
           const driver = DRIVER_BY_ID.get(carId)!;
           const team = TEAM_BY_ID.get(driver.teamId)!;
           const report = latestReport?.cars.find((candidate) => candidate.carId === carId);
-          const feedback = setupFeedbackFor(state, carId);
           const tone = `#${(slot === 0 ? team.primaryColor : team.accentColor).toString(16).padStart(6, "0")}`;
+          /*
+           * Only the driver speaks here. With two cards instead of four there is
+           * room for the whole reaction, so the mood is not clipped away.
+           */
           const driverMessage = report?.driverMessage
-            ? dockSummary(report.driverMessage)
-            : "Baseline ready. I will establish the first reference, then report the balance from entry to exit.";
-          const engineerMessage = report?.engineerMessage
-            ? dockSummary(report.engineerMessage)
-            : feedback.length > 1
-              ? dockSummary(feedback[1].message)
-              : "Run plan loaded. We will compare both cars before changing more than one setup parameter.";
-          return [
+            ?? "Baseline ready. I will establish the first reference, then tell you exactly how the car feels.";
+          return (
             <article className={styles.debriefCard} data-speaker="driver" key={`${carId}-driver`} style={{ "--speaker-tone": tone } as CSSProperties}>
-              <header><CircleUserRound aria-hidden="true" size={24} /><div><span>DRIVER</span><strong>{driver.shortName}</strong><small>{driver.name}</small></div><Activity aria-hidden="true" className={styles.voiceWave} size={46} /></header>
+              <header><CircleUserRound aria-hidden="true" size={26} /><div><span>DRIVER</span><strong>{driver.shortName}</strong><small>{driver.name}</small></div><Activity aria-hidden="true" className={styles.voiceWave} size={46} /></header>
+              {/* Shown in full: trimming to two sentences dropped the driver's
+                  sign-off, which is where most of the mood sits. */}
               <p>{driverMessage}</p>
-            </article>,
-            <article className={styles.debriefCard} data-speaker="engineer" key={`${carId}-engineer`} style={{ "--speaker-tone": tone } as CSSProperties}>
-              <header><Headphones aria-hidden="true" size={24} /><div><span>ENGINEER</span><strong>{driver.shortName} ENGINEER</strong><small>{team.shortName} PITWALL</small></div><Activity aria-hidden="true" className={styles.voiceWave} size={46} /></header>
-              <p>{engineerMessage}</p>
-            </article>,
-          ];
+            </article>
+          );
         })}
       </div>
     </section>
@@ -452,8 +456,8 @@ export function SessionReport({ report, onClose, classification = null, actionLa
                 <header><span>#{driver.number}</span><div><h3>{driver.name}</h3><p>{driver.shortName} · {team.shortName}</p></div><b data-outcome={carReport.outcome}>{carReport.position ? `P${carReport.position}` : carReport.outcome}</b></header>
                 {!classification && <div className={styles.conditionGrid}>{metrics.map(([label, value]) => <span key={label}><small>{label}</small><strong>{value}%</strong><i><b style={{ width: `${value}%` }} /></i></span>)}</div>}
                 <div className={styles.reportMessages}>
-                  <article><Headphones aria-hidden="true" size={18} /><div><strong>DRIVER REPORT</strong><p>“{classification ? carReport.driverMessage : concise(carReport.driverMessage, 215)}”</p></div></article>
-                  {!classification && <article><Wrench aria-hidden="true" size={18} /><div><strong>ENGINEER REPORT</strong><p>{concise(carReport.engineerMessage, 215)}</p></div></article>}
+                  {/* Practice and qualifying both report the driver's own words only. */}
+                  <article><Headphones aria-hidden="true" size={18} /><div><strong>DRIVER REPORT</strong><p>“{classification ? carReport.driverMessage : concise(carReport.driverMessage, 260)}”</p></div></article>
                 </div>
               </article>
             );

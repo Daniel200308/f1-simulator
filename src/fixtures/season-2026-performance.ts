@@ -233,3 +233,42 @@ export function season2026QualifyingPenaltySeconds(carId: string, session: Seaso
 export function season2026PracticePenaltySeconds(carId: string): number {
   return season2026RawQualifyingPenaltySeconds(carId) * 0.92;
 }
+
+/**
+ * Car-only pace deficit for a team, in seconds. Driver speed is deliberately
+ * excluded: this describes the machinery, so a strong driver must not flatter a
+ * slow car. Championship form separates teams that share a power rating.
+ */
+export function season2026TeamCarDeficitSeconds(teamId: string): number {
+  const powerDeficit = (10 - season2026TeamPower(teamId)) * 0.5;
+  const teamPoints = STANDING_TEAM_BY_TEAM_ID.get(teamId)?.points ?? 0;
+  const leaderTeamPoints = F1_2026_TEAM_STANDINGS[0]?.points ?? 1;
+  const formDeficit = (1 - Math.sqrt(clamp(teamPoints / leaderTeamPoints, 0, 1))) * 1.3;
+  return powerDeficit + formDeficit;
+}
+
+/**
+ * Lowest rating shown for the slowest car. The scale is a competitiveness
+ * reading rather than an absolute measure, so the back of the grid keeps a
+ * non-trivial number while still reading as clearly slower.
+ */
+export const CAR_PERFORMANCE_RATING_FLOOR = 52;
+
+/**
+ * Display rating (0-100) for a team's car.
+ *
+ * The engine's `performance` value is a lap-time multiplier that spans only
+ * 1.004 to 0.984, so showing it as a percentage collapsed the whole grid into
+ * 98-100%. This normalises the real car deficit across the field instead, which
+ * keeps the top teams genuinely close while separating the midfield and the back
+ * markers by a meaningful margin.
+ */
+export function season2026TeamCarRating(teamId: string): number {
+  const deficits = F1_2026_TEAM_POWER.map((team) => season2026TeamCarDeficitSeconds(team.teamId));
+  const best = Math.min(...deficits);
+  const worst = Math.max(...deficits);
+  const span = worst - best;
+  if (span <= 0) return 100;
+  const relative = (season2026TeamCarDeficitSeconds(teamId) - best) / span;
+  return Math.round(100 - relative * (100 - CAR_PERFORMANCE_RATING_FLOOR));
+}

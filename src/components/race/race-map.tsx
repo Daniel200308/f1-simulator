@@ -9,7 +9,15 @@ import type { RaceCarState } from "@/domain/race";
 import { DEFAULT_PLAYER_TEAM_ID, DRIVER_BY_ID, DRIVERS, playerCarIdsFor, TEAM_BY_ID } from "@/fixtures/grid";
 import { TeamRadioOverlay } from "@/components/race/team-radio-overlay";
 import { createTrackViewport, distanceToCenterline, projectTrackPoint } from "@/components/race/track-viewport";
-import { PIT_BOX_DISTANCE, PIT_ENTRY_START, PIT_EXIT_END } from "@/simulation/engine";
+import { PIT_ENTRY_START, PIT_EXIT_END } from "@/simulation/engine";
+import {
+  PIT_BOX_ORDER,
+  PIT_BOX_ROUTE_PROGRESS,
+  PIT_ROUTE_LENGTH_METERS,
+  pitBoxRouteProgressForTeam,
+  pitRouteDistanceFor,
+  pitRouteProgressFor,
+} from "@/simulation/pit-lane";
 import { shouldShowDriverMarkers } from "@/simulation/race-finish";
 import {
   pointAtDistance,
@@ -224,11 +232,15 @@ export function RaceMap({ startPhase, lightsOn, qualifyingState = null }: { star
         });
       }
 
-      function projectPitPoint(distance: number) {
-        const routeStart = PIT_ENTRY_START;
-        const routeEnd = SILVERSTONE_CIRCUIT.lengthMeters + PIT_EXIT_END;
-        const progress = Math.min(1, Math.max(0, (distance - routeStart) / Math.max(1, routeEnd - routeStart)));
-        const entry = projectTrackPoint(pointAtDistance(routeStart), viewport);
+      /**
+       * Places a point on the drawn pit corridor from a 0-1 progress value.
+       * Progress is resolved from the car's lap distance, because the corridor
+       * straddles the timing line and is far shorter than a cumulative race
+       * distance.
+       */
+      function pitPointAtProgress(progress: number) {
+        const clamped = Math.min(1, Math.max(0, progress));
+        const entry = projectTrackPoint(pointAtDistance(PIT_ENTRY_START), viewport);
         const exit = projectTrackPoint(pointAtDistance(PIT_EXIT_END), viewport);
         const chordX = exit.x - entry.x;
         const chordY = exit.y - entry.y;
@@ -245,17 +257,18 @@ export function RaceMap({ startPhase, lightsOn, qualifyingState = null }: { star
           x: entry.x + chordX * (1 - mergeFraction) + normalX * laneOffset,
           y: entry.y + chordY * (1 - mergeFraction) + normalY * laneOffset,
         };
-        if (progress <= mergeFraction) {
-          const mergeProgress = progress / mergeFraction;
+        if (clamped <= mergeFraction) {
+          const mergeProgress = clamped / mergeFraction;
           return { x: entry.x + (straightStart.x - entry.x) * mergeProgress, y: entry.y + (straightStart.y - entry.y) * mergeProgress };
         }
-        if (progress >= 1 - mergeFraction) {
-          const mergeProgress = (progress - (1 - mergeFraction)) / mergeFraction;
+        if (clamped >= 1 - mergeFraction) {
+          const mergeProgress = (clamped - (1 - mergeFraction)) / mergeFraction;
           return { x: straightEnd.x + (exit.x - straightEnd.x) * mergeProgress, y: straightEnd.y + (exit.y - straightEnd.y) * mergeProgress };
         }
-        const straightProgress = (progress - mergeFraction) / (1 - mergeFraction * 2);
+        const straightProgress = (clamped - mergeFraction) / (1 - mergeFraction * 2);
         return { x: straightStart.x + (straightEnd.x - straightStart.x) * straightProgress, y: straightStart.y + (straightEnd.y - straightStart.y) * straightProgress };
       }
+
       DRIVERS.forEach((driver) => {
         const team = TEAM_BY_ID.get(driver.teamId);
         if (!team) return;
@@ -323,12 +336,23 @@ export function RaceMap({ startPhase, lightsOn, qualifyingState = null }: { star
           aeroLayer.moveTo(p1.x, p1.y).lineTo(p2.x, p2.y).stroke({ width: 3, color: 0x20d7e7, alpha: 0.38, cap: "butt" });
         });
 
-        for (let distance = PIT_ENTRY_START; distance <= SILVERSTONE_CIRCUIT.lengthMeters + PIT_EXIT_END; distance += 12) {
-          const point = projectPitPoint(distance);
-          if (distance === PIT_ENTRY_START) pitLane.moveTo(point.x, point.y);
+        const laneSamples = 28;
+        for (let index = 0; index <= laneSamples; index += 1) {
+          const point = pitPointAtProgress(index / laneSamples);
+          if (index === 0) pitLane.moveTo(point.x, point.y);
           else pitLane.lineTo(point.x, point.y);
         }
         pitLane.stroke({ width: 2, color: 0xf2f5f6, alpha: 0.42, cap: "round", join: "round" });
+
+        // The garages the cars actually stop at, so a stop reads as happening at
+        // a specific box rather than somewhere in the lane.
+        for (const teamId of PIT_BOX_ORDER) {
+          const box = pitPointAtProgress(pitBoxRouteProgressForTeam(teamId));
+          const isPlayerBox = teamId === playerTeamId;
+          pitLane
+            .circle(box.x, box.y, isPlayerBox ? 2.4 : 1.5)
+            .fill({ color: isPlayerBox ? 0x20d7e7 : 0x8fa6ae, alpha: isPlayerBox ? 0.95 : 0.5 });
+        }
 
         const centre = projectedCenterline.reduce((sum, point) => ({ x: sum.x + point.x, y: sum.y + point.y }), { x: 0, y: 0 });
         centre.x /= projectedCenterline.length;
@@ -487,7 +511,9 @@ export function RaceMap({ startPhase, lightsOn, qualifyingState = null }: { star
             let targetDistance = 0;
             if (car.phase === "OUT_LAP" && progress < 0.12) {
               route = "PIT";
-              targetDistance = PIT_BOX_DISTANCE + (SILVERSTONE_CIRCUIT.lengthMeters + PIT_EXIT_END - PIT_BOX_DISTANCE) * (progress / 0.12);
+              // Leaving the garage: from the box down the lane to the exit.
+              const boxDistance = PIT_BOX_ROUTE_PROGRESS * PIT_ROUTE_LENGTH_METERS;
+              targetDistance = boxDistance + (PIT_ROUTE_LENGTH_METERS - boxDistance) * (progress / 0.12);
             } else if (car.phase === "OUT_LAP") {
               const trackProgress = (progress - 0.12) / 0.88;
               targetDistance = PIT_EXIT_END + (SILVERSTONE_CIRCUIT.lengthMeters - PIT_EXIT_END) * trackProgress;
@@ -498,7 +524,8 @@ export function RaceMap({ startPhase, lightsOn, qualifyingState = null }: { star
             } else if (car.phase === "IN_LAP" && progress > 0.86) {
               route = "PIT";
               const pitProgress = (progress - 0.86) / 0.14;
-              targetDistance = PIT_ENTRY_START + (PIT_BOX_DISTANCE - PIT_ENTRY_START) * pitProgress;
+              // Coming in: from the entry line down the lane to the box.
+              targetDistance = PIT_BOX_ROUTE_PROGRESS * PIT_ROUTE_LENGTH_METERS * pitProgress;
             } else {
               const trackProgress = car.phase === "IN_LAP" ? progress / 0.86 : progress;
               targetDistance = trackProgress * (car.phase === "IN_LAP" ? PIT_ENTRY_START : SILVERSTONE_CIRCUIT.lengthMeters);
@@ -518,7 +545,7 @@ export function RaceMap({ startPhase, lightsOn, qualifyingState = null }: { star
             }
             marker.displayRoute = route;
             const point = route === "PIT"
-              ? projectPitPoint(marker.displayDistance)
+              ? pitPointAtProgress(marker.displayDistance / PIT_ROUTE_LENGTH_METERS)
               : projectTrackPoint(pointAtDistance(marker.displayDistance), viewport);
             marker.container.position.set(point.x, point.y);
             const frameStepPx = wasVisible ? Math.hypot(point.x - previousX, point.y - previousY) : 0;
@@ -570,12 +597,12 @@ export function RaceMap({ startPhase, lightsOn, qualifyingState = null }: { star
           }
           if (snapshot.raceControl === "SAFETY_CAR" && snapshot.safetyCarDistance !== null) {
             const pitReleaseProgress = Math.min(1, snapshot.safetyCarPhaseElapsedSeconds / 3.2);
-            const safetyCarDisplayDistance = snapshot.safetyCarPhase === "DEPLOYED" && snapshot.safetyCarInPitLane
-              ? PIT_BOX_DISTANCE + (SILVERSTONE_CIRCUIT.lengthMeters + PIT_EXIT_END - PIT_BOX_DISTANCE) * pitReleaseProgress
-              : snapshot.safetyCarDistance;
             const safetyPoint = snapshot.safetyCarInPitLane
-              ? projectPitPoint(safetyCarDisplayDistance)
-              : projectTrackPoint(pointAtDistance(safetyCarDisplayDistance), viewport);
+              ? pitPointAtProgress(snapshot.safetyCarPhase === "DEPLOYED"
+                // Released from its bay towards the pit exit.
+                ? PIT_BOX_ROUTE_PROGRESS + (1 - PIT_BOX_ROUTE_PROGRESS) * pitReleaseProgress
+                : pitRouteProgressFor(snapshot.safetyCarDistance))
+              : projectTrackPoint(pointAtDistance(snapshot.safetyCarDistance), viewport);
             safetyCarBadge.position.set(safetyPoint.x, safetyPoint.y);
             safetyCarBadge.visible = true;
           } else {
@@ -591,10 +618,25 @@ export function RaceMap({ startPhase, lightsOn, qualifyingState = null }: { star
             marker.container.visible = markerVisible;
             if (!markerVisible) continue;
             visibleDriverCount += 1;
-            if (marker.displayDistance === 0) marker.displayDistance = car.totalDistance;
-            const extrapolatedDistance = car.totalDistance + (state.paused ? 0 : (car.currentSpeed / 3.6) * snapshotAgeSeconds * state.speed);
-            marker.displayDistance = interpolateDisplayDistance(marker.displayDistance, extrapolatedDistance, delta, state.speed);
-            const p = car.pitStatus === "TRACK" ? projectTrackPoint(pointAtDistance(marker.displayDistance), viewport) : projectPitPoint(marker.displayDistance);
+            const route: "TRACK" | "PIT" = car.pitStatus === "TRACK" ? "TRACK" : "PIT";
+            /*
+             * The track and pit routes use different coordinates, so the smoothed
+             * value has to be reseeded when a car swaps between them. Interpolating
+             * across the change would drag the marker over the infield.
+             */
+            const routeChanged = marker.displayRoute !== route;
+            const liveDistance = route === "PIT" ? pitRouteDistanceFor(car.lapDistance) : car.totalDistance;
+            const travelled = state.paused ? 0 : (car.currentSpeed / 3.6) * snapshotAgeSeconds * state.speed;
+            const extrapolatedDistance = route === "PIT"
+              // A stationary car in its box must not creep forward.
+              ? Math.min(PIT_ROUTE_LENGTH_METERS, liveDistance + (car.pitStatus === "PIT_STOP" ? 0 : travelled))
+              : liveDistance + travelled;
+            if (routeChanged || marker.displayDistance === 0) marker.displayDistance = extrapolatedDistance;
+            else marker.displayDistance = interpolateDisplayDistance(marker.displayDistance, extrapolatedDistance, delta, state.speed);
+            marker.displayRoute = route;
+            const p = route === "TRACK"
+              ? projectTrackPoint(pointAtDistance(marker.displayDistance), viewport)
+              : pitPointAtProgress(marker.displayDistance / PIT_ROUTE_LENGTH_METERS);
             let displayX = p.x;
             let displayY = p.y;
             marker.glyph.position.set(0, 0);
@@ -735,34 +777,67 @@ export function RaceMap({ startPhase, lightsOn, qualifyingState = null }: { star
       {(startPhase === "LIGHTS" || startPhase === "GO") && <div className={`track-start-sequence ${startPhase === "GO" ? "is-go" : ""}`} data-track-start-phase={startPhase}><div>{Array.from({ length: 5 }, (_, index) => <i className={index < lightsOn ? "is-on" : ""} key={index} />)}</div><span>{startPhase === "GO" ? "LIGHTS OUT" : "START"}</span></div>}
       {!isQualifying && pitTimings.length > 0 && (
         <div className="pit-timing-stack" aria-label="Live pit stop timing">
-          {pitTimings.map((entry) => (
-            <div
-              aria-live="assertive"
-              className={`pit-timing-live ${entry.tyreChangeComplete ? "is-tyre-complete" : ""}`}
-              data-pit-status={entry.tyreChangeComplete ? "TYRE_COMPLETE" : entry.car.pitStatus}
-              key={entry.car.carId}
-              role="status"
-            >
-              <header>
-                <span>{DRIVER_BY_ID.get(entry.car.driverId)?.shortName ?? entry.car.carId.toUpperCase()} · {entry.tyreChangeComplete ? "COMPLETE" : "LIVE PIT STOP"}</span>
-                <strong>{entry.tyreChangeComplete ? "RELEASED" : entry.car.pitStatus.replace("PIT_", "")}</strong>
-              </header>
-              <div>
-                <span><small>TOTAL PIT</small><strong>{entry.pitLaneSeconds.toFixed(1)}<em>s</em></strong></span>
-                <i />
-                {/* The tyre change is the number the pit wall watches, so it
-                    pulses while the crew is actually on the car. */}
-                <span data-tyre-change="true" data-running={entry.tyreChangeRunning}>
+          {pitTimings.map((entry) => {
+            const entryDriver = DRIVER_BY_ID.get(entry.car.driverId);
+            const targetSeconds = entry.car.pitTyreServiceTargetSeconds ?? entry.car.pitStopTargetSeconds;
+            // The bar gives the blinking clock context: how far through the
+            // expected wheel-change the crew actually is.
+            const tyreProgress = targetSeconds > 0
+              ? Math.min(100, (entry.tyreChangeSeconds / targetSeconds) * 100)
+              : 0;
+            const issue = entry.car.pitStopIssue !== "NONE" ? entry.car.pitStopIssue.replaceAll("_", " ") : null;
+            /*
+             * The status line describes where the car actually is. Reporting the
+             * crew as being on the car while it is still driving down the lane
+             * would misdescribe the stop.
+             */
+            const status = entry.tyreChangeComplete
+              ? "WHEELS ON"
+              : entry.servingPenaltyHold
+                ? "PENALTY HOLD"
+                : entry.car.pitStatus === "PIT_STOP"
+                  ? issue ?? "CREW ON CAR"
+                  : entry.car.pitStatus === "PIT_ENTRY"
+                    ? "ENTERING PIT LANE"
+                    : entry.car.pitStatus === "PIT_EXIT" ? "LEAVING PIT LANE" : "IN PIT LANE";
+            const state = entry.tyreChangeComplete
+              ? "DONE"
+              : entry.car.pitStatus === "PIT_STOP" ? (issue ? "ISSUE" : "LIVE") : "APPROACH";
+            return (
+              <div
+                aria-live="assertive"
+                className={`pit-timing-live ${entry.tyreChangeComplete ? "is-tyre-complete" : ""}`}
+                data-pit-status={entry.tyreChangeComplete ? "TYRE_COMPLETE" : entry.car.pitStatus}
+                key={entry.car.carId}
+                role="status"
+              >
+                <header>
+                  <b>{entryDriver?.shortName ?? entry.car.carId.toUpperCase()}</b>
+                  <span>{entry.tyreChangeComplete ? "STOP COMPLETE" : "LIVE PIT STOP"}</span>
+                  <strong>{entry.tyreChangeComplete ? "RELEASED" : entry.car.pitStatus.replace("PIT_", "")}</strong>
+                </header>
+
+                {/* The wheel-change clock is the number the pit wall watches, so
+                    it is the hero of the card and blinks red while the crew is
+                    physically on the car. */}
+                <div className="pit-timing-live__hero" data-running={entry.tyreChangeRunning}>
                   <small>TYRE CHANGE</small>
                   <strong>{entry.tyreChangeSeconds.toFixed(2)}<em>s</em></strong>
-                </span>
+                  <i aria-hidden="true"><b style={{ width: `${tyreProgress}%` }} /></i>
+                </div>
+
+                <div className="pit-timing-live__rows">
+                  <span><small>TOTAL PIT</small><strong>{entry.pitLaneSeconds.toFixed(1)}<em>s</em></strong></span>
+                  <span><small>TARGET</small><strong>{targetSeconds.toFixed(2)}<em>s</em></strong></span>
+                </div>
+
+                <footer data-state={state}>
+                  <i aria-hidden="true" />
+                  <span>{status}</span>
+                </footer>
               </div>
-              <footer>
-                <span>TYRE TARGET {(entry.car.pitTyreServiceTargetSeconds ?? entry.car.pitStopTargetSeconds).toFixed(2)}s</span>
-                <b>{entry.tyreChangeComplete ? "WHEELS ON" : entry.servingPenaltyHold ? "WAITING" : entry.car.pitStopIssue.replace("_", " ")}</b>
-              </footer>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
       {!isQualifying && selectedCar && servingPenaltyHold && <div aria-live="assertive" className="penalty-service-live" role="timer" style={{ "--penalty-progress": `${penaltyHoldTarget > 0 ? Math.min(100, penaltyHoldElapsed / penaltyHoldTarget * 100) : 0}%` } as CSSProperties}>

@@ -140,7 +140,7 @@ describe("standard Formula 1 weekend", () => {
     expect(playerGridPositions.filter((position) => position <= 2)).toHaveLength(0);
   });
 
-  it("creates a two-car driver and engineer debrief after every practice and qualifying session", () => {
+  it("creates a two-car driver debrief after every practice and qualifying session", () => {
     let weekend = createWeekendState(20_260_712, "ferrari");
     for (let index = 0; index < 6; index += 1) weekend = runWeekendSession(weekend);
 
@@ -150,10 +150,9 @@ describe("standard Formula 1 weekend", () => {
       expect(report.summary.length).toBeGreaterThan(20);
       for (const car of report.cars) {
         expect(car.driverMessage.length).toBeGreaterThan(30);
-        expect(car.engineerMessage.length).toBeGreaterThan(30);
         expect(car.driverMessage.length).toBeLessThan(330);
-        expect(car.engineerMessage.length).toBeLessThan(390);
-        expect(car.engineerMessage).not.toMatch(/Aero \d+%|mechanical \d+%|thermal margin \d+%/);
+        // The debrief is the driver's own voice, never raw telemetry readouts.
+        expect(car.driverMessage).not.toMatch(/Aero \d+%|mechanical \d+%|thermal margin \d+%/);
         expect(car.aeroBalancePercent).toBeGreaterThanOrEqual(0);
         expect(car.aeroBalancePercent).toBeLessThanOrEqual(100);
         expect(car.mechanicalBalancePercent).toBeGreaterThanOrEqual(0);

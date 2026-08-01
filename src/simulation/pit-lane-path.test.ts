@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { RaceSnapshot } from "@/domain/race";
 import { playerCarIdsFor } from "@/fixtures/grid";
-import { createInitialSnapshot, PIT_BOX_DISTANCE, PIT_ENTRY_START, PIT_EXIT_END, setCarPit, stepSnapshot } from "@/simulation/engine";
+import { createInitialSnapshot, PIT_BOX_DISTANCE, PIT_ENTRY_START, PIT_EXIT_END, pitBoxDistanceForTeam, setCarPit, stepSnapshot } from "@/simulation/engine";
 import { SILVERSTONE_CIRCUIT } from "@/simulation/track";
 
 describe("pit lane path", () => {
@@ -38,6 +38,7 @@ describe("pit lane path", () => {
   it("holds the car at the box while the tyres are changed", () => {
     let snapshot: RaceSnapshot = { ...createInitialSnapshot(11_202), status: "RUNNING" };
     const [carId] = playerCarIdsFor(snapshot.playerTeamId);
+    const boxDistance = pitBoxDistanceForTeam(snapshot.cars.find((car) => car.carId === carId)!.teamId);
     for (let tick = 0; tick < 900; tick += 1) snapshot = stepSnapshot(snapshot);
     snapshot = setCarPit(snapshot, carId, "SOFT");
 
@@ -53,8 +54,8 @@ describe("pit lane path", () => {
     // Stationary means the position does not move while the crew works.
     const spread = Math.max(...boxDistances) - Math.min(...boxDistances);
     expect(spread).toBeLessThan(2);
-    // And it happens at the box, not at the pit exit.
-    expect(Math.abs(boxDistances[0] - PIT_BOX_DISTANCE)).toBeLessThan(20);
+    // And it happens at this team's own garage, not at the pit exit.
+    expect(Math.abs(boxDistances[0] - boxDistance)).toBeLessThan(20);
   }, 40_000);
 
   it("produces a realistic total pit-lane time that tracks the tyre change", () => {

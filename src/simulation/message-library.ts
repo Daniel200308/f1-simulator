@@ -176,39 +176,171 @@ const DRIVER_REQUESTS = [
   "Let us compare both cars before we touch a second parameter.",
 ] as const;
 
-const ENGINEER_OPENERS = [
-  "Copy, the traces agree with the driver.",
-  "That is a clean read from the data.",
-  "The useful laps all tell the same story.",
-  "The final run gave us the clearest comparison.",
-  "We have a repeatable balance trend now.",
-  "Track evolution is no longer hiding the car response.",
-  "Long-run and low-fuel data point the same way.",
-  "The tyre and platform channels line up.",
-  "Sector three confirms the main limitation.",
-  "The two cars have narrowed the setup window.",
-  "Nothing random in that trace; the issue repeats.",
-  "The lap time and steering trace finally correlate.",
+/**
+ * How the driver felt about the run. Practice feedback is the driver talking
+ * about the session they just drove, so the mood carries as much information as
+ * the technical read: a car that is fighting them earns a genuinely irritated
+ * reaction, and a car in the window earns an enthusiastic one.
+ */
+export type PracticeMood = "DELIGHTED" | "HAPPY" | "NEUTRAL" | "FRUSTRATED" | "ANGRY";
+
+const PRACTICE_MOOD_OPENERS: Readonly<Record<PracticeMood, readonly string[]>> = {
+  DELIGHTED: [
+    "Yes! That run was genuinely enjoyable.",
+    "I loved that. The car did exactly what I asked.",
+    "That felt brilliant out there.",
+    "Honestly, that was a pleasure to drive.",
+    "Beautiful. I could attack every lap without thinking about it.",
+    "That is the best this car has felt all weekend.",
+    "Really happy with that one; the car and I are speaking the same language.",
+    "Come on, that was strong. I was smiling in the cockpit.",
+    "That run was a joy. I trusted the car everywhere.",
+    "Fantastic feeling. I could push and the car stayed with me.",
+    "I enjoyed every lap of that. Nothing surprised me.",
+    "That was superb. Give me this car and I will fight anyone.",
+  ],
+  HAPPY: [
+    "That was a good run, I am pleased with it.",
+    "Okay, I liked that. The car is coming to me.",
+    "That felt decent out there.",
+    "Solid run from my side; the car is mostly doing what I want.",
+    "I am fairly happy with that one.",
+    "That was encouraging. I could lean on the car more each lap.",
+    "Good session. Nothing frightening, and the pace is there.",
+    "I felt comfortable in that. We are close now.",
+    "That is a car I can work with.",
+    "Positive run. I could build the lap properly.",
+    "Happy enough with that. The car is behaving.",
+    "That was clean and predictable, I will take it.",
+  ],
+  NEUTRAL: [
+    "Okay, that run was reasonable.",
+    "Mixed feelings about that one.",
+    "That was fine, nothing special.",
+    "The run was okay; the car is neither helping nor fighting me.",
+    "Alright, I have a read on it now.",
+    "It was an average run, honestly.",
+    "That was acceptable. There is more in it.",
+    "The car is in a workable place, not a good one yet.",
+    "Nothing dramatic out there, good or bad.",
+    "I can drive around it, but I am not enjoying it much.",
+    "That was serviceable. I want more from the next run.",
+    "The lap is there, the feeling is not quite yet.",
+  ],
+  FRUSTRATED: [
+    "That was frustrating, I have to be honest.",
+    "I did not enjoy that run at all.",
+    "The car is not listening to me out there.",
+    "That was hard work for very little.",
+    "Honestly, I am fighting this car every lap.",
+    "That run annoyed me. I cannot trust what the car does.",
+    "I am working far too hard for that lap time.",
+    "The car keeps arguing with me in the corners.",
+    "That was scrappy, and it is not coming from me.",
+    "I am not comfortable. The car does what it wants, not what I ask.",
+    "That was a struggle from the first lap to the last.",
+    "Not good. I am correcting the car instead of driving it.",
+  ],
+  ANGRY: [
+    "That was horrible. The car is completely against me.",
+    "No, this is unacceptable. I cannot drive it like this.",
+    "That run was a mess and I am angry about it.",
+    "I hated every lap of that. The car is undriveable.",
+    "This is nowhere near good enough. I have no confidence at all.",
+    "That was awful. I am wrestling the car and losing.",
+    "Seriously, this car is fighting me everywhere. Fix it.",
+    "I am furious with that. There is nothing I can do with this balance.",
+    "That was dreadful. I cannot commit to a single corner.",
+    "No confidence, no grip, no idea where the limit is. That was terrible.",
+    "That is the worst the car has felt. I am not happy at all.",
+    "Enough of this. The car is unpredictable and I cannot push it.",
+  ],
+};
+
+/**
+ * A happy driver still reports the one thing that is not perfect, but frames it
+ * as a minor note rather than a complaint. Without this, a delighted opener could
+ * be followed by a blunt criticism and read as self-contradictory.
+ */
+const PRACTICE_POSITIVE_NOTE_FRAMES = [
+  "The only small thing is that",
+  "If I am being picky,",
+  "One minor note:",
+  "The last little bit is that",
+  "Nothing serious, but",
+  "The one detail left is that",
 ] as const;
 
-const ENGINEER_ACTIONS = [
-  "We will move one parameter and check the first timed lap.",
-  "Keep this baseline and run a clean A/B comparison.",
-  "The next release needs cleaner air before another setup change.",
-  "Use a short correlation run before loading the long-run fuel.",
-  "Leave the strong corner group alone and work on the limitation.",
-  "Carry the direction forward, but keep an eye on the thermal margin.",
-  "Aim for a platform the driver can repeat, not one peak lap.",
-  "Check steering, ride and temperature together before release.",
-  "One click is enough for the next question; two would hide the answer.",
-  "Let the sister car confirm the direction before we commit both setups.",
-  "The hint is in the axle balance, not in a wholesale reset.",
-  "We can trade a little strength from the good phase into the weak one.",
+const PRACTICE_NEGATIVE_NOTE_FRAMES = [
+  "The main problem is that",
+  "What is really hurting me is that",
+  "The biggest issue:",
+  "I keep running into the same thing:",
+  "The part I cannot live with is that",
+  "What is costing us is that",
 ] as const;
+
+/**
+ * Drag and spare cooling cost lap time without fighting the driver, so they
+ * never earn the "the car is against me" language. These frames complain about
+ * lost speed instead, which is how the annoyance actually sounds.
+ */
+const PRACTICE_EFFICIENCY_NOTE_FRAMES = [
+  "We are just giving lap time away:",
+  "The annoying part is that",
+  "Where we are losing it is that",
+  "It is wasted time, because",
+  "What bothers me is that",
+  "We are leaving speed on the table:",
+] as const;
+
+/** How the driver signs off, matched to the mood rather than to the data. */
+const PRACTICE_MOOD_CLOSERS: Readonly<Record<PracticeMood, readonly string[]>> = {
+  DELIGHTED: [
+    "Do not touch a thing, this is the car I want.",
+    "Protect this baseline; I am confident with it.",
+    "Keep it exactly here and let me get more laps in.",
+    "If we leave it alone, I can deliver on this.",
+    "Whatever you did, keep it. I am very happy.",
+    "Only tiny refinements from here, nothing bigger.",
+  ],
+  HAPPY: [
+    "One small step and I think we are there.",
+    "Let us refine it gently rather than change direction.",
+    "Keep the good part and tidy the rest.",
+    "I would only make a light adjustment from here.",
+    "We are close, so let us not get greedy.",
+    "A small trim and I will confirm it next run.",
+  ],
+  NEUTRAL: [
+    "Give me one clear change so I can feel the difference.",
+    "Let us pick a direction and commit to it.",
+    "One parameter at a time; I need something to compare.",
+    "I want a decisive step, not a compromise.",
+    "Make it obvious from the cockpit and I will tell you straight away.",
+    "Let us try something and see if I like it more.",
+  ],
+  FRUSTRATED: [
+    "Please sort this out before the next run.",
+    "I need a proper change, not a token one.",
+    "Give me something I can actually trust out there.",
+    "We have to fix this or the lap time will not come.",
+    "Do something meaningful with it; this is costing us.",
+    "I cannot keep driving around this problem.",
+  ],
+  ANGRY: [
+    "Change it properly, I am not going out like this again.",
+    "This needs a real fix, right now.",
+    "I want a big step, because small ones are not working.",
+    "Sort the car out or we are wasting the weekend.",
+    "Do not send me back out with this balance.",
+    "We need to start again with this, seriously.",
+  ],
+};
 
 type SetupVoice = "FRONT" | "DRAG" | "PLATFORM" | "REAR" | "COOLING" | "COOLING_DRAG" | "BALANCED";
 
-const SETUP_VOICES: Readonly<Record<SetupVoice, { driver: readonly string[]; engineer: readonly string[] }>> = {
+const SETUP_VOICES: Readonly<Record<SetupVoice, { driver: readonly string[] }>> = {
   FRONT: {
     driver: [
       "I need a second bite of steering through Copse",
@@ -217,14 +349,6 @@ const SETUP_VOICES: Readonly<Record<SetupVoice, { driver: readonly string[]; eng
       "the quick entries are making me wait before I can commit",
       "I am opening the steering too early to save the front tyre",
       "the car rotates in the slow stuff, then runs out of nose at speed",
-    ],
-    engineer: [
-      "steering load keeps building through the fast sequence, so a little more front authority is available",
-      "the front axle saturates first at Copse while the rear stays calm",
-      "high-speed minimum speed is limited by the first steering response",
-      "the aero trace loses rotation before mechanical grip becomes the limit",
-      "the driver is waiting on front bite rather than traction",
-      "the quick-corner loss points to balance, not tyre preparation",
     ],
   },
   DRAG: {
@@ -236,14 +360,6 @@ const SETUP_VOICES: Readonly<Record<SetupVoice, { driver: readonly string[]; eng
       "the platform is secure and the top speed is not coming with it",
       "I have confidence in the fast corners, maybe more than we need",
     ],
-    engineer: [
-      "corner stability is healthy, but the speed trace shows an avoidable drag cost",
-      "the car exits well and gives the gain back before the braking zone",
-      "aero security is above the level the lap currently needs",
-      "the straight-line loss is larger than the cornering gain",
-      "the rear platform is settled enough to consider a small trim",
-      "top-speed deficit remains after traction and deployment are removed from the comparison",
-    ],
   },
   PLATFORM: {
     driver: [
@@ -253,14 +369,6 @@ const SETUP_VOICES: Readonly<Record<SetupVoice, { driver: readonly string[]; eng
       "I am correcting the car after the initial turn rather than flowing through it",
       "the platform feels lazy when the load moves from one side to the other",
       "I can live with the grip, but not with how long the car takes to settle",
-    ],
-    engineer: [
-      "ride movement continues after the steering input, so the platform needs a touch more support",
-      "the direction-change trace is slower than the tyre response",
-      "body control, rather than aero load, is costing the sequence",
-      "the second steering input arrives before the platform is ready",
-      "the car has grip but spends too long transferring it across the chassis",
-      "the ride trace points to a measured mechanical step, not more wing",
     ],
   },
   REAR: {
@@ -272,14 +380,6 @@ const SETUP_VOICES: Readonly<Record<SetupVoice, { driver: readonly string[]; eng
       "the slow entries are giving me a sharper response than I asked for",
       "I can catch the car, but the correction is costing the exit",
     ],
-    engineer: [
-      "rear load drops quickly over the kerb, suggesting compliance before more aero",
-      "entry rotation is strong and the rear support disappears too abruptly",
-      "the correction after brake release is the main mechanical loss",
-      "the rear axle needs a calmer response across the kerb phase",
-      "traction is being compromised by the way rotation arrives",
-      "the platform is firm enough that the rear tyre cannot follow the surface cleanly",
-    ],
   },
   COOLING: {
     driver: [
@@ -289,14 +389,6 @@ const SETUP_VOICES: Readonly<Record<SetupVoice, { driver: readonly string[]; eng
       "I am managing the car earlier than the tyres need",
       "the power unit heat is beginning to dictate the run",
       "I can repeat the lap only if I back out of the loaded section",
-    ],
-    engineer: [
-      "the thermal margin disappears before the balance does, so the bodywork is the first question",
-      "temperature rise is limiting the programme earlier than tyre life",
-      "the car is aerodynamically usable but thermally too tight for a repeat run",
-      "power-unit protection is arriving before the target lap count",
-      "the heat curve points to a small cooling concession rather than a pace reset",
-      "thermal headroom is the limiting setup channel on this run",
     ],
   },
   COOLING_DRAG: {
@@ -308,14 +400,6 @@ const SETUP_VOICES: Readonly<Record<SetupVoice, { driver: readonly string[]; eng
       "I am not using the cooling margin we built into this run",
       "the car is comfortable over a stint and a touch too conservative in the bodywork",
     ],
-    engineer: [
-      "thermal margin is generous while the speed trace still pays a bodywork cost",
-      "the cooling curve is flat enough to recover a little efficiency",
-      "temperature control is stronger than the current programme requires",
-      "we can question the opening before adding any more aero load",
-      "the thermal model shows unused headroom and a small drag penalty",
-      "the car can afford a modest efficiency step without compromising protection",
-    ],
   },
   BALANCED: {
     driver: [
@@ -325,14 +409,6 @@ const SETUP_VOICES: Readonly<Record<SetupVoice, { driver: readonly string[]; eng
       "I can place the car without making a correction",
       "the platform is predictable in both the slow and fast corners",
       "the setup is in the window and the remaining loss feels small",
-    ],
-    engineer: [
-      "both axles remain inside the working window, so the baseline deserves protecting",
-      "the trace has no dominant balance failure and the remaining gain is in execution",
-      "mechanical and aero response are well matched across the lap",
-      "the car is predictable enough to use tyre preparation as the next variable",
-      "the two cars agree that this is a stable reference",
-      "the setup is not hiding a large loss, so changes should stay deliberately small",
     ],
   },
 };
@@ -671,19 +747,33 @@ function setupVoiceFor(balanceIssue: string): SetupVoice {
   return "BALANCED";
 }
 
-function tyreRead(tyreConditionPercent: number): string {
-  if (tyreConditionPercent < 60) return "The tyre dropped away before the run was finished.";
-  if (tyreConditionPercent < 76) return "The tyre stayed alive, but the final laps needed care.";
-  return "The tyre remained consistent through the useful laps.";
-}
-
-function classificationRead(context: SessionMessageContext): string {
-  if (context.position === null) return "We never put a representative lap on the board.";
-  if (context.outcome === "ELIMINATED") return `P${context.position}; the final lap never came together.`;
-  if (context.outcome === "ADVANCED") return `P${context.position} gets us through, with more in the car.`;
-  if (context.position <= 3) return `P${context.position} is strong, so we should protect the good part.`;
-  if (context.position <= 10) return `P${context.position}, ${context.gapSeconds.toFixed(3)}s off — close enough to improve with one clean step.`;
-  return `P${context.position}, ${context.gapSeconds.toFixed(3)}s away — the limitation is costing us repeatedly.`;
+/**
+ * The driver's mood comes from how far the car is from its window, which is what
+ * `balanceIssue` and the balance percentages already describe. A car inside the
+ * window is enjoyable; a car well outside it is genuinely irritating to drive.
+ */
+export function practiceMoodFor(context: Pick<SessionMessageContext,
+  "balanceIssue" | "aeroBalancePercent" | "mechanicalBalancePercent" | "thermalMarginPercent" | "tyreConditionPercent" | "position"
+>): PracticeMood {
+  const worstBalance = Math.min(
+    context.aeroBalancePercent,
+    context.mechanicalBalancePercent,
+    context.thermalMarginPercent,
+  );
+  const settled = context.balanceIssue.includes("stable");
+  // A strong classification lifts the mood a little; a poor one weighs on it.
+  const positionBias = context.position === null ? -8 : context.position <= 3 ? 6 : context.position <= 10 ? 0 : -6;
+  const score = worstBalance + (settled ? 8 : 0) + positionBias + (context.tyreConditionPercent < 55 ? -5 : 0);
+  const mood: PracticeMood = score >= 92
+    ? "DELIGHTED"
+    : score >= 78 ? "HAPPY" : score >= 62 ? "NEUTRAL" : score >= 46 ? "FRUSTRATED" : "ANGRY";
+  /*
+   * Excess drag or spare cooling costs lap time but never makes the car hard to
+   * drive, so it cannot produce an "undriveable" reaction however far the setup
+   * sits from the optimum.
+   */
+  const efficiencyOnly = context.balanceIssue.includes("drag") || context.balanceIssue.includes("excess cooling");
+  return efficiencyOnly && mood === "ANGRY" ? "FRUSTRATED" : mood;
 }
 
 function sentenceCase(message: string): string {
@@ -724,24 +814,36 @@ export function buildSessionDriverMessage(context: SessionMessageContext): strin
   if (context.outcome === "NO RUN") {
     return `We never got a proper lap in ${context.session}. Use the other car as the reference and give me one simple question next run.`;
   }
-  const opener = choice(DRIVER_OPENERS, context.seed, stream + 2, 2).replace(/\.$/, "");
+  /*
+   * Practice feedback is the driver describing the run they just completed, so
+   * it leads with how the car felt rather than with a data read. The mood picks
+   * the opener and the sign-off, which is what makes a good run sound different
+   * from a run that fought the driver the whole way.
+   */
+  const mood = practiceMoodFor(context);
   const voice = SETUP_VOICES[setupVoiceFor(context.balanceIssue)];
-  const observation = choice(voice.driver, context.seed, stream + 3, 3);
-  const request = choice(DRIVER_REQUESTS, context.seed, stream + 4, 4);
-  return `${opener} — ${observation}. ${classificationRead(context)} ${request}`;
-}
-
-export function buildSessionEngineerMessage(context: SessionMessageContext): string {
-  const stream = context.carIndex * 31 + context.sessionIndex * 13;
-  if (context.outcome === "NO RUN") {
-    return `No representative lap for ${context.driverShortName} in ${context.session}. We will borrow the sister-car direction and keep the next release simple.`;
+  // Each element draws on its own stream so the opener, the note and the sign-off
+  // vary independently rather than moving together.
+  const opener = choice(PRACTICE_MOOD_OPENERS[mood], context.seed, stream + 211, context.carIndex + 2);
+  const observation = choice(voice.driver, context.seed, stream + 307, context.sessionIndex + 3);
+  const closer = choice(PRACTICE_MOOD_CLOSERS[mood], context.seed, stream + 419, context.laps + 4);
+  const settled = context.balanceIssue.includes("stable");
+  if (mood === "DELIGHTED" || mood === "HAPPY") {
+    // A car in the window needs no caveat at all when the balance is settled.
+    if (settled) return `${opener} ${sentenceCase(observation)}. ${closer}`;
+    const frame = choice(PRACTICE_POSITIVE_NOTE_FRAMES, context.seed, stream + 523, context.position ?? 5);
+    return `${opener} ${frame} ${observation}. ${closer}`;
   }
-  const opener = choice(ENGINEER_OPENERS, context.seed, stream + 5, 5).replace(/\.$/, "");
-  const voice = SETUP_VOICES[setupVoiceFor(context.balanceIssue)];
-  const observation = choice(voice.engineer, context.seed, stream + 6, 6);
-  const tyre = tyreRead(context.tyreConditionPercent);
-  const action = choice(ENGINEER_ACTIONS, context.seed, stream + 7, 7);
-  return `${opener}: ${observation}. ${classificationRead(context)} ${tyre} ${action}`;
+  if (mood === "NEUTRAL") return `${opener} ${sentenceCase(observation)}. ${closer}`;
+  /*
+   * A car that is merely inefficient is irritating rather than frightening, so
+   * the complaint is about lost speed instead of lost confidence.
+   */
+  const efficiencyOnly = setupVoiceFor(context.balanceIssue) === "DRAG"
+    || setupVoiceFor(context.balanceIssue) === "COOLING_DRAG";
+  const frames = efficiencyOnly ? PRACTICE_EFFICIENCY_NOTE_FRAMES : PRACTICE_NEGATIVE_NOTE_FRAMES;
+  const frame = choice(frames, context.seed, stream + 619, context.position ?? 5);
+  return `${opener} ${frame} ${observation}. ${closer}`;
 }
 
 export function buildRaceDriverRadio(context: RaceDriverRadioContext): string {
@@ -760,9 +862,16 @@ export function buildRaceDriverRadio(context: RaceDriverRadioContext): string {
   return `${opener} ${observation}${context.metric ? ` — ${context.metric}.` : "."} ${request}`;
 }
 
-export const SESSION_DEBRIEF_VARIANT_CAPACITY = Math.max(DRIVER_OPENERS.length, DRIVER_QUALIFYING_OPENERS.length)
-  * Math.min(...Object.values(SETUP_VOICES).map((voice) => voice.driver.length))
-  * DRIVER_REQUESTS.length;
+export const SESSION_DEBRIEF_VARIANT_CAPACITY = Math.min(
+  // Qualifying keeps the opener/observation/request construction.
+  Math.max(DRIVER_OPENERS.length, DRIVER_QUALIFYING_OPENERS.length)
+    * Math.min(...Object.values(SETUP_VOICES).map((voice) => voice.driver.length))
+    * DRIVER_REQUESTS.length,
+  // Practice combines one mood's openers and closers with the balance voice.
+  Math.min(...Object.values(PRACTICE_MOOD_OPENERS).map((values) => values.length))
+    * Math.min(...Object.values(SETUP_VOICES).map((voice) => voice.driver.length))
+    * Math.min(...Object.values(PRACTICE_MOOD_CLOSERS).map((values) => values.length)),
+);
 export const RACE_DRIVER_RADIO_VARIANT_CAPACITY = RADIO_OPENERS.length
   * Math.min(...Object.values(RADIO_OBSERVATIONS).map((values) => values.length))
   * Math.min(...Object.values(RADIO_REQUESTS).map((values) => values.length));

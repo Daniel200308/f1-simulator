@@ -9,6 +9,7 @@ import { chooseAiEnergyMode } from "@/simulation/energy/energy-strategy";
 import { completeEnergyLap, createEnergySystemState, migrateEnergySystemState, updateEnergySystem } from "@/simulation/energy/energy-system";
 import { buildRaceDriverRadio } from "@/simulation/message-library";
 import { resolvePitStopExecution } from "@/simulation/pit-operations";
+import { PIT_ENTRY_START, PIT_EXIT_END, PIT_LANE_START, pitBoxDistanceForTeam } from "@/simulation/pit-lane";
 import { signedNoise } from "@/simulation/random";
 import { calculateFieldRacecraft } from "@/simulation/racecraft";
 import { classifiedFieldHasFinished } from "@/simulation/race-finish";
@@ -120,13 +121,13 @@ const ENERGY_MODE_SPEED: Readonly<Record<EnergyDeploymentMode, number>> = {
 const COOLING_SPEED: Record<CoolingMode, number> = { NORMAL: 1, LIFT_AND_COAST: 0.982, MAX_COOLING: 0.958 };
 const COOLING_FUEL: Record<CoolingMode, number> = { NORMAL: 1, LIFT_AND_COAST: 0.92, MAX_COOLING: 0.84 };
 
-// Silverstone's F1 pit lane branches after Club and rejoins on Hamilton Straight
-// before Abbey. Keeping the rendered lane inside this short final-corner/straight
-// window avoids the previous route incorrectly extending back through Vale/Stowe.
-export const PIT_ENTRY_START = SILVERSTONE_CIRCUIT.lengthMeters - 185;
-export const PIT_LANE_START = SILVERSTONE_CIRCUIT.lengthMeters - 135;
-export const PIT_BOX_DISTANCE = SILVERSTONE_CIRCUIT.lengthMeters - 45;
-export const PIT_EXIT_END = 155;
+export {
+  PIT_BOX_DISTANCE,
+  PIT_ENTRY_START,
+  PIT_EXIT_END,
+  PIT_LANE_START,
+  pitBoxDistanceForTeam,
+} from "@/simulation/pit-lane";
 export const PIT_STOP_DURATION = 2.5;
 export const ESTIMATED_PIT_LOSS_SECONDS = 20;
 export const PIT_RELEASE_SAFE_GAP_METERS = 22;
@@ -154,11 +155,16 @@ function createTyreSets(carId: string, fittedCompound: TyreCompound, usedCounts:
   } satisfies TyreSetState));
 }
 
-function reserveTyreSet(car: RaceCarState, compound: TyreCompound): RaceCarState {
+/**
+ * Reserves a set for the next stop. Passing `tyreSetId` fits that exact set, so
+ * the pit wall can take a scrubbed set deliberately; without it the freshest
+ * usable set of the compound is chosen.
+ */
+function reserveTyreSet(car: RaceCarState, compound: TyreCompound, tyreSetId?: string): RaceCarState {
   const released = car.tyreSets.map((set) => set.status === "RESERVED" ? { ...set, status: "AVAILABLE" as const } : set);
-  const candidate = released
-    .filter((set) => set.compound === compound && (set.status === "AVAILABLE" || set.status === "USED"))
-    .sort((a, b) => b.condition - a.condition)[0];
+  const usable = released.filter((set) => set.compound === compound && (set.status === "AVAILABLE" || set.status === "USED"));
+  const candidate = (tyreSetId ? usable.find((set) => set.id === tyreSetId) : undefined)
+    ?? [...usable].sort((a, b) => b.condition - a.condition)[0];
   if (!candidate) return { ...car, tyreSets: released, scheduledPitCompound: null, scheduledPitTyreSetId: null };
   return {
     ...car,
@@ -2046,7 +2052,10 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
     const enteredPitThisStep = car.pitStatus === "TRACK" && pitStatus === "PIT_ENTRY";
     if (!enteredPitThisStep && pitStatus === "PIT_ENTRY" && lapDistanceBefore >= PIT_LANE_START) pitStatus = "PIT_LANE";
     const joinedLaneThisStep = car.pitStatus !== "PIT_LANE" && pitStatus === "PIT_LANE";
-    if (!joinedLaneThisStep && pitStatus === "PIT_LANE" && lapDistanceBefore >= PIT_BOX_DISTANCE) {
+    // Each team stops at its own garage, so the box the car is driving to is the
+    // one that belongs to it rather than a single shared point in the lane.
+    const teamBoxDistance = pitBoxDistanceForTeam(car.teamId);
+    if (!joinedLaneThisStep && pitStatus === "PIT_LANE" && lapDistanceBefore >= teamBoxDistance) {
       if (penaltyServiceType === "DRIVE_THROUGH") {
         pitStatus = "PIT_EXIT";
       } else {
@@ -2886,11 +2895,13 @@ export function setCarBrakeBias(snapshot: RaceSnapshot, carId: string, brakeBias
   };
 }
 
-export function setCarPit(snapshot: RaceSnapshot, carId: string, compound: TyreCompound): RaceSnapshot {
+export function setCarPit(snapshot: RaceSnapshot, carId: string, compound: TyreCompound, tyreSetId?: string): RaceSnapshot {
   const requestedCar = snapshot.cars.find((car) => car.carId === carId);
   if (!canReceiveCarCommand(snapshot, carId) || requestedCar?.pitStatus !== "TRACK") return snapshot;
-  const cars = snapshot.cars.map((car) => car.carId === carId && car.pitStatus === "TRACK" ? reserveTyreSet(car, compound) : car);
-  const scheduled = cars.find((car) => car.carId === carId)?.scheduledPitCompound === compound;
+  const cars = snapshot.cars.map((car) => car.carId === carId && car.pitStatus === "TRACK" ? reserveTyreSet(car, compound, tyreSetId) : car);
+  const updated = cars.find((car) => car.carId === carId);
+  const scheduled = updated?.scheduledPitCompound === compound;
+  const reserved = updated?.tyreSets.find((set) => set.id === updated.scheduledPitTyreSetId);
   return {
     ...snapshot,
     cars,

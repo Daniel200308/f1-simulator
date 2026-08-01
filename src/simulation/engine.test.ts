@@ -570,7 +570,9 @@ describe("race simulation", () => {
     expect(green.raceControl).toBe("GREEN");
     expect(green.safetyCarPhase).toBe("NONE");
     expect(green.safetyCarDistance).toBeNull();
-  });
+    // A wave-by plus a full restart is a long stepped sequence; the 5s default
+    // is not enough headroom when the suite runs in parallel.
+  }, 30_000);
 
   it("releases the field to green only after the restart line", () => {
     const initial = createInitialSnapshot(9_991);
@@ -624,7 +626,9 @@ describe("race simulation", () => {
     expect(phases).toContain("RESTART");
     expect(state.raceControl).toBe("GREEN");
     expect(state.cars.every((car) => Number.isFinite(car.totalDistance))).toBe(true);
-  });
+    // Stepping a full safety-car procedure runs long enough to exceed the 5s
+    // default when the suite is under parallel load.
+  }, 30_000);
 
   it("uses the restart line without creating a second Safety Car deployment", () => {
     const initial = createInitialSnapshot(37_040);

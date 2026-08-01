@@ -7,6 +7,7 @@ import type { TyreCompound } from "@/domain/race";
 import { CarStatusPanel } from "@/components/race/car-status";
 import { CommandDock, type CommandDockControls } from "@/components/race/command-dock";
 import { EnergyDebugPanel } from "@/components/race/energy-debug-panel";
+import { tyreSetLabel } from "@/components/race/format";
 import { RaceMap } from "@/components/race/race-map";
 import { QualifyingRaceView } from "@/components/race/qualifying-race-view";
 import { ReplayReportPanel } from "@/components/race/replay-report-panel";
@@ -183,7 +184,14 @@ export function RaceShell() {
     setEnergyMode: (carId, mode) => { if (!commandableCar(carId)) return; annotateCommand(carId, `Energy mode ${mode}`, { mode }); controls.setEnergyMode(carId, mode); },
     setTyreMode: (carId, mode) => { if (!commandableCar(carId)) return; annotateCommand(carId, `Tyre management ${mode}`, { mode }); controls.setTyreMode(carId, mode); },
     setTeamOrder: (order) => { annotateCommand(selectedCar?.carId ?? playerCarIds[0], `Team order ${order}`, { order }); controls.setTeamOrder(order); },
-    box: (carId, compound) => { const car = commandableCar(carId); if (!car || car.pitStatus !== "TRACK") return; annotateCommand(carId, `Box this lap for ${compound}`, { compound }); controls.box(carId, compound); },
+    box: (carId, compound, tyreSetId) => {
+      const car = commandableCar(carId);
+      if (!car || car.pitStatus !== "TRACK") return;
+      const set = tyreSetId ? car.tyreSets.find((candidate) => candidate.id === tyreSetId) : undefined;
+      const detail = set ? `${compound} set ${tyreSetLabel(set.id)} · ${Math.round(set.condition)}% life` : compound;
+      annotateCommand(carId, `Box this lap for ${detail}`, { compound, tyreSetId: tyreSetId ?? "AUTO" });
+      controls.box(carId, compound, tyreSetId);
+    },
     servePenalty: (carId) => { const car = commandableCar(carId); if (!car || car.pitStatus !== "TRACK") return; annotateCommand(carId, "Serve mandatory penalty this lap", { command: "SERVE_PENALTY" }); controls.servePenalty(carId); },
     stayOut: (carId) => { const car = commandableCar(carId); if (!car || car.pitStatus !== "TRACK" || !car.scheduledPitCompound) return; annotateCommand(carId, "Stay out", { command: "STAY_OUT" }); controls.stayOut(carId); },
   };

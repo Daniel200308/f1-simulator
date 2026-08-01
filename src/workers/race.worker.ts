@@ -120,7 +120,7 @@ context.onmessage = (message: MessageEvent<WorkerCommand>) => {
         publish();
         break;
       case "BOX":
-        snapshot = setCarPit(snapshot, message.data.carId, message.data.compound);
+        snapshot = setCarPit(snapshot, message.data.carId, message.data.compound, message.data.tyreSetId);
         publish();
         break;
       case "SERVE_PENALTY":

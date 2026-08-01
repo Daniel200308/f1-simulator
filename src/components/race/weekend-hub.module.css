@@ -231,7 +231,7 @@
 .debriefDock > header b {
   display: block;
   color: #dce7ea;
-  font: 900 12px var(--font-mono);
+  font: 900 14px var(--font-mono);
   letter-spacing: .09em;
 }
 
@@ -242,14 +242,14 @@
   display: block;
   margin-top: 3px;
   color: #637b84;
-  font: 8px var(--font-mono);
+  font: 10px var(--font-mono);
   letter-spacing: .05em;
 }
 
 .garageCanvas > header > span {
   margin-left: auto;
   color: var(--green);
-  font: 900 10px var(--font-mono);
+  font: 900 12px var(--font-mono);
   letter-spacing: .08em;
 }
 
@@ -307,12 +307,12 @@
 .setupCar > header small {
   margin-top: 3px;
   color: #788f98;
-  font: 9px var(--font-mono);
+  font: 11px var(--font-mono);
 }
 
 .setupCar > header > b {
   color: var(--green);
-  font: 900 9px var(--font-mono);
+  font: 900 12px var(--font-mono);
 }
 
 .setupVisual {
@@ -326,8 +326,10 @@
 .carFigure {
   position: relative;
   order: 2;
-  flex: 0 0 34%;
-  min-width: 108px;
+  /* The controls carry the readable labels now, so the car illustration gives
+     back some width rather than squeezing the text. */
+  flex: 0 0 26%;
+  min-width: 88px;
   min-height: 0;
   display: grid;
   place-items: center;
@@ -404,9 +406,9 @@
 .controlStack label > span {
   min-width: 0;
   display: grid;
-  grid-template-columns: 19px minmax(0, 1fr) 34px;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   color: var(--driver-tone);
 }
 
@@ -415,35 +417,26 @@
   font-style: normal;
 }
 
-.controlStack label > span b,
-.controlStack label > span small {
+/* The parameter name stands alone; the secondary description was removed so the
+   name can use the full cell width without truncating. */
+.controlStack label > span b {
   display: block;
   overflow: hidden;
+  color: #dce7ea;
   font-family: var(--font-mono);
+  font-size: 15px;
+  letter-spacing: .04em;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.controlStack label > span b {
-  color: #dce7ea;
-  font-size: 10px;
-  letter-spacing: .045em;
-}
-
-.controlStack label > span small {
-  margin-top: 2px;
-  color: #627a83;
-  font-size: 8px;
-  letter-spacing: .04em;
-}
-
 .controlStack label > span strong {
   color: #f2f7f8;
-  font: 950 17px/1 var(--font-mono);
+  font: 950 21px/1 var(--font-mono);
   text-align: right;
 }
 
-.rangeControl { --recommendation-start: 0%; --recommendation-width: 0%; position: relative; min-width: 0; height: 20px; display: grid; align-items: center; }
+.rangeControl { --recommendation-start: 0%; --recommendation-width: 0%; position: relative; min-width: 0; height: 36px; display: grid; align-content: start; }
 .controlStack input {
   position: relative;
   z-index: 2;
@@ -456,11 +449,27 @@
   cursor: pointer;
 }
 .recommendationBand { position: absolute; z-index: 3; top: 5px; left: var(--recommendation-start); width: var(--recommendation-width); min-width: 8px; height: 11px; border: 1px solid rgba(75,222,149,.95); border-radius: 6px; background: rgba(75,222,149,.19); box-shadow: 0 0 9px rgba(75,222,149,.34), inset 0 0 5px rgba(75,222,149,.18); pointer-events: none; }
+/*
+ * The two band numbers are placed on the track itself, each under its own edge
+ * of the green band. `translateX(-50%)` centres a number on its edge, and the
+ * clamp keeps it from spilling past either end of the track when the band sits
+ * hard against a limit.
+ */
+/*
+ * The two band numbers sit under the green band, each aligned to the inside of
+ * its own edge: the low value starts at the band's left edge and the high value
+ * ends at its right edge. Anchoring inside the edges keeps each number both at
+ * its own end and within the range it describes, whatever the band position.
+ */
+.bandBounds { --band-end: calc(var(--recommendation-start) + var(--recommendation-width)); position: absolute; z-index: 4; top: 19px; right: 0; left: 0; height: 13px; pointer-events: none; }
+.bandBounds b { position: absolute; top: 0; color: var(--green); font: 950 10px/13px var(--font-mono); letter-spacing: 0; white-space: nowrap; }
+.bandBounds b[data-edge="start"] { left: var(--recommendation-start); }
+.bandBounds b[data-edge="end"] { left: var(--band-end); transform: translateX(-100%); }
 .rangeLegend { min-width: 0; display: grid !important; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 4px; }
-.rangeLegend i, .rangeLegend b { overflow: hidden; font-family: var(--font-mono); font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
-.rangeLegend i { color: #667c84; font-size: 7px; }
+.rangeLegend i, .rangeLegend em { overflow: hidden; font-family: var(--font-mono); font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
+.rangeLegend i { color: #8ba0a8; font-size: 11px; font-weight: 700; }
 .rangeLegend i:last-child { text-align: right; }
-.rangeLegend b { color: var(--green); font-size: 7px; font-weight: 950; letter-spacing: .025em; text-align: center; }
+.rangeLegend em { color: color-mix(in srgb, var(--green) 78%, #7d949c); font-size: 10px; font-weight: 950; letter-spacing: .04em; text-align: center; }
 
 .controlStack input::-webkit-slider-thumb {
   width: 15px;
@@ -769,7 +778,7 @@
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   overflow: hidden;
 }
 
@@ -832,14 +841,14 @@
 
 .debriefCard p {
   display: -webkit-box;
-  margin: 12px 0 0;
+  margin: 11px 0 0;
   overflow: hidden;
   color: #e1eaed;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 700;
-  line-height: 1.48;
+  line-height: 1.44;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 4;
 }
 
 .footer {
@@ -1654,10 +1663,17 @@
   .setupCar > header strong { font-size: 16px; }
   .controlStack { padding-block: 3px; }
   .controlStack label { padding: 3px 5px; }
+  /* Long names such as DIFFERENTIAL have to fit the narrow cell without being
+     cut to an ellipsis. */
+  .controlStack label > span b { font-size: 12px; letter-spacing: .01em; }
   .controlStack label > span strong { font-size: 15px; }
   .controlStack input { margin-block: 4px 2px; }
-  .rangeControl { height: 16px; }
+  /* The track still has to reserve a row for the band numbers, otherwise they
+     land on top of the SPEED/GRIP legend beneath. */
+  .rangeControl { height: 27px; }
   .recommendationBand { top: 3px; height: 10px; }
+  .bandBounds { top: 15px; height: 11px; }
+  .bandBounds b { font-size: 9px; line-height: 11px; }
   .timingPanel { grid-template-rows: 45px minmax(0, 1fr); }
   .racePreparation { gap: 8px; padding: 8px; }
   .racePreparation section { padding: 8px; }
