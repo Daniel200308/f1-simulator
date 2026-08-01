@@ -171,7 +171,7 @@ Project Pitwall은 **Silverstone 단일 레이스 위크엔드를 처음부터 �
 | `main` | `444c4dc` | 동기화 | 기본 기준선 |
 | `develop` | `444c4dc` | 동기화 | 개발 기준선 |
 | `codex/next-development` | `444c4dc` | 동기화 | 초기 개발 기준선 |
-| `codex/race-weekend` | `fe80f0d` + 현재 작업분 | 동기화 후 작업분 커밋 예정 | 이번 변경의 주 브랜치 |
+| `codex/race-weekend` | `93f9238` | 동기화 | 이번 변경의 주 브랜치 |
 | `codex/thermal-management-gameplay` | `98638b3` | 동기화 | 현재 시스템 문서화 |
 | `codex/product-design-telemetry-ui` | `693bf9a` | 동기화 | 라이브 텔레메트리 UI |
 | `codex/live-strategy-driver-controls` | `e533b54` | 동기화 | 전략·4휠 텔레메트리 |
@@ -190,7 +190,7 @@ Project Pitwall은 **Silverstone 단일 레이스 위크엔드를 처음부터 �
 - 현재 작업 브랜치 외에는 미커밋 변경을 확인할 수 있는 별도 worktree가 없으므로, 브랜치별 미커밋 상태는 현재 checkout 기준으로 점검했습니다.
 - upstream이 연결된 모든 브랜치는 로컬 커밋과 `origin`이 일치했습니다.
 - `codex/f1-2026/tyre`는 upstream이 없지만 `main`과 같은 커밋이며, 추가 로컬 커밋은 없습니다.
-- 기능 브랜치들은 원격에 존재하지만 모두 `main`에 자동 병합된 것은 아닙니다. 이번 작업은 현재 checkout인 `codex/race-weekend`에만 커밋·푸시합니다.
+- 기능 브랜치들은 원격에 존재하지만 모두 `main`에 자동 병합된 것은 아닙니다. 이번 작업은 현재 checkout인 `codex/race-weekend`에 커밋·푸시했습니다.
 
 ## 6. 아직 구현되지 않은 범위
 
