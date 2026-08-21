@@ -12,6 +12,7 @@ import {
   qualifyingTrafficTarget,
   sampledPitPoint,
   sampledTrackPoint,
+  unwrapTrackDistance,
 } from "@/simulation/qualifying-traffic";
 
 function car(overrides: Partial<QualifyingCarState> = {}): QualifyingCarState {
@@ -127,5 +128,11 @@ describe("qualifying traffic animation model", () => {
     const halfway = interpolateTrackProgress(0.98, 0.02, 0.5);
     expect(Math.min(halfway, 1 - halfway)).toBeLessThan(0.001);
     expect(interpolateTrackProgress(0.2, 0.4, 0.5)).toBeCloseTo(0.3, 6);
+  });
+
+  it("unwraps a lap target without allowing a visual marker to reverse", () => {
+    expect(unwrapTrackDistance(5_800, 100, 5_891)).toBeCloseTo(5_991, 6);
+    expect(unwrapTrackDistance(10_000, 100, 5_891)).toBeCloseTo(11_882, 6);
+    expect(unwrapTrackDistance(4_000, 3_500, 5_891)).toBe(4_000);
   });
 });

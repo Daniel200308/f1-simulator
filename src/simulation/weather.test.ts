@@ -82,19 +82,45 @@ describe("spatial weather", () => {
 
   it("spreads weather timing, intensity, direction, and archetype across many race seeds", () => {
     const scenarios = Array.from({ length: 256 }, (_, index) => createWeatherScenario(80_000 + index));
-    const starts = scenarios.flatMap((scenario) => scenario.cells.map((cell) => cell.startSeconds));
-    const peaks = scenarios.flatMap((scenario) => scenario.cells.map((cell) => cell.peakIntensity));
-    const directions = scenarios.flatMap((scenario) => scenario.cells.map((cell) => cell.directionRadians));
+    const rainyScenarios = scenarios.filter((scenario) => scenario.kind !== "CLEAR");
+    const starts = rainyScenarios.flatMap((scenario) => scenario.cells.map((cell) => cell.startSeconds));
+    const peaks = rainyScenarios.flatMap((scenario) => scenario.cells.map((cell) => cell.peakIntensity));
+    const directions = rainyScenarios.flatMap((scenario) => scenario.cells.map((cell) => cell.directionRadians));
     const startBuckets = new Set(starts.map((start) => Math.floor(start / 300)));
     const directionQuadrants = new Set(directions.map((direction) => Math.floor(direction / (Math.PI / 2)) % 4));
     const kinds = new Set(scenarios.map((scenario) => scenario.kind));
 
     expect(startBuckets.size).toBeGreaterThanOrEqual(8);
-    expect(Math.min(...peaks)).toBeLessThan(0.2);
+    expect(Math.min(...peaks)).toBeGreaterThanOrEqual(0.42);
     expect(Math.max(...peaks)).toBeGreaterThan(0.9);
     expect(directionQuadrants).toEqual(new Set([0, 1, 2, 3]));
-    expect(kinds.size).toBe(6);
+    expect(kinds.size).toBe(13);
+    expect(scenarios.some((scenario) => scenario.kind === "CLEAR")).toBe(true);
     expect(scenarios.some((scenario) => scenario.kind === "SUDDEN_DOWNPOUR" && scenario.cells.some((cell) => cell.buildFraction < 0.16))).toBe(true);
+  });
+
+  it("creates short showers, long rain, heavy rain, stop-start spells, and clearing starts", () => {
+    const scenarios = Array.from({ length: 512 }, (_, index) => createWeatherScenario(120_000 + index));
+    const byKind = new Map(scenarios.map((scenario) => [scenario.kind, scenario]));
+
+    expect(byKind.get("SUNSHOWER")?.cells.every((cell) => cell.durationSeconds >= 520)).toBe(true);
+    expect(byKind.get("SUSTAINED_RAIN")?.cells.some((cell) => cell.durationSeconds >= 1_800)).toBe(true);
+    expect(byKind.get("HEAVY_SUSTAINED")?.cells.some((cell) => cell.peakIntensity >= 0.72)).toBe(true);
+    expect(byKind.get("STOP_START_SHOWERS")?.cells).toHaveLength(3);
+    expect(byKind.get("LATE_STORM")?.cells.every((cell) => cell.startSeconds >= 2_300)).toBe(true);
+    expect(byKind.get("CLEARING_RAIN")?.cells.some((cell) => cell.startSeconds < 0)).toBe(true);
+  });
+
+  it("moves the live sector rainfall profile as a weather cell crosses the circuit", () => {
+    const seed = 20_260_804;
+    const cell = createWeatherScenario(seed).cells[0];
+    const early = summarizeWeatherSectors(createSpatialWeather(seed, cell.startSeconds + cell.durationSeconds * 0.25));
+    const developed = summarizeWeatherSectors(createSpatialWeather(seed, cell.startSeconds + cell.durationSeconds * 0.55));
+    const earlyRainfall = early.map((sector) => sector.rainIntensity);
+    const developedRainfall = developed.map((sector) => sector.rainIntensity);
+
+    expect(new Set(earlyRainfall.map((value) => value.toFixed(3))).size).toBeGreaterThan(1);
+    expect(developedRainfall.some((value, index) => Math.abs(value - earlyRainfall[index]) > 0.08)).toBe(true);
   });
 
   it("dries in clear weather, with drainage and traffic accelerating water removal", () => {

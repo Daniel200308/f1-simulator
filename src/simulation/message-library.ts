@@ -18,6 +18,11 @@ export type RaceRadioSituation =
   | "LOCAL_SHOWER"
   | "RAIN_RUNNING"
   | "WET_GRIP"
+  | "LOW_GRIP"
+  | "BRAKING_LOCKUP"
+  | "REAR_SNAP"
+  | "SPRAY_VISIBILITY"
+  | "SPIN_RECOVERY"
   | "AQUAPLANING"
   | "DRYING_LINE"
   | "INTER_CROSSOVER"
@@ -33,7 +38,17 @@ export type RaceRadioSituation =
   | "PACE_COMPLAINT"
   | "POSITION_LOST"
   | "POSITION_GAINED"
-  | "FINAL_LAPS_PUSH";
+  | "FINAL_LAPS_PUSH"
+  | "SAFETY_CAR_DEPLOYED"
+  | "SAFETY_CAR_BUNCHING"
+  | "SAFETY_CAR_WAVE_BY"
+  | "SAFETY_CAR_RESTART"
+  | "VSC_DELTA"
+  | "YELLOW_CONTROL"
+  | "RED_FLAG_SUSPENSION"
+  | "RED_FLAG_RESTART"
+  | "CAR_AHEAD_CLOSING"
+  | "CAR_AHEAD_PULLING_AWAY";
 
 interface SessionMessageContext {
   seed: number;
@@ -559,6 +574,42 @@ const RADIO_OBSERVATIONS: Record<RaceRadioSituation, readonly string[]> = {
     "I can keep it on the road, but this is no longer a proper dry-tyre lap",
     "the front locks as soon as I reach the damp braking zone and the rear follows it around",
   ],
+  LOW_GRIP: [
+    "there is no grip when I ask the front to turn; I am just waiting for it to bite",
+    "the wet patch has taken the platform away and I am driving the car with no margin",
+    "I have zero confidence on entry; the surface is moving underneath me",
+    "the rear is floating on throttle and the lap is all corrections now",
+    "I cannot lean on the car in this sector, the grip is simply not there",
+    "every small steering input is becoming a big slide in the damp section",
+  ],
+  BRAKING_LOCKUP: [
+    "front lock-up into the braking zone; the water is deeper than the radar showed",
+    "I locked the front and lost the reference completely in the spray",
+    "the braking grip disappeared on turn-in, I had to release and catch it",
+    "another lock-up on the damp line; I cannot use the normal braking marker",
+    "the pedal went long and the front axle just stopped responding",
+  ],
+  REAR_SNAP: [
+    "big rear snap through the wet corner; I caught it but that was close",
+    "the rear stepped out without warning and nearly put me in the wall",
+    "I had a proper moment there, the water is sitting across the exit",
+    "the back has gone suddenly; I need a safer line through that corner",
+    "massive oversteer on throttle, there is no traction off the wet kerb",
+  ],
+  SPRAY_VISIBILITY: [
+    "I cannot see the apex through the spray behind this car",
+    "visibility is dropping every time I close the gap; I need a clear reference",
+    "the spray is swallowing the braking board, I am lifting early",
+    "I have no idea where the car ahead is in the wet plume",
+    "the track is driveable but I cannot see enough to attack safely",
+  ],
+  SPIN_RECOVERY: [
+    "I spun, I spun — car is okay, give me a gap to rejoin",
+    "that was a full spin; I am facing the right way and recovering now",
+    "I lost the rear and looped it, no contact, just tell me when it is clear",
+    "I am back on line after the spin, tyres are dirty and the grip is gone",
+    "that one was on me — I have recovered, but the rear is still moving",
+  ],
   AQUAPLANING: [
     "I am aquaplaning on the straight and the steering is going completely light",
     "there is too much standing water; the car is floating before the braking zone",
@@ -661,6 +712,76 @@ const RADIO_OBSERVATIONS: Record<RaceRadioSituation, readonly string[]> = {
     "final push; give me everything the car has",
     "this is the run to the flag and I am committed",
   ],
+  SAFETY_CAR_DEPLOYED: [
+    "the Safety Car is out and the car ahead is braking hard for the queue",
+    "I have caught the incident traffic; the field is compressing quickly",
+    "the race has slowed suddenly and I am watching the queue ahead",
+    "there is no racing line now, just the Safety Car and a wall of traffic",
+    "I am in the train, tyres are cooling and the gaps are disappearing",
+  ],
+  SAFETY_CAR_BUNCHING: [
+    "the field is stacking up and the car ahead is leaving me nowhere to go",
+    "we are nose to tail now; I cannot lose this queue position",
+    "the gap has collapsed and every car is fighting for the restart order",
+    "the pace is painfully slow but I am keeping the tyres alive in the train",
+    "the car ahead is crawling; tell me where the queue is going to settle",
+  ],
+  SAFETY_CAR_WAVE_BY: [
+    "I have been released to pass the Safety Car and I am going now",
+    "the wave-by is open; I will clear it cleanly and rejoin at the back",
+    "I am catching the Safety Car, confirm the rejoin gap when I am through",
+    "the lapped cars are moving; I need a clear call before the window closes",
+    "I have a run on the Safety Car and I do not want to lose the wave-by",
+  ],
+  SAFETY_CAR_RESTART: [
+    "the Safety Car is coming in and the whole train is ready to explode",
+    "I can see the restart building; the car ahead is trying to control the gap",
+    "the Safety Car is in the pit lane, tell me where the restart line is",
+    "this is the moment; brakes, tyres and battery are all coming alive",
+    "everyone is bunching for the restart and I need the gap call immediately",
+  ],
+  VSC_DELTA: [
+    "the delta is the only thing that matters and the car ahead is still too close",
+    "I am giving up the lap time, but I need a clear positive delta target",
+    "the VSC pace is awkward; I am lifting before the car ahead catches me",
+    "the field is frozen and I am protecting the delta through every sector",
+    "I cannot race him under VSC; tell me when I can use the battery again",
+  ],
+  YELLOW_CONTROL: [
+    "there is a car or debris in this sector and I am lifting early",
+    "the yellow is real here; I have no visibility beyond the next corner",
+    "I am leaving margin through the controlled sector, but the car behind is close",
+    "the track is compromised in this sector and the racing line is not safe",
+    "I am backing off now; tell me when the sector is clear again",
+  ],
+  RED_FLAG_SUSPENSION: [
+    "Red Flag, understood; I am done racing and heading for the pit queue",
+    "the race is suspended and I am bringing it back safely, no heroics",
+    "Red Flag is out; the car is moving but this feels completely wrong at race pace",
+    "I have lost the race, the rhythm and the temperature all at once — following the queue",
+    "the track is not safe, copy Red Flag; I will protect the car to the pits",
+  ],
+  RED_FLAG_RESTART: [
+    "the restart is coming and the car finally feels alive again",
+    "I am ready for the restart; tell me if it is standing or rolling",
+    "the tyres are coming back and I am not giving this race away",
+    "everyone has had a reset, but I still remember where we were before the flag",
+    "we have one chance when this goes green — give me the restart gap",
+  ],
+  CAR_AHEAD_CLOSING: [
+    "the car ahead is coming back toward me and I can attack the next straight",
+    "I am closing rapidly on the car in front under braking",
+    "the gap is falling every sector; give me the battery target to finish it",
+    "I have a run on him now and the front is responding properly",
+    "he is vulnerable ahead, but I need the call before I commit",
+  ],
+  CAR_AHEAD_PULLING_AWAY: [
+    "the car ahead is opening the gap and I am losing the tow",
+    "he is getting away through the exits; I need to understand where we are losing it",
+    "the gap has jumped and I cannot keep him in range on the straight",
+    "I am pushing but the car ahead is still pulling clear",
+    "we are losing contact with the group in front and I need a different plan",
+  ],
 };
 
 const RADIO_REQUESTS: Record<RaceRadioSituation, readonly string[]> = {
@@ -679,6 +800,11 @@ const RADIO_REQUESTS: Record<RaceRadioSituation, readonly string[]> = {
   LOCAL_SHOWER: ["Give me the sector-by-sector radar.", "Do not judge the tyre from this sector alone.", "Tell me where the dry part begins.", "Compare this with my team-mate's report.", "I need the next cell direction."],
   RAIN_RUNNING: ["Keep updating me on the heaviest rain.", "Tell me if the standing water is increasing.", "I can stay out if this intensity holds.", "Give me the visibility reports from the cars ahead.", "Watch the tyre temperature while I manage the spray."],
   WET_GRIP: ["We need to talk about intermediates now.", "Tell me the crossover against the cars ahead.", "I cannot keep pushing like this on the dry tyre.", "Give me the safest braking target.", "If the rain stays, box me next lap."],
+  LOW_GRIP: ["I need the wettest sector and a safer target.", "Tell me if this patch is getting worse next lap.", "I need more margin through the damp corners.", "Check the cars ahead; I have no reference for the grip.", "If this continues, prepare the wet tyre call."],
+  BRAKING_LOCKUP: ["Move my braking reference back for the wet line.", "Tell me where the standing water is before I arrive.", "I need a delta on the next braking zone.", "Check the brake balance; the front is locking again.", "Give me the safe line through this sector."],
+  REAR_SNAP: ["I need a calmer differential target for this surface.", "Tell me if the exit is still flooded.", "I will take the conservative line until the grip returns.", "Check the rear temperatures and the wetness at this corner.", "Prepare for a tyre change if this keeps happening."],
+  SPRAY_VISIBILITY: ["Give me the gap; I cannot see the car ahead.", "Tell me the braking board through the spray.", "I need clear air before I attack.", "Report the visibility to the cars behind.", "Keep the gap stable until the plume clears."],
+  SPIN_RECOVERY: ["Give me a safe gap to rejoin.", "Tell me if the track is clear behind.", "Check the tyres and the damage after that spin.", "I need a clean lap to rebuild confidence.", "Keep the incident under review; I am back racing."],
   AQUAPLANING: ["This needs reporting to race control.", "I need a safer pace instruction immediately.", "Check the standing-water level because this is too much.", "We should not be racing at this speed.", "Tell me if the safety car is being considered."],
   DRYING_LINE: ["Check the slick crossover for me.", "I need the dry-line trend over the next lap.", "Tell me where I can cool the tyre.", "Compare my sectors with the cars already on slicks.", "Do not leave me on this tyre once it overheats."],
   INTER_CROSSOVER: ["Give me the next two-minute radar picture.", "Compare the intermediate to staying out.", "I need a clear call before the pit entry.", "Watch the sector times of anyone who has stopped.", "Tell me if this rain is building or passing."],
@@ -694,6 +820,16 @@ const RADIO_REQUESTS: Record<RaceRadioSituation, readonly string[]> = {
   POSITION_LOST: ["Give me a plan to get it back.", "Tell me his weak sector.", "Can we get him at the stops?", "I need something different to fight him."],
   POSITION_GAINED: ["Tell me the next target.", "Give me the gap to the car ahead.", "How is the tyre after that fight?", "Keep me informed on the one behind."],
   FINAL_LAPS_PUSH: ["Tell me how much I can use.", "Give me every mode you have.", "Count me down to the flag.", "Let me know if anyone is closing."],
+  SAFETY_CAR_DEPLOYED: ["How long is the pit lane closed?", "Give me the incident location and queue target.", "Tell me if the car ahead is the correct gap.", "Keep me updated on the Safety Car speed."],
+  SAFETY_CAR_BUNCHING: ["Protect the tyre temperature and hold the queue.", "Tell me when the field is fully bunched.", "No risks here; I need the restart phase early.", "Keep the battery ready for the restart."],
+  SAFETY_CAR_WAVE_BY: ["Copy the wave-by; I will rejoin at the back.", "Give me the rejoin target when I clear the Safety Car.", "Confirm when the wave-by window closes.", "I will complete it safely and preserve the order."],
+  SAFETY_CAR_RESTART: ["Safety Car in; tyres and brakes to the window now.", "I will call the restart line and protect the gap.", "Prepare the battery for the first green lap.", "Stay with the car ahead until the restart line."],
+  VSC_DELTA: ["Positive delta is the priority.", "No overtaking; I will keep the car inside the target.", "I will hold the energy for the restart call.", "Tell me immediately if VSC becomes Safety Car."],
+  YELLOW_CONTROL: ["Copy, lifting in the controlled sector.", "I will leave margin until the yellow clears.", "Keep the incident location coming.", "No overtake here; I will protect the car."],
+  RED_FLAG_SUSPENSION: ["Copy Red Flag. Bring it safely to the pit-lane queue.", "No overtaking, no risk; we will confirm the restart procedure.", "The race is suspended. Protect tyres, brakes and the car.", "Follow the queue and wait for the FIA restart call."],
+  RED_FLAG_RESTART: ["We will confirm standing or rolling restart now.", "Build the tyres and brakes without exceeding the formation speed.", "Restart line is the reference; be ready for green.", "We have a race to finish — keep the car clean."],
+  CAR_AHEAD_CLOSING: ["Tell me the battery target for the move.", "Give me the best corner to pressure him.", "I will build the run and commit if the gap opens.", "Keep the gap calls short; I am ready to attack."],
+  CAR_AHEAD_PULLING_AWAY: ["Give me the sector loss to the car ahead.", "Tell me if I should protect the tyre or keep pushing.", "I need a different deployment plan to stay with him.", "Keep me informed if he starts fighting the car behind."],
 };
 
 /*
@@ -717,6 +853,11 @@ const RADIO_OUTBURSTS: Record<RaceRadioSituation, readonly string[]> = {
   LOCAL_SHOWER: ["Only wet in one part.", "Dry everywhere but there.", "It's a shower in sector two.", "One corner is soaked.", "Watch that patch for me."],
   RAIN_RUNNING: ["Happy on this tyre.", "Good in the wet.", "This feels right for the conditions.", "I've got confidence here.", "Comfortable, keep me out."],
   WET_GRIP: ["No grip at all!", "I'm on the wrong tyre.", "I can't stay on the track.", "This is undriveable.", "I need to box, please."],
+  LOW_GRIP: ["There is nothing there!", "I have no grip in the wet!", "The car is skating everywhere!", "I cannot lean on this!", "I am just catching slides now!"],
+  BRAKING_LOCKUP: ["Lock-up! Front locked!", "I cannot stop the car!", "The brakes went away there!", "Another lock-up, damn it!", "No braking grip in the wet!"],
+  REAR_SNAP: ["Big snap!", "I nearly lost it!", "The rear just went!", "That was a huge moment!", "I caught it, but it is vicious out there!"],
+  SPRAY_VISIBILITY: ["I cannot see anything!", "The spray is awful!", "Where is the braking board?!", "I have no visibility behind him!", "I cannot attack blind!"],
+  SPIN_RECOVERY: ["I spun!", "That was a full spin!", "I lost it, I lost it!", "Back on track, tyres are filthy!", "My mistake — I am recovering!"],
   AQUAPLANING: ["I'm aquaplaning!", "Standing water, it's dangerous!", "I nearly lost it there.", "This isn't safe.", "We need the safety car."],
   DRYING_LINE: ["The line's drying fast.", "Slicks would work now.", "It's ready for dries.", "I'm losing time on these.", "Get me on slicks."],
   INTER_CROSSOVER: ["I need a decision.", "Tell me now, in or stay out.", "This is the moment.", "Make the call.", "I can't judge it from here."],
@@ -732,6 +873,16 @@ const RADIO_OUTBURSTS: Record<RaceRadioSituation, readonly string[]> = {
   POSITION_LOST: ["No! He got me.", "I couldn't hold him.", "Lost the place.", "Nothing I could do.", "Damn it."],
   POSITION_GAINED: ["Got him!", "Yes! That's the move.", "Through, and clear.", "One more down.", "Beautiful."],
   FINAL_LAPS_PUSH: ["Let's finish this.", "Everything now!", "I'm going for it.", "Full attack.", "All in."],
+  SAFETY_CAR_DEPLOYED: ["Safety Car!", "He's slowing right up!", "The queue is here!", "No racing now, understood.", "What happened ahead?!"],
+  SAFETY_CAR_BUNCHING: ["This is so slow!", "I'm right on his gearbox!", "Hold the queue, hold it!", "Everyone is crawling!", "Don't let me lose this place!"],
+  SAFETY_CAR_WAVE_BY: ["Wave-by, wave-by!", "I'm going past!", "Clear the Safety Car!", "Tell me where to rejoin!", "The window is closing!"],
+  SAFETY_CAR_RESTART: ["Restart now!", "Let's go, let's go!", "He's backing everyone up!", "The tyres are ready!", "Give me the line!"],
+  VSC_DELTA: ["Delta, delta!", "I cannot race him!", "I'm losing so much time!", "Keep me positive!", "Is it going green?!"],
+  YELLOW_CONTROL: ["Yellow here!", "I'm lifting!", "There's something on track!", "No grip through this sector!", "Tell me when it's clear!"],
+  RED_FLAG_SUSPENSION: ["Red Flag?!", "This is not safe!", "Race suspended, understood!", "I'm bringing it back!", "What a mess!"],
+  RED_FLAG_RESTART: ["We are racing again!", "Come on, let's finish this!", "I am ready!", "No way we give this up!", "Green soon, give me the gap!"],
+  CAR_AHEAD_CLOSING: ["I'm coming for him!", "He's getting closer!", "I have a run!", "Give me the battery!", "This is the chance!"],
+  CAR_AHEAD_PULLING_AWAY: ["He's getting away!", "I can't hold the gap!", "We're losing him!", "The tow is gone!", "I need help here!"],
 };
 
 function choice<T>(values: readonly T[], seed: number, stream: number, tick: number): T {

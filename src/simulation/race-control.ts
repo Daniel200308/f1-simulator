@@ -15,6 +15,10 @@ export const VSC_SUSTAINED_VIOLATION_SECONDS = 1;
 export const SAFETY_CAR_DEPLOYMENT_SECONDS = 12;
 export const SAFETY_CAR_MINIMUM_BUNCHING_SECONDS = 18;
 export const SAFETY_CAR_RESTART_SECONDS = 8;
+/** Time spent leaving the pit lane before the physical Safety Car is on track. */
+export const SAFETY_CAR_PIT_RELEASE_SECONDS = 3.2;
+export const SAFETY_CAR_DEPLOYMENT_SLOW_SPEED_KPH = 96;
+export const SAFETY_CAR_APPROACH_SPEED_KPH = 155;
 
 export type TrackSector = 1 | 2 | 3;
 
@@ -47,6 +51,8 @@ export interface SafetyCarProcedureInput {
   endingSectorReached?: boolean;
   safetyCarInPitLane?: boolean;
   leaderReachedRestartLine?: boolean;
+  /** Wave-by cars must be clear before the withdrawal lap can begin. */
+  waveByComplete?: boolean;
 }
 
 export interface SafetyCarProcedureUpdate extends SafetyCarProcedureState {
@@ -67,6 +73,11 @@ export interface SafetyCarPositionInput {
   circuitLengthMeters: number;
   phase: Exclude<SafetyCarPhase, "NONE">;
   stepSeconds: number;
+  phaseElapsedSeconds?: number;
+  /** Track distance where the pit lane rejoins the circuit. */
+  pitExitDistance?: number;
+  /** Absolute distance of the lead car, used for the pit-exit approach cue. */
+  firstCarDistance?: number | null;
 }
 
 export interface SafetyCarCandidate {
@@ -231,7 +242,7 @@ export function advanceSafetyCarProcedure(input: SafetyCarProcedureInput): Safet
 
   if (phase === "DEPLOYED" && elapsed >= SAFETY_CAR_DEPLOYMENT_SECONDS) {
     phase = "BUNCHING";
-  } else if (phase === "BUNCHING" && input.endingSectorReached === true) {
+  } else if (phase === "BUNCHING" && input.endingSectorReached === true && input.waveByComplete !== false) {
     phase = "RESTART";
   } else if (
     phase === "RESTART"
@@ -333,14 +344,35 @@ function safetyCarSpeedFor(phase: Exclude<SafetyCarPhase, "NONE">): number {
   return 185;
 }
 
-/** Advances the physical safety car, initializing it a safe distance ahead of P1. */
+/**
+ * Advances the physical Safety Car. It is born at the next pit-lane rejoin,
+ * holds there while the marshal release is shown, then rolls slowly until P1
+ * is close enough to require the regulated deployment pace.
+ */
 export function advanceSafetyCarPosition(input: SafetyCarPositionInput): SafetyCarPosition {
   if (input.circuitLengthMeters <= 0) throw new RangeError("circuitLengthMeters must be greater than 0");
-  const speedKph = safetyCarSpeedFor(input.phase);
-  const initializedDistance = input.leaderTotalDistance + 72;
+  const pitExitDistance = input.pitExitDistance ?? 155;
+  const initializedDistance = absoluteOccurrenceAtOrAfter(input.leaderTotalDistance, pitExitDistance, input.circuitLengthMeters);
+  const phaseElapsedSeconds = input.phaseElapsedSeconds;
+  const leavingPit = input.phase === "DEPLOYED"
+    && phaseElapsedSeconds !== undefined
+    && Math.max(0, phaseElapsedSeconds) < SAFETY_CAR_PIT_RELEASE_SECONDS;
+  const currentDistance = input.previousTotalDistance ?? initializedDistance;
+  const distanceToFirstCar = input.firstCarDistance === null || input.firstCarDistance === undefined
+    ? Number.POSITIVE_INFINITY
+    : input.firstCarDistance - currentDistance;
+  const firstCarApproaching = input.phase === "DEPLOYED"
+    && !leavingPit
+    && distanceToFirstCar <= 240
+    && distanceToFirstCar >= -120;
+  const speedKph = input.phase === "DEPLOYED"
+    ? leavingPit ? 65 : firstCarApproaching ? SAFETY_CAR_APPROACH_SPEED_KPH : SAFETY_CAR_DEPLOYMENT_SLOW_SPEED_KPH
+    : safetyCarSpeedFor(input.phase);
   const totalDistance = input.previousTotalDistance === null
     ? initializedDistance
-    : input.previousTotalDistance + (speedKph / 3.6) * Math.max(0, input.stepSeconds);
+    : leavingPit
+      ? input.previousTotalDistance
+      : input.previousTotalDistance + (speedKph / 3.6) * Math.max(0, input.stepSeconds);
   return {
     totalDistance,
     lapDistance: positiveModulo(totalDistance, input.circuitLengthMeters),

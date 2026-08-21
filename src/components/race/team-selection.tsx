@@ -10,6 +10,7 @@ import styles from "./team-selection.module.css";
 
 interface TeamSelectionProps {
   selectedTeamId: string;
+  circuitName?: string;
   onSelect: (teamId: string) => void;
   onConfirm: () => void;
 }
@@ -18,7 +19,7 @@ function colorHex(value: number): string {
   return `#${value.toString(16).padStart(6, "0")}`;
 }
 
-export function TeamSelection({ selectedTeamId, onSelect, onConfirm }: TeamSelectionProps) {
+export function TeamSelection({ selectedTeamId, circuitName = "SILVERSTONE", onSelect, onConfirm }: TeamSelectionProps) {
   const selectedTeam = TEAM_BY_ID.get(selectedTeamId) ?? TEAMS[0];
   const selectedDrivers = DRIVERS.filter((driver) => driver.teamId === selectedTeam.id);
   const carRating = season2026TeamCarRating(selectedTeam.id);
@@ -32,7 +33,7 @@ export function TeamSelection({ selectedTeamId, onSelect, onConfirm }: TeamSelec
           <span className={styles.mark}><RadioTower aria-hidden="true" size={30} /></span>
           <small>PROJECT PITWALL · CAREER SETUP</small>
           <h1>Choose Your Team</h1>
-          <b>ROUND 09 <i aria-hidden="true" /> SILVERSTONE</b>
+          <b>ROUND 01 <i aria-hidden="true" /> {circuitName}</b>
         </header>
 
         <section className={styles.workspace}>

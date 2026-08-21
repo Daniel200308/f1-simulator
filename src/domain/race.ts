@@ -14,6 +14,23 @@ export type TyreSetStatus = "AVAILABLE" | "FITTED" | "RESERVED" | "USED";
 export type WeekendTyreSetStatus = "NEW" | "USED" | "FITTED" | "RESERVED" | "UNAVAILABLE";
 export type PitStopIssue = "NONE" | "SLOW_RELEASE" | "WHEEL_GUN" | "DOUBLE_STACK";
 export type StrategyIntent = "HOLD" | "EXTEND" | "UNDERCUT" | "OVERCUT" | "WEATHER" | "CHEAP_STOP" | "TYRE_LIMIT";
+export interface AiDecisionTrace {
+  intent: string;
+  objective: string;
+  targetCarId: string | null;
+  pitReason: string | null;
+  plannedPitLap: number | null;
+  reasons: readonly string[];
+  confidence: number;
+  decidedAt: number;
+}
+
+export interface RaceReliabilityInput {
+  conditionPercent: number;
+  failureRiskPercent: number;
+  performanceDeratePercent: number;
+  limitingComponent: string;
+}
 export type TeamOrderType = "NONE" | "HOLD_POSITION" | "SWAP_CARS";
 export type PitStatus = "TRACK" | "PIT_ENTRY" | "PIT_LANE" | "PIT_STOP" | "PIT_EXIT";
 export type WeatherCondition = "DRY" | "CLOUDY" | "LIGHT_RAIN" | "HEAVY_RAIN";
@@ -24,6 +41,8 @@ export type RedFlagRestartType = "STANDING" | "ROLLING";
 export type VscComplianceStatus = "COMPLIANT" | "WARNING" | "VIOLATION";
 export type PitLaneProcedureStatus = "OPEN" | "CLOSED";
 export type IncidentStatus = "RUNNING" | "SPUN" | "DAMAGED" | "RETIRED";
+/** Short-lived driver reactions that sit between normal pace and a full incident. */
+export type DriverMoment = "NONE" | "LOW_GRIP" | "LOCK_UP" | "REAR_SNAP" | "SPRAY" | "SPIN_RECOVERY";
 export type InfringementType =
   | "PIT_SPEEDING"
   | "UNSAFE_RELEASE"
@@ -130,6 +149,8 @@ export interface RaceEvent {
   message: string;
   /** Explicit attribution for car-specific events; null/omitted means field-wide. */
   carId?: string | null;
+  /** Track sector at the time Race Control issued the notice. */
+  sector?: WeatherSector;
 }
 
 /** A permanent steward decision; unlike the rolling Race Control feed this survives to classification. */
@@ -290,15 +311,51 @@ export interface TrackSegment {
   p2: TrackPoint;
 }
 
+export interface CircuitCorner {
+  number: number;
+  name: string;
+  distanceMeters: number;
+}
+
+export interface CircuitStraightZone {
+  id: string;
+  label: string;
+  startRatio: number;
+  endRatio: number;
+}
+
+export interface CircuitOvertakeZone {
+  detectionDistance: number;
+  activationDistance: number;
+  endDistance: number;
+}
+
+export interface CircuitPitLane {
+  entryStart: number;
+  limiterStart: number;
+  boxDistance: number;
+  exitEnd: number;
+  boxFrontageMeters: number;
+}
+
 export interface CircuitDefinition {
   id: string;
   name: string;
+  shortName: string;
+  location: string;
   country: string;
   lengthMeters: number;
   totalLaps: number;
+  turns: number;
+  referenceLapSeconds: number;
   points: readonly TrackPoint[];
   segments: readonly TrackSegment[];
   cumulativeDistances: readonly number[];
+  corners: readonly CircuitCorner[];
+  sectorEnds: readonly [number, number];
+  straightZones: readonly CircuitStraightZone[];
+  overtakeZone: CircuitOvertakeZone;
+  pitLane: CircuitPitLane;
 }
 
 export interface TyreSetState {
@@ -327,6 +384,8 @@ export interface RaceCarState {
   carId: string;
   teamId: string;
   driverId: string;
+  /** Circuit registry key copied onto the car for pure per-car calculations. */
+  circuitId?: string;
   currentLap: number;
   currentSegment: number;
   segmentProgress: number;
@@ -372,6 +431,13 @@ export interface RaceCarState {
   thermalDeratePercent: number;
   /** Estimated short-term retirement risk caused by heat stress. */
   thermalRiskPercent: number;
+  reliabilityConditionPercent?: number;
+  reliabilityRiskPercent?: number;
+  reliabilityDeratePercent?: number;
+  reliabilityLimitingComponent?: string;
+  /** Seed-stable race distance at which a projected component fault becomes terminal. */
+  reliabilityFailureDistance?: number | null;
+  reliabilityFailureComponent?: string | null;
   fuelRemainingKg: number;
   /** Setup-derived whole-lap performance multiplier carried in from practice. */
   setupPerformanceFactor: number;
@@ -380,7 +446,7 @@ export interface RaceCarState {
   paceMode: PaceMode;
   tyreMode: TyreMode;
   energyMode: EnergyMode;
-  /** AI energy controller switch; players default to manual control. */
+  /** AI energy controller switch. Player cars also default to automatic deployment. */
   energyAutoEnabled?: boolean;
   energyState: EnergyState;
   /** Full 2026 electrical energy model. Optional only for legacy save migration. */
@@ -419,8 +485,13 @@ export interface RaceCarState {
   usedTyreCompounds: readonly TyreCompound[];
   strategyIntent: StrategyIntent;
   strategyConfidence: number;
+  aiDecision?: AiDecisionTrace;
   incidentStatus: IncidentStatus;
   incidentTimer: number;
+  /** Seed-stable, transient handling event used by pace, telemetry, and radio. */
+  driverMoment?: DriverMoment;
+  driverMomentTimer?: number;
+  lastDriverMomentAt?: number | null;
   /** Simulation clock and direction drive the on-map incident animation. */
   incidentStartedAt?: number | null;
   incidentDirection?: -1 | 1;
@@ -472,6 +543,8 @@ export interface RaceCarState {
 
 export interface RaceSnapshot {
   seed: number;
+  /** Registry key for every distance, timing and rendering calculation. */
+  circuitId: string;
   /** Team currently controlled by the human player. */
   playerTeamId: string;
   tick: number;

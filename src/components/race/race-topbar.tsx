@@ -17,6 +17,7 @@ import {
 
 import type { RaceSnapshot, SimulationSpeed } from "@/domain/race";
 import { latestRaceControlNotice } from "@/simulation/race-control-feed";
+import { circuitById } from "@/simulation/track";
 
 const SPEEDS: readonly SimulationSpeed[] = [1, 2, 4, 8, 16];
 
@@ -76,6 +77,7 @@ export function RaceTopbar({
   onReset,
 }: RaceTopbarProps) {
   const weatherLabel = getWeatherLabel(snapshot);
+  const circuit = circuitById(snapshot?.circuitId);
   const playLabel = paused ? "Resume race" : "Pause race";
   const notice = snapshot ? latestRaceControlNotice(snapshot) : null;
   const liveRedFlag = snapshot?.raceControl === "RED_FLAG";
@@ -92,8 +94,13 @@ export function RaceTopbar({
   const flashKey = `${flagDisplay.key}:${snapshot?.safetyCarLappedCarsMayOvertake ? "wave-by" : "standard"}`;
   const previousFlagState = useRef(flashKey);
   const [flagFlashing, setFlagFlashing] = useState(false);
-  const trackTemperature = Math.round(snapshot?.weather.trackTemperature ?? 31);
+  const trackTemperature = snapshot?.weather.trackTemperature ?? 31;
   const trackWetness = Math.round((snapshot?.weather.trackWetness ?? 0) * 100);
+  const temperatureTrend = (snapshot?.weather.rainIntensity ?? 0) > 0.04
+    ? "RAIN COOLING"
+    : (snapshot?.weather.trackWetness ?? 0) > 0.05
+      ? "SURFACE RECOVERY"
+      : "SUN WARMING";
 
   useEffect(() => {
     if (previousFlagState.current === flashKey) return;
@@ -108,16 +115,16 @@ export function RaceTopbar({
       <div className="brand-block brand-block--signal">
         <div className="brand-copy">
           <strong>PROJECT PITWALL</strong>
-          <small>SILVERSTONE PITWALL</small>
+          <small>{circuit.shortName} PITWALL</small>
         </div>
       </div>
 
       <div className="broadcast-strip broadcast-strip--iconic">
-        <section className="broadcast-session session-copy-panel" aria-label="Round 9, Great Britain, race session">
+        <section className="broadcast-session session-copy-panel" aria-label={`${circuit.shortName}, race session`}>
           <div className="hud-stat-copy">
-            <span>ROUND 09</span>
+            <span>GRAND PRIX</span>
             <strong>RACE</strong>
-            <small>SILVERSTONE</small>
+            <small>{circuit.shortName}</small>
           </div>
         </section>
 
@@ -140,10 +147,15 @@ export function RaceTopbar({
           <p className="control-message-detail" title={controlDetail}>{controlDetail}</p>
         </section>
 
-        <section className="broadcast-conditions conditions-cluster" aria-label={`Track ${Math.round(snapshot?.weather.trackTemperature ?? 31)} degrees, weather ${weatherLabel}`}>
+        <section
+          className="broadcast-conditions conditions-cluster"
+          aria-label={`Track ${trackTemperature.toFixed(1)} degrees, ${temperatureTrend.toLowerCase()}, weather ${weatherLabel}`}
+          data-temperature-trend={temperatureTrend.replaceAll(" ", "_")}
+          data-track-temperature={trackTemperature.toFixed(1)}
+        >
           <span className="condition-reading condition-reading--temperature">
             <i className="condition-glyph"><Thermometer size={22} aria-hidden="true" /><b style={{ height: `${Math.max(18, Math.min(88, (trackTemperature - 15) * 3))}%` }} /></i>
-            <span><small>TRACK TEMP</small><strong><b>{trackTemperature}</b><em>°C</em></strong></span>
+            <span title={`AI surface model · ${temperatureTrend.toLowerCase()}`}><small>TRACK TEMP</small><strong><b>{trackTemperature.toFixed(1)}</b><em>°C</em></strong></span>
           </span>
           <span className="condition-reading condition-reading--weather" data-weather={weatherLabel.replaceAll(" ", "_")}>
             <i className="condition-glyph"><WeatherGlyph label={weatherLabel} /></i>

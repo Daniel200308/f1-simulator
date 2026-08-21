@@ -6,7 +6,7 @@ import type {
   TyreSetState,
   WeatherState,
 } from "@/domain/race";
-import { SILVERSTONE_CIRCUIT } from "@/simulation/track";
+import { circuitById } from "@/simulation/track";
 import { estimateTyreCrossover, type TyreCrossoverEstimate } from "@/simulation/tyre-crossover";
 
 export type LiveStrategyCall = "BOX_NOW" | "STAY_OUT" | "COVER" | "EXTEND";
@@ -35,6 +35,7 @@ export type LiveStrategyCar = Pick<
 >;
 
 export interface LiveStrategyContext {
+  circuitId?: string;
   raceControl: RaceControlStatus;
   pitLaneOpen: boolean;
   weather: WeatherState;
@@ -149,7 +150,7 @@ export function validateLiveStrategyContext(context: LiveStrategyContext): void 
   if (typeof context.pitLaneOpen !== "boolean") throw new TypeError("pitLaneOpen must be a boolean.");
   if (!Array.isArray(context.cars) || context.cars.length === 0) throw new TypeError("At least one car is required.");
 
-  const totalLaps = context.totalLaps ?? SILVERSTONE_CIRCUIT.totalLaps;
+  const totalLaps = context.totalLaps ?? circuitById(context.circuitId).totalLaps;
   assertFinite("totalLaps", totalLaps, 1);
   if (!Number.isInteger(totalLaps)) throw new RangeError("totalLaps must be an integer.");
 
@@ -442,7 +443,7 @@ export function calculateLiveStrategy(
   const car = context.cars.find((candidate) => candidate.carId === carId);
   if (!car) throw new RangeError(`Unknown carId: ${carId}.`);
 
-  const totalLaps = context.totalLaps ?? SILVERSTONE_CIRCUIT.totalLaps;
+  const totalLaps = context.totalLaps ?? circuitById(context.circuitId).totalLaps;
   const remainingLaps = car.finished ? 0 : Math.max(0, totalLaps - car.currentLap + 1);
   const doubleStack = doubleStackProjection(context, car);
   const byRaceControl = Object.fromEntries(
@@ -460,6 +461,7 @@ export function calculateLiveStrategy(
   };
   const available = availableCompounds(car);
   const crossover = estimateTyreCrossover({
+    circuitId: context.circuitId,
     weather: context.weather,
     currentCompound: car.tyreCompound,
     availableCompounds: available,

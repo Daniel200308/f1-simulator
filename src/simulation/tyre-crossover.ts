@@ -1,9 +1,6 @@
 import type { TrackSurfaceZone, TyreCompound, WeatherState } from "@/domain/race";
-import {
-  SILVERSTONE_REFERENCE_LAP_SECONDS,
-  telemetrySpeedAtDistance,
-} from "@/simulation/silverstone-telemetry";
-import { SILVERSTONE_CIRCUIT } from "@/simulation/track";
+import { telemetrySpeedAtDistance } from "@/simulation/silverstone-telemetry";
+import { circuitById, referenceSpeedAtDistance, SILVERSTONE_CIRCUIT } from "@/simulation/track";
 import { effectiveWaterAtDistance, forecastAtMinutes } from "@/simulation/weather";
 
 const ZONE_COUNT = 48;
@@ -18,6 +15,7 @@ const STINT_DEGRADATION_SECONDS: Readonly<Record<TyreCompound, number>> = {
 };
 
 export interface TyreCrossoverInput {
+  circuitId?: string;
   weather: WeatherState;
   currentCompound: TyreCompound;
   availableCompounds: readonly TyreCompound[];
@@ -89,30 +87,42 @@ function surfaceZoneForSample(weather: WeatherState, index: number): TrackSurfac
   return zones[Math.min(zones.length - 1, Math.floor(((index + 0.5) / ZONE_COUNT) * zones.length))];
 }
 
-function buildTelemetryZoneTimes(): readonly number[] {
-  const zoneLength = SILVERSTONE_CIRCUIT.lengthMeters / ZONE_COUNT;
+function buildTelemetryZoneTimes(circuitId?: string): readonly number[] {
+  const circuit = circuitById(circuitId);
+  const zoneLength = circuit.lengthMeters / ZONE_COUNT;
+  const speedAt = circuit.id === SILVERSTONE_CIRCUIT.id ? telemetrySpeedAtDistance : (distance: number) => referenceSpeedAtDistance(distance, circuit);
   const rawTimes = Array.from({ length: ZONE_COUNT }, (_, index) => {
     const start = index * zoneLength;
     const middle = start + zoneLength / 2;
     const end = start + zoneLength;
     const averageSpeedKph = (
-      telemetrySpeedAtDistance(start)
-      + telemetrySpeedAtDistance(middle) * 4
-      + telemetrySpeedAtDistance(end)
+      speedAt(start)
+      + speedAt(middle) * 4
+      + speedAt(end)
     ) / 6;
     return zoneLength / (averageSpeedKph / 3.6);
   });
   const rawLapSeconds = rawTimes.reduce((total, seconds) => total + seconds, 0);
-  const normalization = SILVERSTONE_REFERENCE_LAP_SECONDS / rawLapSeconds;
+  const normalization = circuit.referenceLapSeconds / rawLapSeconds;
   return rawTimes.map((seconds) => seconds * normalization);
 }
 
-const TELEMETRY_ZONE_TIMES = buildTelemetryZoneTimes();
+const TELEMETRY_ZONE_TIMES = new Map<string, readonly number[]>();
 
-function currentZoneWater(weather: WeatherState): readonly number[] {
-  const zoneLength = SILVERSTONE_CIRCUIT.lengthMeters / ZONE_COUNT;
+function telemetryZoneTimes(circuitId?: string): readonly number[] {
+  const circuit = circuitById(circuitId);
+  const cached = TELEMETRY_ZONE_TIMES.get(circuit.id);
+  if (cached) return cached;
+  const times = buildTelemetryZoneTimes(circuit.id);
+  TELEMETRY_ZONE_TIMES.set(circuit.id, times);
+  return times;
+}
+
+function currentZoneWater(weather: WeatherState, circuitId?: string): readonly number[] {
+  const circuit = circuitById(circuitId);
+  const zoneLength = circuit.lengthMeters / ZONE_COUNT;
   return Array.from({ length: ZONE_COUNT }, (_, index) =>
-    effectiveWaterAtDistance(weather, (index + 0.5) * zoneLength, SILVERSTONE_CIRCUIT.lengthMeters),
+    effectiveWaterAtDistance(weather, (index + 0.5) * zoneLength, circuit.lengthMeters),
   );
 }
 
@@ -136,8 +146,8 @@ function projectedZoneWater(
   });
 }
 
-function lapSeconds(compound: TyreCompound, waters: readonly number[], stintLap: number): number {
-  const surfaceTime = TELEMETRY_ZONE_TIMES.reduce(
+function lapSeconds(compound: TyreCompound, waters: readonly number[], stintLap: number, circuitId?: string): number {
+  const surfaceTime = telemetryZoneTimes(circuitId).reduce(
     (total, zoneSeconds, index) => total + zoneSeconds * timeRatioFor(compound, waters[index] ?? 0),
     0,
   );
@@ -192,8 +202,8 @@ export function estimateTyreCrossover(input: TyreCrossoverInput): TyreCrossoverE
   const remainingLaps = Math.max(0, Math.floor(input.remainingLaps));
   const pitLossSeconds = Math.max(0, input.pitLossSeconds ?? 23);
   const compounds = orderedCompounds(input.currentCompound, input.availableCompounds);
-  const waterNow = currentZoneWater(input.weather);
-  const currentLapSeconds = lapSeconds(input.currentCompound, waterNow, 0);
+  const waterNow = currentZoneWater(input.weather, input.circuitId);
+  const currentLapSeconds = lapSeconds(input.currentCompound, waterNow, 0, input.circuitId);
   const representativeLaps = Math.max(1, remainingLaps);
   const projectedWaters = Array.from({ length: representativeLaps }, (_, lapIndex) => {
     const minutesAhead = remainingLaps === 0 ? 0 : ((lapIndex + 0.5) * currentLapSeconds) / 60;
@@ -204,15 +214,15 @@ export function estimateTyreCrossover(input: TyreCrossoverInput): TyreCrossoverE
     : projectedWaters.reduce((total, waters) => total + wetLapFraction(waters), 0);
 
   const estimates = compounds.map((compound) => {
-    const lapTimes = projectedWaters.map((waters, lapIndex) => lapSeconds(compound, waters, lapIndex));
+    const lapTimes = projectedWaters.map((waters, lapIndex) => lapSeconds(compound, waters, lapIndex, input.circuitId));
     const projectedRaceSeconds = remainingLaps === 0
       ? 0
       : lapTimes.reduce((total, seconds) => total + seconds, 0);
     return {
       compound,
-      currentLapSeconds: lapSeconds(compound, waterNow, 0),
+      currentLapSeconds: lapSeconds(compound, waterNow, 0, input.circuitId),
       projectedRaceSeconds,
-      averageLapSeconds: remainingLaps === 0 ? lapSeconds(compound, waterNow, 0) : projectedRaceSeconds / remainingLaps,
+      averageLapSeconds: remainingLaps === 0 ? lapSeconds(compound, waterNow, 0, input.circuitId) : projectedRaceSeconds / remainingLaps,
     } satisfies TyreCompoundCrossoverEstimate;
   }).sort((left, right) =>
     left.projectedRaceSeconds - right.projectedRaceSeconds
@@ -228,7 +238,7 @@ export function estimateTyreCrossover(input: TyreCrossoverInput): TyreCrossoverE
   const shouldPit = remainingLaps > 0 && switchedCompound && netRaceGainSeconds > 0.75;
   const recommendedCompound = shouldPit ? bestCompound : input.currentCompound;
   const lapGains = projectedWaters.map((waters, lapIndex) =>
-    lapSeconds(input.currentCompound, waters, lapIndex) - lapSeconds(bestCompound, waters, lapIndex),
+    lapSeconds(input.currentCompound, waters, lapIndex, input.circuitId) - lapSeconds(bestCompound, waters, lapIndex, input.circuitId),
   );
   const gainLow = switchedCompound ? Math.min(...lapGains) : 0;
   const gainHigh = switchedCompound ? Math.max(...lapGains) : 0;

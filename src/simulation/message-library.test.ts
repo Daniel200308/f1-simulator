@@ -93,7 +93,7 @@ describe("motorsport message library", () => {
 
   it("provides more than 100 distinct contextual driver-radio lines", () => {
     expect(RACE_DRIVER_RADIO_VARIANT_CAPACITY).toBeGreaterThanOrEqual(100);
-    const situations: RaceRadioSituation[] = ["TYRE_WEAR", "TYRE_HOT", "TYRE_COLD", "ATTACK_ENERGY", "ATTACK_TYRE", "DIRTY_AIR", "BALANCE", "DEFENDING", "STABLE", "RAIN_STARTING", "RAIN_RUNNING", "WET_GRIP", "AQUAPLANING", "DRYING_LINE", "INTER_CROSSOVER"];
+    const situations: RaceRadioSituation[] = ["TYRE_WEAR", "TYRE_HOT", "TYRE_COLD", "ATTACK_ENERGY", "ATTACK_TYRE", "DIRTY_AIR", "BALANCE", "DEFENDING", "STABLE", "RAIN_STARTING", "RAIN_RUNNING", "WET_GRIP", "LOW_GRIP", "BRAKING_LOCKUP", "REAR_SNAP", "SPRAY_VISIBILITY", "SPIN_RECOVERY", "AQUAPLANING", "DRYING_LINE", "INTER_CROSSOVER"];
     const messages = new Set<string>();
     for (let tick = 1; tick <= 240; tick += 1) {
       messages.add(buildRaceDriverRadio({ seed: 20_260_715, tick, carIndex: tick % 22, situation: situations[tick % situations.length], metric: `sample ${tick % 37}` }));
@@ -102,7 +102,7 @@ describe("motorsport message library", () => {
   });
 
   it("provides more than 100 colloquial weather reports tied to changing track conditions", () => {
-    const situations: RaceRadioSituation[] = ["RAIN_STARTING", "RAIN_RUNNING", "WET_GRIP", "AQUAPLANING", "DRYING_LINE", "INTER_CROSSOVER"];
+    const situations: RaceRadioSituation[] = ["RAIN_STARTING", "RAIN_RUNNING", "WET_GRIP", "LOW_GRIP", "BRAKING_LOCKUP", "REAR_SNAP", "SPRAY_VISIBILITY", "SPIN_RECOVERY", "AQUAPLANING", "DRYING_LINE", "INTER_CROSSOVER"];
     const messages = new Set<string>();
     for (let tick = 1; tick <= 220; tick += 1) {
       messages.add(buildRaceDriverRadio({

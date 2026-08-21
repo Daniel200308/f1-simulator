@@ -1,6 +1,6 @@
 import type { RaceCarState, RaceSnapshot, TyreCompound } from "@/domain/race";
 import { estimatePitLossSeconds, estimatePitOutPosition } from "@/simulation/engine";
-import { SILVERSTONE_CIRCUIT } from "@/simulation/track";
+import { circuitById } from "@/simulation/track";
 import { estimateTyreCrossover, type TyreCrossoverEstimate } from "@/simulation/tyre-crossover";
 
 const EXPECTED_WEAR_PER_LAP: Record<TyreCompound, number> = {
@@ -25,12 +25,13 @@ export interface StrategyRecommendation {
 }
 
 export function strategyRecommendation(snapshot: RaceSnapshot, car: RaceCarState): StrategyRecommendation {
+  const circuit = circuitById(snapshot.circuitId);
   const measuredWear = car.tyreAgeLaps > 1 ? (100 - car.tyreLife) / car.tyreAgeLaps : EXPECTED_WEAR_PER_LAP[car.tyreCompound];
   const wearPerLap = Math.max(2.2, measuredWear);
   const estimatedTyreLapsRemaining = Math.max(1, Math.floor((car.tyreLife - 28) / wearPerLap));
-  const remainingRaceLaps = car.finished ? 0 : Math.max(0, SILVERSTONE_CIRCUIT.totalLaps - car.currentLap + 1);
-  const pitWindowStart = Math.min(SILVERSTONE_CIRCUIT.totalLaps, Math.max(car.currentLap, car.currentLap + estimatedTyreLapsRemaining - 2));
-  const pitWindowEnd = Math.min(SILVERSTONE_CIRCUIT.totalLaps, pitWindowStart + 3);
+  const remainingRaceLaps = car.finished ? 0 : Math.max(0, circuit.totalLaps - car.currentLap + 1);
+  const pitWindowStart = Math.min(circuit.totalLaps, Math.max(car.currentLap, car.currentLap + estimatedTyreLapsRemaining - 2));
+  const pitWindowEnd = Math.min(circuit.totalLaps, pitWindowStart + 3);
   const baselineCompound: TyreCompound = snapshot.weather.trackWetness > 0.62
     ? "WET"
     : snapshot.weather.trackWetness > 0.15
@@ -38,6 +39,7 @@ export function strategyRecommendation(snapshot: RaceSnapshot, car: RaceCarState
       : remainingRaceLaps <= 16 ? "SOFT" : remainingRaceLaps <= 31 ? "MEDIUM" : "HARD";
   const availableCompounds = [...new Set(car.tyreSets.filter((set) => set.status === "AVAILABLE").map((set) => set.compound))];
   const crossover = estimateTyreCrossover({
+    circuitId: circuit.id,
     weather: snapshot.weather,
     currentCompound: car.tyreCompound,
     availableCompounds,

@@ -3,33 +3,31 @@
 import { useEffect, useRef } from "react";
 import type { CSSProperties } from "react";
 import type { Application, Container, Graphics, Text } from "pixi.js";
-import { CloudRain, Radar } from "lucide-react";
+import { Droplets } from "lucide-react";
 
+import type { EnergyFlowState } from "@/domain/energy";
 import type { RaceCarState } from "@/domain/race";
 import { DEFAULT_PLAYER_TEAM_ID, DRIVER_BY_ID, DRIVERS, playerCarIdsFor, TEAM_BY_ID } from "@/fixtures/grid";
+import { RaceControlsPanel } from "@/components/race/race-controls-panel";
 import { TeamRadioOverlay } from "@/components/race/team-radio-overlay";
 import { createTrackViewport, distanceToCenterline, projectTrackPoint } from "@/components/race/track-viewport";
-import { PIT_ENTRY_START, PIT_EXIT_END } from "@/simulation/engine";
 import {
   PIT_BOX_ORDER,
-  PIT_BOX_ROUTE_PROGRESS,
-  PIT_ROUTE_LENGTH_METERS,
   pitBoxRouteProgressForTeam,
   pitRouteDistanceFor,
   pitRouteProgressFor,
 } from "@/simulation/pit-lane";
 import { shouldShowDriverMarkers } from "@/simulation/race-finish";
+import { energyFlowStateFor } from "@/simulation/energy/energy-system";
+import { SAFETY_CAR_PIT_RELEASE_SECONDS } from "@/simulation/race-control";
 import {
   pointAtDistance,
   sectorAtDistance,
-  SILVERSTONE_CIRCUIT,
-  SILVERSTONE_CORNERS,
-  SILVERSTONE_OVERTAKE_ACTIVATION_DISTANCE,
-  SILVERSTONE_OVERTAKE_DETECTION_DISTANCE,
-  SILVERSTONE_STRAIGHT_MODE_ZONES,
+  circuitById,
 } from "@/simulation/track";
 import { useRaceStore } from "@/store/race-store";
 import { liveQualifyingClassification, qualifyingCarProgress, qualifyingCutPosition, type WeekendState } from "@/simulation/weekend";
+import { unwrapTrackDistance } from "@/simulation/qualifying-traffic";
 
 interface MarkerParts {
   container: Container;
@@ -40,6 +38,45 @@ interface MarkerParts {
   isPlayer: boolean;
   displayDistance: number;
   displayRoute: "TRACK" | "PIT" | null;
+  lastRingKey: string;
+  routeBlend: number;
+  routeTransitionStartX: number;
+  routeTransitionStartY: number;
+}
+
+interface EnergyMarkerState {
+  flow: EnergyFlowState;
+  strategy: string;
+  color: number;
+  active: boolean;
+  label: "DEPLOY" | "HARVEST" | "CLIPPING" | "AUTO";
+}
+
+function energyMarkerStateFor(car: RaceCarState): EnergyMarkerState {
+  const flow = car.energySystem ? energyFlowStateFor(car.energySystem) : car.energyState;
+  const strategy = car.energySystem?.deploymentMode ?? car.energyMode;
+  const activeDeployment = flow === "DEPLOYING" || flow === "OVERTAKE" || flow === "DEFENDING";
+  if (activeDeployment) {
+    return { flow, strategy, color: 0xff334f, active: true, label: "DEPLOY" };
+  }
+  if (flow === "HARVESTING") {
+    return { flow, strategy, color: 0x36dc79, active: true, label: "HARVEST" };
+  }
+  if (flow === "CLIPPING") {
+    return { flow, strategy, color: 0xffd34d, active: true, label: "CLIPPING" };
+  }
+
+  // In coast/neutral windows, keep the driver's individual battery tendency
+  // visible without pretending that power is currently flowing.
+  const aggressive = strategy === "ATTACK" || strategy === "BOOST" || strategy === "OVERTAKE" || strategy === "DEFEND";
+  const conservative = strategy === "HARVEST" || strategy === "CONSERVE" || strategy === "RECHARGE";
+  return {
+    flow,
+    strategy,
+    color: aggressive ? 0xff687d : conservative ? 0x67e4a2 : 0x20d7e7,
+    active: false,
+    label: "AUTO",
+  };
 }
 
 function interpolateDisplayDistance(current: number, target: number, deltaMs: number, speed: number): number {
@@ -47,20 +84,145 @@ function interpolateDisplayDistance(current: number, target: number, deltaMs: nu
   return current + (target - current) * smoothing;
 }
 
-function surfaceConditionAt(wetness: number, standingWater = 0): "DRY" | "DAMP" | "WET" | "HEAVY_WET" {
-  const effectiveWater = Math.min(1, wetness + standingWater * 0.35);
-  if (effectiveWater > 0.64) return "HEAVY_WET";
-  if (effectiveWater > 0.28) return "WET";
-  if (effectiveWater > 0.05) return "DAMP";
-  return "DRY";
+type SectorRainfallValues = readonly [number, number, number];
+
+function traceRainfallCurve(context: CanvasRenderingContext2D, points: readonly { x: number; y: number }[]): void {
+  context.moveTo(points[0].x, points[0].y);
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const current = points[index];
+    const next = points[index + 1];
+    const controlX = (current.x + next.x) / 2;
+    context.bezierCurveTo(controlX, current.y, controlX, next.y, next.x, next.y);
+  }
 }
 
-function raceMapViewport(width: number, height: number) {
-  const intelligenceRailReserve = Math.min(320, Math.max(230, width * 0.29));
+function drawRainfallGraph(canvas: HTMLCanvasElement, rainfall: SectorRainfallValues, time: number, paused: boolean): void {
+  const bounds = canvas.getBoundingClientRect();
+  const width = Math.max(1, bounds.width);
+  const height = Math.max(1, bounds.height);
+  const density = Math.min(2, window.devicePixelRatio || 1);
+  const pixelWidth = Math.round(width * density);
+  const pixelHeight = Math.round(height * density);
+  if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
+    canvas.width = pixelWidth;
+    canvas.height = pixelHeight;
+  }
+  const context = canvas.getContext("2d");
+  if (!context) return;
+  context.setTransform(density, 0, 0, density, 0, 0);
+  context.clearRect(0, 0, width, height);
+
+  const chartTop = 9;
+  // Reserve a clear label lane below the curve so the S1/S2/S3 captions never
+  // visually touch the live rainfall nodes, including in the all-dry state.
+  const chartBottom = height - 47;
+  const chartHeight = Math.max(1, chartBottom - chartTop);
+  const xPositions = [width * 0.17, width * 0.5, width * 0.83] as const;
+  const points = rainfall.map((value, index) => ({
+    x: xPositions[index],
+    y: chartBottom - Math.max(0, Math.min(1, value)) * chartHeight,
+  }));
+
+  context.save();
+  context.setLineDash([2, 5]);
+  context.lineWidth = 1;
+  context.strokeStyle = "rgba(73, 185, 224, .18)";
+  for (const x of xPositions) {
+    context.beginPath();
+    context.moveTo(x, chartTop);
+    context.lineTo(x, chartBottom);
+    context.stroke();
+  }
+  context.restore();
+
+  const fill = context.createLinearGradient(0, chartTop, 0, chartBottom);
+  fill.addColorStop(0, "rgba(42, 198, 255, .32)");
+  fill.addColorStop(1, "rgba(20, 116, 164, .035)");
+  context.beginPath();
+  traceRainfallCurve(context, points);
+  context.lineTo(points[points.length - 1].x, chartBottom);
+  context.lineTo(points[0].x, chartBottom);
+  context.closePath();
+  context.fillStyle = fill;
+  context.fill();
+
+  context.beginPath();
+  traceRainfallCurve(context, points);
+  context.lineWidth = 2.4;
+  context.lineCap = "round";
+  context.strokeStyle = "#39d4ff";
+  context.shadowColor = "rgba(57, 212, 255, .62)";
+  context.shadowBlur = 8;
+  context.stroke();
+  context.shadowBlur = 0;
+
+  points.forEach((point, index) => {
+    const activity = rainfall[index];
+    const pulse = paused || activity < 0.04 ? 0 : Math.sin(time / 260 + index * 1.8) * 0.8;
+    context.beginPath();
+    context.arc(point.x, point.y, 4.6 + pulse, 0, Math.PI * 2);
+    context.fillStyle = activity > 0.6 ? "#8ac8ff" : "#27cfff";
+    context.shadowColor = activity > 0.6 ? "rgba(120, 167, 255, .9)" : "rgba(39, 207, 255, .82)";
+    context.shadowBlur = 9;
+    context.fill();
+    context.shadowBlur = 0;
+  });
+}
+
+function SectorRainfallGraph({ rainfall, paused }: { rainfall: SectorRainfallValues; paused: boolean }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const targetRef = useRef<SectorRainfallValues>(rainfall);
+  const displayedRef = useRef<[number, number, number]>([...rainfall]);
+  const pausedRef = useRef(paused);
+
+  useEffect(() => {
+    targetRef.current = rainfall;
+    pausedRef.current = paused;
+  }, [paused, rainfall]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    let animationFrame = 0;
+    let previousTime = performance.now();
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const render = (time: number) => {
+      const delta = Math.min(100, Math.max(0, time - previousTime));
+      previousTime = time;
+      const blend = reducedMotion ? 1 : 1 - Math.exp(-delta / 280);
+      displayedRef.current = displayedRef.current.map((value, index) => (
+        value + (targetRef.current[index] - value) * blend
+      )) as [number, number, number];
+      drawRainfallGraph(canvas, displayedRef.current, time, pausedRef.current || reducedMotion);
+      animationFrame = window.requestAnimationFrame(render);
+    };
+    const resizeObserver = new ResizeObserver(() => {
+      drawRainfallGraph(canvas, displayedRef.current, performance.now(), pausedRef.current || reducedMotion);
+    });
+    resizeObserver.observe(canvas);
+    animationFrame = window.requestAnimationFrame(render);
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+      resizeObserver.disconnect();
+    };
+  }, []);
+
+  return <canvas
+    aria-hidden="true"
+    className="track-weather__canvas"
+    data-sector-rainfall={rainfall.map((value) => Math.round(value * 100)).join(",")}
+    ref={canvasRef}
+  />;
+}
+
+function raceMapViewport(width: number, height: number, points: Parameters<typeof createTrackViewport>[0]) {
+  const intelligenceRailReserve = Math.min(360, Math.max(250, width * 0.34));
   const drawableWidth = Math.max(260, width - intelligenceRailReserve - 8);
   const padding = Math.max(20, Math.min(34, height * 0.1));
-  return createTrackViewport(SILVERSTONE_CIRCUIT.points, drawableWidth, height, padding);
+  return createTrackViewport(points, drawableWidth, height, padding);
 }
+
+const SAFETY_CAR_PIT_RELEASE_START_PROGRESS = 0.84;
 
 export function RaceMap({ startPhase, lightsOn, qualifyingState = null }: { startPhase: "MENU" | "LIGHTS" | "GO" | "RACING"; lightsOn: number; qualifyingState?: WeekendState | null }) {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -68,10 +230,14 @@ export function RaceMap({ startPhase, lightsOn, qualifyingState = null }: { star
   const qualifyingPositionsRef = useRef<Map<string, number>>(new Map());
   const qualifyingReceivedAtRef = useRef(0);
   const snapshot = useRaceStore((state) => state.snapshot);
+  const paused = useRaceStore((state) => state.paused);
   const selectedCarId = useRaceStore((state) => state.selectedCarId);
   const qualifyingLive = qualifyingState?.qualifyingLive ?? null;
   const playerTeamId = qualifyingState?.playerTeamId ?? snapshot?.playerTeamId ?? DEFAULT_PLAYER_TEAM_ID;
   const isQualifying = Boolean(qualifyingLive);
+  const circuit = circuitById(qualifyingState?.circuitId ?? snapshot?.circuitId);
+  const pitRouteLengthMeters = circuit.lengthMeters - circuit.pitLane.entryStart + circuit.pitLane.exitEnd;
+  const pitBoxRouteProgress = (circuit.pitLane.boxDistance - circuit.pitLane.entryStart) / pitRouteLengthMeters;
   const selectedCar = snapshot?.cars.find((car) => car.carId === selectedCarId);
   /*
    * Pit timing is published for every player car in the pit lane, not just the
@@ -103,16 +269,11 @@ export function RaceMap({ startPhase, lightsOn, qualifyingState = null }: { star
   const servingPenaltyHold = selectedCar?.pitServicePhase === "PENALTY_HOLD" || selectedCar?.pitServicePhase === "STOP_GO_HOLD";
   const penaltyHoldElapsed = selectedCar?.penaltyHoldElapsedSeconds ?? 0;
   const penaltyHoldTarget = selectedCar?.penaltyHoldSeconds ?? 0;
-  const sectorSurface = ([1, 2, 3] as const).map((sector) => {
-    const state = snapshot?.weather.sectors?.find((candidate) => candidate.sector === sector);
-    const wetness = state?.wetness ?? snapshot?.weather.trackWetness ?? 0;
-    // Live rain drives the bar's sheen speed, so a sector under an active cell
-    // reads as moving water rather than a static wetness level.
-    const rainIntensity = state?.rainIntensity ?? snapshot?.weather.rainIntensity ?? 0;
-    return { sector, wetness, rainIntensity, condition: surfaceConditionAt(wetness, state?.standingWater) };
-  });
-  const surfaceConditions = new Set(sectorSurface.map((sector) => sector.condition));
-  const surfaceSummary = surfaceConditions.size > 1 ? "MIXED" : sectorSurface[0].condition.replace("_", " ");
+  const sectorRainfall = ([1, 2, 3] as const).map((sector) => (
+    snapshot?.weather.sectors?.find((candidate) => candidate.sector === sector)?.rainIntensity
+      ?? snapshot?.weather.rainIntensity
+      ?? 0
+  )) as [number, number, number];
 
   useEffect(() => {
     qualifyingRef.current = qualifyingState;
@@ -132,6 +293,9 @@ export function RaceMap({ startPhase, lightsOn, qualifyingState = null }: { star
     let frame = 0;
     let destroyed = false;
     let resizeObserver: ResizeObserver | null = null;
+    let intersectionObserver: IntersectionObserver | null = null;
+    let mapVisible = true;
+    let handleVisibility: (() => void) | null = null;
 
     async function mount() {
       const PIXI = await import("pixi.js");
@@ -144,7 +308,10 @@ export function RaceMap({ startPhase, lightsOn, qualifyingState = null }: { star
         backgroundAlpha: 0,
         antialias: true,
         autoDensity: true,
-        resolution: Math.min(window.devicePixelRatio, 2),
+        // The map is an information surface, not a photo. Capping the backing
+        // store keeps a 22-car qualifying session from paying a 2x pixel cost
+        // on retina displays while the vector labels remain crisp.
+        resolution: Math.min(window.devicePixelRatio || 1, 1.5),
       });
       if (destroyed) {
         app.destroy(true);
@@ -152,20 +319,21 @@ export function RaceMap({ startPhase, lightsOn, qualifyingState = null }: { star
       }
 
       host.appendChild(app.canvas);
-      host.dataset.overtakeDetectionDistance = SILVERSTONE_OVERTAKE_DETECTION_DISTANCE.toFixed(1);
-      host.dataset.overtakeActivationDistance = SILVERSTONE_OVERTAKE_ACTIVATION_DISTANCE.toFixed(1);
-      host.dataset.cornerCount = String(SILVERSTONE_CORNERS.length);
+      host.dataset.overtakeDetectionDistance = circuit.overtakeZone.detectionDistance.toFixed(1);
+      host.dataset.overtakeActivationDistance = circuit.overtakeZone.activationDistance.toFixed(1);
+      host.dataset.cornerCount = String(circuit.corners.length);
       host.dataset.pitLaneRenderer = "RACE_SHARED";
       host.dataset.trackRenderer = "PIXI_RACE_MAP";
       host.dataset.motionModel = "RACE_SHARED_INTERPOLATION";
-      host.dataset.snapshotAgeCapSeconds = "0.2";
-      app.canvas.setAttribute("aria-label", "Silverstone Circuit live track map. Four wing-open Straight Mode sections, Overtake detection after Turn 17 and activation before Turn 18.");
+      host.dataset.snapshotAgeCapSeconds = "ADAPTIVE_1.15";
+      app.canvas.setAttribute("aria-label", `${circuit.name} live track map with ${circuit.straightZones.length} Straight Mode sections and ${circuit.corners.length} corners.`);
       app.canvas.setAttribute("role", "img");
 
       const trackLayer = new PIXI.Container();
       const battleLayer = new PIXI.Graphics();
       const markerLayer = new PIXI.Container();
       const alertLayer = new PIXI.Container();
+      alertLayer.sortableChildren = true;
       app.stage.addChild(trackLayer, battleLayer, markerLayer, alertLayer);
 
       const trackBase = new PIXI.Graphics();
@@ -179,8 +347,8 @@ export function RaceMap({ startPhase, lightsOn, qualifyingState = null }: { star
       const aeroLabelLayer = new PIXI.Container();
       const cornerLayer = new PIXI.Container();
       trackLayer.addChild(trackBase, surfaceLayer, aeroLayer, pitLane, trackEdge, controlOverlay, overtakeLayer, startLine, cornerLayer, aeroLabelLayer);
-      let viewport = raceMapViewport(app.screen.width, app.screen.height);
-      let projectedCenterline = SILVERSTONE_CIRCUIT.points.map((point) => projectTrackPoint(point, viewport));
+      let viewport = raceMapViewport(app.screen.width, app.screen.height, circuit.points);
+      let projectedCenterline = circuit.points.map((point) => projectTrackPoint(point, viewport));
 
       const markers = new Map<string, MarkerParts>();
       const incidentBadge = new PIXI.Container();
@@ -190,10 +358,19 @@ export function RaceMap({ startPhase, lightsOn, qualifyingState = null }: { star
       incidentBadge.addChild(incidentShape, incidentText);
       incidentBadge.visible = false;
       const safetyCarBadge = new PIXI.Container();
-      const safetyShape = new PIXI.Graphics().roundRect(-16, -9, 32, 18, 4).fill({ color: 0xf4d35e }).stroke({ width: 2, color: 0x231f08 });
-      const safetyText = new PIXI.Text({ text: "SC", style: { fontFamily: "Arial, sans-serif", fontSize: 9, fontWeight: "900", fill: 0x181505 } });
+      const safetyAura = new PIXI.Graphics().circle(0, 0, 25).fill({ color: 0x20d7e7, alpha: 0.08 });
+      const safetyGlow = new PIXI.Graphics().circle(0, 0, 20).stroke({ width: 2, color: 0x20d7e7, alpha: 0.42 });
+      const safetyRing = new PIXI.Graphics().circle(0, 0, 15).stroke({ width: 2, color: 0xffd34d, alpha: 0.92 });
+      const safetyShape = new PIXI.Graphics()
+        .roundRect(-15, -8, 30, 16, 5)
+        .fill({ color: 0x07171c, alpha: 0.98 })
+        .stroke({ width: 1.7, color: 0xe9fdff, alpha: 0.94 });
+      const safetyRoof = new PIXI.Graphics().roundRect(-8, -4.5, 16, 6.5, 2).fill({ color: 0x20d7e7, alpha: 0.94 });
+      const safetyBeacon = new PIXI.Graphics().circle(0, -10, 3).fill({ color: 0xff5269, alpha: 0.98 });
+      const safetyText = new PIXI.Text({ text: "SC", style: { fontFamily: "Arial, sans-serif", fontSize: 8, fontWeight: "900", fill: 0xf4fbff } });
       safetyText.anchor.set(0.5);
-      safetyCarBadge.addChild(safetyShape, safetyText);
+      safetyCarBadge.addChild(safetyAura, safetyGlow, safetyRing, safetyShape, safetyRoof, safetyBeacon, safetyText);
+      safetyCarBadge.zIndex = 50;
       safetyCarBadge.visible = false;
       alertLayer.addChild(incidentBadge, safetyCarBadge);
       let lastControlKey = "";
@@ -206,8 +383,8 @@ export function RaceMap({ startPhase, lightsOn, qualifyingState = null }: { star
         controlOverlay.clear();
         if (control === "GREEN") return;
         const color = control === "VSC" ? 0xb276ff : 0xf4d35e;
-        SILVERSTONE_CIRCUIT.segments.forEach((segment) => {
-          if (control === "YELLOW" && sectorAtDistance(segment.startDistance) !== yellowSector) return;
+        circuit.segments.forEach((segment) => {
+          if (control === "YELLOW" && sectorAtDistance(segment.startDistance, circuit) !== yellowSector) return;
           const p1 = projectTrackPoint(segment.p1, viewport);
           const p2 = projectTrackPoint(segment.p2, viewport);
           controlOverlay.moveTo(p1.x, p1.y).lineTo(p2.x, p2.y).stroke({ width: 5, color, alpha: 0.72, cap: "round" });
@@ -224,7 +401,7 @@ export function RaceMap({ startPhase, lightsOn, qualifyingState = null }: { star
           const samples = Math.max(2, Math.ceil((zone.endDistance - zone.startDistance) / 24));
           for (let index = 0; index <= samples; index += 1) {
             const distance = zone.startDistance + ((zone.endDistance - zone.startDistance) * index) / samples;
-            const point = projectTrackPoint(pointAtDistance(distance), viewport);
+            const point = projectTrackPoint(pointAtDistance(distance, circuit), viewport);
             if (index === 0) surfaceLayer.moveTo(point.x, point.y);
             else surfaceLayer.lineTo(point.x, point.y);
           }
@@ -240,8 +417,8 @@ export function RaceMap({ startPhase, lightsOn, qualifyingState = null }: { star
        */
       function pitPointAtProgress(progress: number) {
         const clamped = Math.min(1, Math.max(0, progress));
-        const entry = projectTrackPoint(pointAtDistance(PIT_ENTRY_START), viewport);
-        const exit = projectTrackPoint(pointAtDistance(PIT_EXIT_END), viewport);
+        const entry = projectTrackPoint(pointAtDistance(circuit.pitLane.entryStart, circuit), viewport);
+        const exit = projectTrackPoint(pointAtDistance(circuit.pitLane.exitEnd, circuit), viewport);
         const chordX = exit.x - entry.x;
         const chordY = exit.y - entry.y;
         const magnitude = Math.max(0.000001, Math.hypot(chordX, chordY));
@@ -303,7 +480,20 @@ export function RaceMap({ startPhase, lightsOn, qualifyingState = null }: { star
         container.addChild(glyph, label);
         container.on("pointertap", () => useRaceStore.getState().setSelectedCarId(driver.id));
         markerLayer.addChild(container);
-        markers.set(driver.id, { container, glyph, motion, ring, label, isPlayer, displayDistance: 0, displayRoute: null });
+        markers.set(driver.id, {
+          container,
+          glyph,
+          motion,
+          ring,
+          label,
+          isPlayer,
+          displayDistance: 0,
+          displayRoute: null,
+          lastRingKey: "",
+          routeBlend: 1,
+          routeTransitionStartX: 0,
+          routeTransitionStartY: 0,
+        });
       });
 
       function drawTrack() {
@@ -329,7 +519,7 @@ export function RaceMap({ startPhase, lightsOn, qualifyingState = null }: { star
         trackBase.closePath().stroke({ width: 20, color: 0x14242d, alpha: 1, join: "round" });
         trackEdge.closePath().stroke({ width: 2, color: 0x4b6572, alpha: 0.72, join: "round" });
 
-        SILVERSTONE_CIRCUIT.segments.forEach((segment) => {
+        circuit.segments.forEach((segment) => {
           if (!segment.activeAeroAllowed) return;
           const p1 = projectTrackPoint(segment.p1, viewport);
           const p2 = projectTrackPoint(segment.p2, viewport);
@@ -347,7 +537,7 @@ export function RaceMap({ startPhase, lightsOn, qualifyingState = null }: { star
         // The garages the cars actually stop at, so a stop reads as happening at
         // a specific box rather than somewhere in the lane.
         for (const teamId of PIT_BOX_ORDER) {
-          const box = pitPointAtProgress(pitBoxRouteProgressForTeam(teamId));
+          const box = pitPointAtProgress(pitBoxRouteProgressForTeam(teamId, circuit));
           const isPlayerBox = teamId === playerTeamId;
           pitLane
             .circle(box.x, box.y, isPlayerBox ? 2.4 : 1.5)
@@ -358,11 +548,11 @@ export function RaceMap({ startPhase, lightsOn, qualifyingState = null }: { star
         centre.x /= projectedCenterline.length;
         centre.y /= projectedCenterline.length;
 
-        SILVERSTONE_STRAIGHT_MODE_ZONES.forEach((zone) => {
-          const distance = ((zone.startRatio + zone.endRatio) / 2) * SILVERSTONE_CIRCUIT.lengthMeters;
-          const point = projectTrackPoint(pointAtDistance(distance), viewport);
-          const before = projectTrackPoint(pointAtDistance(distance - 5), viewport);
-          const after = projectTrackPoint(pointAtDistance(distance + 5), viewport);
+        circuit.straightZones.forEach((zone) => {
+          const distance = ((zone.startRatio + zone.endRatio) / 2) * circuit.lengthMeters;
+          const point = projectTrackPoint(pointAtDistance(distance, circuit), viewport);
+          const before = projectTrackPoint(pointAtDistance(distance - 5, circuit), viewport);
+          const after = projectTrackPoint(pointAtDistance(distance + 5, circuit), viewport);
           const magnitude = Math.max(0.000001, Math.hypot(after.x - before.x, after.y - before.y));
           let normalX = -(after.y - before.y) / magnitude;
           let normalY = (after.x - before.x) / magnitude;
@@ -383,9 +573,9 @@ export function RaceMap({ startPhase, lightsOn, qualifyingState = null }: { star
         });
 
         const drawOvertakeLine = (distance: number, label: string, color: number, outward: boolean) => {
-          const point = projectTrackPoint(pointAtDistance(distance), viewport);
-          const before = projectTrackPoint(pointAtDistance(distance - 4), viewport);
-          const after = projectTrackPoint(pointAtDistance(distance + 4), viewport);
+          const point = projectTrackPoint(pointAtDistance(distance, circuit), viewport);
+          const before = projectTrackPoint(pointAtDistance(distance - 4, circuit), viewport);
+          const after = projectTrackPoint(pointAtDistance(distance + 4, circuit), viewport);
           const magnitude = Math.max(0.000001, Math.hypot(after.x - before.x, after.y - before.y));
           let normalX = -(after.y - before.y) / magnitude;
           let normalY = (after.x - before.x) / magnitude;
@@ -412,13 +602,13 @@ export function RaceMap({ startPhase, lightsOn, qualifyingState = null }: { star
           text.position.set(labelX, labelY + 0.2);
           overtakeLayer.addChild(line, plate, text);
         };
-        drawOvertakeLine(SILVERSTONE_OVERTAKE_DETECTION_DISTANCE, "DET", 0xffd34d, true);
-        drawOvertakeLine(SILVERSTONE_OVERTAKE_ACTIVATION_DISTANCE, "OVT", 0xff4d8f, false);
+        drawOvertakeLine(circuit.overtakeZone.detectionDistance, "DET", 0xffd34d, true);
+        drawOvertakeLine(circuit.overtakeZone.activationDistance, "OVT", 0xff4d8f, false);
 
-        SILVERSTONE_CORNERS.forEach((corner) => {
-          const point = projectTrackPoint(pointAtDistance(corner.distanceMeters), viewport);
-          const before = projectTrackPoint(pointAtDistance(corner.distanceMeters - 3), viewport);
-          const after = projectTrackPoint(pointAtDistance(corner.distanceMeters + 3), viewport);
+        circuit.corners.forEach((corner) => {
+          const point = projectTrackPoint(pointAtDistance(corner.distanceMeters, circuit), viewport);
+          const before = projectTrackPoint(pointAtDistance(corner.distanceMeters - 3, circuit), viewport);
+          const after = projectTrackPoint(pointAtDistance(corner.distanceMeters + 3, circuit), viewport);
           const magnitude = Math.max(0.000001, Math.hypot(after.x - before.x, after.y - before.y));
           let normalX = -(after.y - before.y) / magnitude;
           let normalY = (after.x - before.x) / magnitude;
@@ -459,8 +649,8 @@ export function RaceMap({ startPhase, lightsOn, qualifyingState = null }: { star
         const width = Math.max(320, host.clientWidth);
         const height = Math.max(1, host.clientHeight);
         app.renderer.resize(width, height);
-        viewport = raceMapViewport(app.screen.width, app.screen.height);
-        projectedCenterline = SILVERSTONE_CIRCUIT.points.map((point) => projectTrackPoint(point, viewport));
+        viewport = raceMapViewport(app.screen.width, app.screen.height, circuit.points);
+        projectedCenterline = circuit.points.map((point) => projectTrackPoint(point, viewport));
         drawTrack();
         lastControlKey = "";
         lastSpatialWeatherKey = "";
@@ -471,7 +661,8 @@ export function RaceMap({ startPhase, lightsOn, qualifyingState = null }: { star
 
       let lastTime = performance.now();
       function animate(now: number) {
-        if (!app) return;
+        frame = 0;
+        if (!app || destroyed || !mapVisible || document.visibilityState !== "visible") return;
         const delta = Math.min(50, now - lastTime);
         lastTime = now;
         const state = useRaceStore.getState();
@@ -489,7 +680,10 @@ export function RaceMap({ startPhase, lightsOn, qualifyingState = null }: { star
           safetyCarBadge.visible = false;
           const qualifyingSnapshotAgeSeconds = qualifying.paused
             ? 0
-            : Math.min(0.2, Math.max(0, (now - qualifyingReceivedAtRef.current) / 1_000));
+            : Math.min(
+              Math.min(1.15, 1.8 / Math.max(1, qualifying.speed)),
+              Math.max(0, (now - qualifyingReceivedAtRef.current) / 1_000),
+            );
           let visibleDriverCount = 0;
           for (const driver of DRIVERS) {
             const marker = markers.get(driver.id);
@@ -500,6 +694,19 @@ export function RaceMap({ startPhase, lightsOn, qualifyingState = null }: { star
               marker.container.visible = false;
               marker.displayDistance = 0;
               marker.displayRoute = null;
+              marker.routeBlend = 1;
+              if ((car?.carId ?? driver.id) === state.selectedCarId) {
+                const activeHost = hostRef.current;
+                if (activeHost) {
+                  delete activeHost.dataset.qualifyingPhase;
+                  delete activeHost.dataset.qualifyingProgress;
+                  delete activeHost.dataset.qualifyingRoute;
+                  delete activeHost.dataset.selectedDistance;
+                  delete activeHost.dataset.selectedX;
+                  delete activeHost.dataset.selectedY;
+                  delete activeHost.dataset.frameStepPx;
+                }
+              }
               continue;
             }
             visibleDriverCount += 1;
@@ -509,26 +716,32 @@ export function RaceMap({ startPhase, lightsOn, qualifyingState = null }: { star
             const progress = qualifyingCarProgress(extrapolatedCar);
             let route: "TRACK" | "PIT" = "TRACK";
             let targetDistance = 0;
-            if (car.phase === "OUT_LAP" && progress < 0.12) {
+            if (car.phase === "PIT_ENTRY") {
+              route = "PIT";
+              // PIT_ENTRY starts at the track entry line and finishes at the
+              // garage box. Keeping it on the pit route avoids a phase-change
+              // teleport back onto the main circuit at high simulation speed.
+              targetDistance = pitBoxRouteProgress * pitRouteLengthMeters * progress;
+            } else if (car.phase === "OUT_LAP" && progress < 0.12) {
               route = "PIT";
               // Leaving the garage: from the box down the lane to the exit.
-              const boxDistance = PIT_BOX_ROUTE_PROGRESS * PIT_ROUTE_LENGTH_METERS;
-              targetDistance = boxDistance + (PIT_ROUTE_LENGTH_METERS - boxDistance) * (progress / 0.12);
+              const boxDistance = pitBoxRouteProgress * pitRouteLengthMeters;
+              targetDistance = boxDistance + (pitRouteLengthMeters - boxDistance) * (progress / 0.12);
             } else if (car.phase === "OUT_LAP") {
               const trackProgress = (progress - 0.12) / 0.88;
-              targetDistance = PIT_EXIT_END + (SILVERSTONE_CIRCUIT.lengthMeters - PIT_EXIT_END) * trackProgress;
+              targetDistance = circuit.pitLane.exitEnd + (circuit.lengthMeters - circuit.pitLane.exitEnd) * trackProgress;
             } else if (car.phase === "IN_LAP" && car.flyingLapsRemaining > 0) {
               // Recovery in-lap: still circulating towards the timing line.
               const trackProgress = car.phaseStartProgress + (1 - car.phaseStartProgress) * progress;
-              targetDistance = trackProgress * SILVERSTONE_CIRCUIT.lengthMeters;
+              targetDistance = trackProgress * circuit.lengthMeters;
             } else if (car.phase === "IN_LAP" && progress > 0.86) {
               route = "PIT";
               const pitProgress = (progress - 0.86) / 0.14;
               // Coming in: from the entry line down the lane to the box.
-              targetDistance = PIT_BOX_ROUTE_PROGRESS * PIT_ROUTE_LENGTH_METERS * pitProgress;
+              targetDistance = pitBoxRouteProgress * pitRouteLengthMeters * pitProgress;
             } else {
               const trackProgress = car.phase === "IN_LAP" ? progress / 0.86 : progress;
-              targetDistance = trackProgress * (car.phase === "IN_LAP" ? PIT_ENTRY_START : SILVERSTONE_CIRCUIT.lengthMeters);
+              targetDistance = trackProgress * (car.phase === "IN_LAP" ? circuit.pitLane.entryStart : circuit.lengthMeters);
             }
             const wasVisible = marker.container.visible;
             const routeChanged = wasVisible && marker.displayRoute !== route;
@@ -537,28 +750,45 @@ export function RaceMap({ startPhase, lightsOn, qualifyingState = null }: { star
             const previousY = marker.container.position.y;
             if (!wasVisible || routeChanged) {
               marker.displayDistance = targetDistance;
-            } else if (!qualifying.paused) {
-              while (route === "TRACK" && targetDistance + SILVERSTONE_CIRCUIT.lengthMeters / 2 < marker.displayDistance) {
-                targetDistance += SILVERSTONE_CIRCUIT.lengthMeters;
+              if (routeChanged && wasVisible) {
+                marker.routeBlend = 0;
+                marker.routeTransitionStartX = previousX;
+                marker.routeTransitionStartY = previousY;
+              } else {
+                marker.routeBlend = 1;
               }
+            } else if (!qualifying.paused) {
+              if (route === "TRACK") targetDistance = unwrapTrackDistance(marker.displayDistance, targetDistance, circuit.lengthMeters);
               marker.displayDistance = interpolateDisplayDistance(marker.displayDistance, targetDistance, delta, qualifying.speed);
             }
             marker.displayRoute = route;
-            const point = route === "PIT"
-              ? pitPointAtProgress(marker.displayDistance / PIT_ROUTE_LENGTH_METERS)
-              : projectTrackPoint(pointAtDistance(marker.displayDistance), viewport);
+            const targetPoint = route === "PIT"
+              ? pitPointAtProgress(marker.displayDistance / pitRouteLengthMeters)
+              : projectTrackPoint(pointAtDistance(marker.displayDistance, circuit), viewport);
+            if (marker.routeBlend < 1) {
+              marker.routeBlend = Math.min(1, marker.routeBlend + Math.min(1, Math.max(delta, 8) / 160));
+            }
+            const point = marker.routeBlend < 1
+              ? {
+                x: marker.routeTransitionStartX + (targetPoint.x - marker.routeTransitionStartX) * marker.routeBlend,
+                y: marker.routeTransitionStartY + (targetPoint.y - marker.routeTransitionStartY) * marker.routeBlend,
+              }
+              : targetPoint;
             marker.container.position.set(point.x, point.y);
             const frameStepPx = wasVisible ? Math.hypot(point.x - previousX, point.y - previousY) : 0;
             marker.glyph.position.set(0, 0);
             marker.glyph.rotation = 0;
-            marker.motion.clear();
             marker.container.zIndex = 40 - (qualifyingPositionsRef.current.get(car.carId) ?? 30);
             const selected = state.selectedCarId === car.carId;
             marker.label.visible = true;
             marker.label.tint = selected ? 0x20d7e7 : 0xffffff;
-            marker.ring.clear();
             const phaseColor = car.phase === "PUSH_LAP" ? 0xff334f : car.phase === "IN_LAP" ? 0x36dc79 : 0x20d7e7;
-            marker.ring.circle(0, 0, marker.isPlayer ? 10 : 8).stroke({ width: selected ? 3 : 1.8, color: phaseColor, alpha: 0.96 });
+            const ringKey = `${car.phase}:${phaseColor}:${selected}`;
+            if (marker.lastRingKey !== ringKey) {
+              marker.ring.clear();
+              marker.ring.circle(0, 0, marker.isPlayer ? 10 : 8).stroke({ width: selected ? 3 : 1.8, color: phaseColor, alpha: 0.96 });
+              marker.lastRingKey = ringKey;
+            }
             if (selected) {
               const activeHost = hostRef.current;
               if (activeHost) {
@@ -566,7 +796,7 @@ export function RaceMap({ startPhase, lightsOn, qualifyingState = null }: { star
                 activeHost.dataset.selectedX = marker.container.position.x.toFixed(2);
                 activeHost.dataset.selectedY = marker.container.position.y.toFixed(2);
                 activeHost.dataset.qualifyingPhase = car.phase;
-                activeHost.dataset.qualifyingProgress = progress.toFixed(4);
+                activeHost.dataset.qualifyingProgress = ((marker.displayDistance / circuit.lengthMeters) % 1).toFixed(4);
                 activeHost.dataset.qualifyingRoute = route;
                 activeHost.dataset.selectedDistance = marker.displayDistance.toFixed(2);
                 activeHost.dataset.frameStepPx = frameStepPx.toFixed(4);
@@ -589,21 +819,26 @@ export function RaceMap({ startPhase, lightsOn, qualifyingState = null }: { star
             drawSpatialWeather(snapshot.weather);
           }
           if (snapshot.activeIncident) {
-            const incidentPoint = projectTrackPoint(pointAtDistance(snapshot.activeIncident.distanceMeters), viewport);
+            const incidentPoint = projectTrackPoint(pointAtDistance(snapshot.activeIncident.distanceMeters, circuit), viewport);
             incidentBadge.position.set(incidentPoint.x, incidentPoint.y);
             incidentBadge.visible = true;
           } else {
             incidentBadge.visible = false;
           }
           if (snapshot.raceControl === "SAFETY_CAR" && snapshot.safetyCarDistance !== null) {
-            const pitReleaseProgress = Math.min(1, snapshot.safetyCarPhaseElapsedSeconds / 3.2);
+            const pitReleaseProgress = Math.min(1, snapshot.safetyCarPhaseElapsedSeconds / SAFETY_CAR_PIT_RELEASE_SECONDS);
             const safetyPoint = snapshot.safetyCarInPitLane
               ? pitPointAtProgress(snapshot.safetyCarPhase === "DEPLOYED"
-                // Released from its bay towards the pit exit.
-                ? PIT_BOX_ROUTE_PROGRESS + (1 - PIT_BOX_ROUTE_PROGRESS) * pitReleaseProgress
-                : pitRouteProgressFor(snapshot.safetyCarDistance))
-              : projectTrackPoint(pointAtDistance(snapshot.safetyCarDistance), viewport);
+                // The icon starts at the release end of the lane, then joins the track.
+                ? SAFETY_CAR_PIT_RELEASE_START_PROGRESS + (1 - SAFETY_CAR_PIT_RELEASE_START_PROGRESS) * pitReleaseProgress
+                : pitRouteProgressFor(snapshot.safetyCarDistance, circuit))
+              : projectTrackPoint(pointAtDistance(snapshot.safetyCarDistance, circuit), viewport);
             safetyCarBadge.position.set(safetyPoint.x, safetyPoint.y);
+            const beaconPulse = 0.72 + Math.sin(performance.now() / 150) * 0.24;
+            safetyAura.alpha = 0.07 + beaconPulse * 0.05;
+            safetyGlow.alpha = 0.28 + beaconPulse * 0.22;
+            safetyRing.rotation = performance.now() / 2_400;
+            safetyBeacon.alpha = beaconPulse;
             safetyCarBadge.visible = true;
           } else {
             safetyCarBadge.visible = false;
@@ -625,18 +860,18 @@ export function RaceMap({ startPhase, lightsOn, qualifyingState = null }: { star
              * across the change would drag the marker over the infield.
              */
             const routeChanged = marker.displayRoute !== route;
-            const liveDistance = route === "PIT" ? pitRouteDistanceFor(car.lapDistance) : car.totalDistance;
+            const liveDistance = route === "PIT" ? pitRouteDistanceFor(car.lapDistance, circuit) : car.totalDistance;
             const travelled = state.paused ? 0 : (car.currentSpeed / 3.6) * snapshotAgeSeconds * state.speed;
             const extrapolatedDistance = route === "PIT"
               // A stationary car in its box must not creep forward.
-              ? Math.min(PIT_ROUTE_LENGTH_METERS, liveDistance + (car.pitStatus === "PIT_STOP" ? 0 : travelled))
+              ? Math.min(pitRouteLengthMeters, liveDistance + (car.pitStatus === "PIT_STOP" ? 0 : travelled))
               : liveDistance + travelled;
             if (routeChanged || marker.displayDistance === 0) marker.displayDistance = extrapolatedDistance;
             else marker.displayDistance = interpolateDisplayDistance(marker.displayDistance, extrapolatedDistance, delta, state.speed);
             marker.displayRoute = route;
             const p = route === "TRACK"
-              ? projectTrackPoint(pointAtDistance(marker.displayDistance), viewport)
-              : pitPointAtProgress(marker.displayDistance / PIT_ROUTE_LENGTH_METERS);
+              ? projectTrackPoint(pointAtDistance(marker.displayDistance, circuit), viewport)
+              : pitPointAtProgress(marker.displayDistance / pitRouteLengthMeters);
             let displayX = p.x;
             let displayY = p.y;
             marker.glyph.position.set(0, 0);
@@ -645,8 +880,8 @@ export function RaceMap({ startPhase, lightsOn, qualifyingState = null }: { star
             const incidentAge = Math.max(0, snapshot.elapsedTime - (car.incidentStartedAt ?? snapshot.elapsedTime));
             const incidentDirection = car.incidentDirection ?? 1;
             if (car.pitStatus === "TRACK" && car.incidentStatus !== "RUNNING") {
-              const before = projectTrackPoint(pointAtDistance(marker.displayDistance - 4), viewport);
-              const after = projectTrackPoint(pointAtDistance(marker.displayDistance + 4), viewport);
+              const before = projectTrackPoint(pointAtDistance(marker.displayDistance - 4, circuit), viewport);
+              const after = projectTrackPoint(pointAtDistance(marker.displayDistance + 4, circuit), viewport);
               const magnitude = Math.max(0.000001, Math.hypot(after.x - before.x, after.y - before.y));
               const normalX = -((after.y - before.y) / magnitude);
               const normalY = (after.x - before.x) / magnitude;
@@ -675,14 +910,19 @@ export function RaceMap({ startPhase, lightsOn, qualifyingState = null }: { star
             marker.label.visible = true;
             marker.label.tint = selected ? 0x20d7e7 : 0xffffff;
             marker.ring.clear();
-            const energyColor = car.energyMode === "ATTACK" || car.energyMode === "BOOST" || car.energyMode === "OVERTAKE"
-              ? 0xff334f
-              : car.energyMode === "HARVEST" || car.energyMode === "CONSERVE" ? 0x36dc79 : null;
-            if (energyColor !== null) {
-              marker.ring.circle(0, 0, 9).stroke({
-                width: 1.8,
-                color: energyColor,
-                alpha: 0.95,
+            const energyIndicator = energyMarkerStateFor(car);
+            const energyPulse = energyIndicator.active ? 0.78 + Math.sin(now / 180) * 0.14 : 0.62;
+            const energyRadius = marker.isPlayer ? 10 : 8;
+            marker.ring.circle(0, 0, energyRadius).stroke({
+              width: selected ? 3 : energyIndicator.active ? 2.1 : 1.5,
+              color: energyIndicator.color,
+              alpha: selected ? 0.98 : energyPulse,
+            });
+            if (energyIndicator.active) {
+              marker.ring.circle(0, 0, energyRadius + 3).stroke({
+                width: 1,
+                color: energyIndicator.color,
+                alpha: selected ? 0.24 : 0.14 + Math.max(0, energyPulse - 0.78) * 0.35,
               });
             }
             if (selected) {
@@ -696,7 +936,10 @@ export function RaceMap({ startPhase, lightsOn, qualifyingState = null }: { star
                 activeHost.dataset.racingLine = car.racingLineMode;
                 activeHost.dataset.trackLineOffset = "0.000";
                 activeHost.dataset.energyMode = car.energyMode;
-                activeHost.dataset.indicatorColor = energyColor === null ? "none" : `#${energyColor.toString(16).padStart(6, "0")}`;
+                activeHost.dataset.energyFlow = energyIndicator.flow;
+                activeHost.dataset.energyStrategy = energyIndicator.strategy;
+                activeHost.dataset.energyMarkerLabel = energyIndicator.label;
+                activeHost.dataset.indicatorColor = `#${energyIndicator.color.toString(16).padStart(6, "0")}`;
                 activeHost.dataset.viewportWidth = viewport.width.toFixed(2);
                 activeHost.dataset.viewportHeight = viewport.height.toFixed(2);
                 activeHost.dataset.viewportScale = viewport.scale.toFixed(4);
@@ -719,8 +962,28 @@ export function RaceMap({ startPhase, lightsOn, qualifyingState = null }: { star
           }
           markerLayer.sortableChildren = true;
         }
-        frame = requestAnimationFrame(animate);
+        if (mapVisible && document.visibilityState === "visible") frame = requestAnimationFrame(animate);
       }
+      intersectionObserver = typeof IntersectionObserver === "undefined"
+        ? null
+        : new IntersectionObserver(([entry]) => {
+          mapVisible = entry?.isIntersecting ?? true;
+          if (!mapVisible && frame) {
+            cancelAnimationFrame(frame);
+            frame = 0;
+          } else if (mapVisible && document.visibilityState === "visible" && !frame) {
+            frame = requestAnimationFrame(animate);
+          }
+        }, { threshold: 0.01 });
+      intersectionObserver?.observe(host);
+      handleVisibility = () => {
+        if (document.visibilityState === "visible" && mapVisible && !frame) frame = requestAnimationFrame(animate);
+        else if (document.visibilityState !== "visible" && frame) {
+          cancelAnimationFrame(frame);
+          frame = 0;
+        }
+      };
+      document.addEventListener("visibilitychange", handleVisibility);
       frame = requestAnimationFrame(animate);
     }
 
@@ -729,11 +992,13 @@ export function RaceMap({ startPhase, lightsOn, qualifyingState = null }: { star
       destroyed = true;
       cancelAnimationFrame(frame);
       resizeObserver?.disconnect();
+      intersectionObserver?.disconnect();
+      if (handleVisibility) document.removeEventListener("visibilitychange", handleVisibility);
       const canvas = app?.canvas;
       if (canvas?.parentElement === host) canvas.remove();
       if (app) app.destroy(false, { children: true });
     };
-  }, [playerTeamId]);
+  }, [circuit, pitBoxRouteProgress, pitRouteLengthMeters, playerTeamId]);
 
   const qualifyingClassification = qualifyingState ? liveQualifyingClassification(qualifyingState) : [];
   const qualifyingCut = qualifyingState ? qualifyingCutPosition(qualifyingState) : null;
@@ -742,36 +1007,55 @@ export function RaceMap({ startPhase, lightsOn, qualifyingState = null }: { star
     <div className="track-map" data-map-mode={isQualifying ? "QUALIFYING" : "RACE"} ref={hostRef}>
       <div className="track-map__hud track-map__hud--top">
         <span>{isQualifying ? `${qualifyingLive?.session} LIVE CIRCUIT` : "LIVE CIRCUIT"}</span>
+        {!isQualifying && snapshot?.raceControl === "SAFETY_CAR" && (
+          <strong className="track-map__sc-status" data-phase={snapshot.safetyCarPhase}>
+            <i aria-hidden="true" />
+            <span>SAFETY CAR</span>
+            <b>{snapshot.safetyCarPhase === "DEPLOYED" ? "DEPLOYING" : snapshot.safetyCarPhase === "BUNCHING" ? "BUNCHING" : "RESTART"}</b>
+          </strong>
+        )}
       </div>
-      {!isQualifying && <aside className="track-intelligence-rail" aria-label="Circuit radio and local surface information">
+      {!isQualifying && <aside className="track-intelligence-rail" aria-label="Circuit radio, race control and sector rainfall">
         <TeamRadioOverlay />
-        <div aria-live="polite" className="track-weather">
-          <div className="track-weather__title"><span><CloudRain aria-hidden="true" size={15} /> LOCAL SURFACE</span><strong>{surfaceSummary}</strong></div>
-          <div className="track-weather__sectors">{sectorSurface.map((sector) => (
-            <span
-              className={`is-${sector.condition.toLowerCase().replace("_", "-")}`}
-              key={sector.sector}
-              style={{
-                "--wetness": `${Math.max(4, sector.wetness * 100)}%`,
-                "--rain-activity": Math.min(1, sector.rainIntensity * 1.6).toFixed(2),
-              } as CSSProperties}
-              title={`Sector ${sector.sector}: ${Math.round(sector.wetness * 100)}% wet · rain ${Math.round(sector.rainIntensity * 100)}%`}
-            >
-              <b>S{sector.sector}</b>
-              <i aria-hidden="true" />
-              <strong>{Math.round(sector.wetness * 100)}%</strong>
-              <em>{sector.condition.replace("_", " ")}</em>
-            </span>
-          ))}</div>
-          <small><Radar aria-hidden="true" size={13} />{snapshot?.weather.rainIntensity ? `RAIN CELL ${Math.round(snapshot.weather.rainIntensity * 100)}%` : snapshot?.weather.forecastRainInMinutes != null ? `ARRIVAL ${snapshot.weather.forecastRainInMinutes} MIN` : "RADAR CLEAR"}</small>
+        <RaceControlsPanel snapshot={snapshot} />
+        <div aria-label="Sector rainfall" aria-live="polite" className="track-weather">
+          <header className="track-weather__header">
+            <span><Droplets aria-hidden="true" size={15} /> WEATHER</span>
+            <div><strong>SECTOR RAINFALL</strong></div>
+          </header>
+          <div className="track-weather__chart">
+            <SectorRainfallGraph paused={paused} rainfall={sectorRainfall} />
+            <div className="track-weather__sectors">{sectorRainfall.map((rainIntensity, index) => {
+              const sector = (index + 1) as 1 | 2 | 3;
+              return <span data-rainfall={Math.round(rainIntensity * 100)} data-sector={sector} key={sector} aria-label={`Sector ${sector}: rain ${Math.round(rainIntensity * 100)} percent`} title={`Sector ${sector}: rain ${Math.round(rainIntensity * 100)}%`}>
+                <b>SECTOR {sector}</b>
+                <strong>{Math.round(rainIntensity * 100)}%<small>RAIN</small></strong>
+              </span>;
+            })}</div>
+          </div>
         </div>
       </aside>}
-      {isQualifying && <aside className="track-intelligence-rail qualifying-map-rail" aria-label="Qualifying circuit information">
+      {isQualifying && <aside
+        aria-label="Qualifying circuit information"
+        className="track-intelligence-rail qualifying-map-rail"
+        data-qualifying-rail="true"
+        data-status={qualifyingLive?.status}
+      >
         <section>
-          <header><span>QUALIFYING LIVE</span><strong>{qualifyingLive?.session}</strong></header>
-          <div><span><small>ON TRACK</small><strong>{Object.values(qualifyingLive?.cars ?? {}).filter((car) => car.phase !== "GARAGE").length}</strong></span><span><small>CUT LINE</small><strong>{qualifyingCut ? `P${qualifyingCut}` : "POLE"}</strong></span></div>
-          <ol>{(["OUT_LAP", "PUSH_LAP", "IN_LAP"] as const).map((phase) => <li key={phase}><i data-phase={phase} /><span>{phase === "PUSH_LAP" ? "FLYING LAP" : phase.replace("_", " ")}</span><strong>{qualifyingClassification.filter((entry) => entry.phase === phase).length}</strong></li>)}</ol>
-          <footer>DRY QUALIFYING · PIT LANE OPEN</footer>
+          <header>
+            <span><i aria-hidden="true" />QUALIFYING LIVE</span>
+            <strong aria-label={`${qualifyingLive?.session} qualifying`}>{qualifyingLive?.session}</strong>
+          </header>
+          <div className="qualifying-map-rail__metrics">
+            <span data-metric="track"><small>ON TRACK</small><strong>{Object.values(qualifyingLive?.cars ?? {}).filter((car) => car.phase !== "GARAGE").length}</strong><em>ACTIVE CARS</em></span>
+            <span data-metric="cut"><small>CUT LINE</small><strong>{qualifyingCut ? `P${qualifyingCut}` : "POLE"}</strong><em>ADVANCE</em></span>
+          </div>
+          <ol aria-label="Qualifying phase counts">
+            {(["OUT_LAP", "PUSH_LAP", "IN_LAP"] as const).map((phase) => {
+              const count = qualifyingClassification.filter((entry) => entry.phase === phase).length;
+              return <li data-active={count > 0} data-phase={phase} key={phase}><i aria-hidden="true" /><span>{phase === "PUSH_LAP" ? "FLYING LAP" : phase.replace("_", " ")}</span><strong>{count}</strong></li>;
+            })}
+          </ol>
         </section>
       </aside>}
       {(startPhase === "LIGHTS" || startPhase === "GO") && <div className={`track-start-sequence ${startPhase === "GO" ? "is-go" : ""}`} data-track-start-phase={startPhase}><div>{Array.from({ length: 5 }, (_, index) => <i className={index < lightsOn ? "is-on" : ""} key={index} />)}</div><span>{startPhase === "GO" ? "LIGHTS OUT" : "START"}</span></div>}
@@ -849,6 +1133,7 @@ export function RaceMap({ startPhase, lightsOn, qualifyingState = null }: { star
       <div className="track-map__legend">
         <span><i className="legend-dot legend-dot--player" />PLAYER</span>
         {isQualifying && <><span><i className="legend-dot legend-dot--qualifying-push" />FLYING LAP</span><span><i className="legend-dot legend-dot--qualifying-in" />COOL / IN</span></>}
+        {!isQualifying && <><span><i className="legend-dot legend-dot--energy-deploy" />BATTERY DEPLOY</span><span><i className="legend-dot legend-dot--energy-harvest" />BATTERY HARVEST</span></>}
         <span><i className="legend-line" />STRAIGHT MODE · WING OPEN</span>
         <span><i className="legend-line legend-line--detection" />OVERTAKE DET.</span>
         <span><i className="legend-line legend-line--pit" />PIT LANE</span>

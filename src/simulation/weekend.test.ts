@@ -416,8 +416,8 @@ describe("standard Formula 1 weekend", () => {
     expect(weekend.qualifyingLive!.cars[carId].flyingLapsRemaining).toBeGreaterThan(0);
     /*
      * The recovery in-lap is stretched to keep clear of other traffic, so the
-     * second attempt lands later than the old fixed-length cool-down. Run to the
-     * end of the segment rather than a fixed budget.
+     * second attempt lands later than the old fixed-length cool-down. Run to
+     * the end of the segment rather than a fixed budget.
      */
     while (weekend.currentSession === "Q1" && weekend.qualifyingLive!.cars[carId].completedRuns < 2) {
       weekend = tickLiveQualifying(weekend, 1);
@@ -722,7 +722,7 @@ describe("standard Formula 1 weekend", () => {
     expect(decision.spacingFactor).toBe(0.35);
   });
 
-  it("keeps both flying cars running in a sub-one-second conflict and penalises the following lap", () => {
+  it("automatically aborts the following flying car in a persistent sub-one-second conflict and returns it physically", () => {
     let weekend = createWeekendState(20_260_828, "ferrari");
     weekend = runWeekendSession(runWeekendSession(runWeekendSession(weekend)));
     weekend = startLiveQualifying(weekend);
@@ -748,14 +748,19 @@ describe("standard Formula 1 weekend", () => {
     weekend = { ...weekend, qualifyingLive: { ...live, cars: { "ferrari-1": following, "ferrari-2": ahead } } };
     weekend = tickLiveQualifying(weekend, 1);
     expect(weekend.qualifyingLive!.cars["ferrari-1"]).toMatchObject({
-      phase: "PUSH_LAP",
-      trafficDecisionState: "TRAFFIC",
+      phase: "ABORTED_LAP",
+      lastRunNote: "ABORTED",
+      trafficDecisionState: "ABORTED",
       trafficConflictCarId: "ferrari-2",
     });
-    expect(weekend.qualifyingLive!.cars["ferrari-1"].trafficPenaltySeconds).toBeGreaterThanOrEqual(0.07);
-    expect(weekend.qualifyingLive!.cars["ferrari-1"].flyingConflictSeconds).toBe(3);
     expect(weekend.qualifyingLive!.cars["ferrari-1"].bestLapSeconds).toBeNull();
-    expect(weekend.qualifyingLive!.cars["ferrari-1"].lastRunNote).not.toBe("ABORTED");
+    const phases = [weekend.qualifyingLive!.cars["ferrari-1"].phase];
+    for (let second = 0; second < 120 && weekend.qualifyingLive!.cars["ferrari-1"].phase !== "GARAGE"; second += 1) {
+      weekend = tickLiveQualifying(weekend, 1);
+      const phase = weekend.qualifyingLive!.cars["ferrari-1"].phase;
+      if (phase !== phases.at(-1)) phases.push(phase);
+    }
+    expect(phases).toEqual(["ABORTED_LAP", "PIT_ENTRY", "GARAGE"]);
   });
 
   it("warns when out-lap programmes converge but preserves the player's manual release", () => {

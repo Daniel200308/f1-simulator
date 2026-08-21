@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { normalizeLapDistance, pointAtDistance, segmentIndexAtDistance, SILVERSTONE_CIRCUIT, SILVERSTONE_CORNERS, SILVERSTONE_OVERTAKE_ACTIVATION_DISTANCE, SILVERSTONE_OVERTAKE_DETECTION_DISTANCE } from "@/simulation/track";
+import { CIRCUITS, circuitById, MONZA_CIRCUIT, normalizeLapDistance, pointAtDistance, segmentIndexAtDistance, SILVERSTONE_CIRCUIT, SILVERSTONE_CORNERS, SILVERSTONE_OVERTAKE_ACTIVATION_DISTANCE, SILVERSTONE_OVERTAKE_DETECTION_DISTANCE, SUZUKA_CIRCUIT } from "@/simulation/track";
 
 describe("track geometry", () => {
   it("uses the current Silverstone Grand Prix dimensions", () => {
@@ -39,5 +39,21 @@ describe("track geometry", () => {
     expect(SILVERSTONE_OVERTAKE_DETECTION_DISTANCE).toBeGreaterThan(SILVERSTONE_CORNERS[16].distanceMeters);
     expect(SILVERSTONE_OVERTAKE_DETECTION_DISTANCE).toBeLessThan(SILVERSTONE_OVERTAKE_ACTIVATION_DISTANCE);
     expect(SILVERSTONE_OVERTAKE_ACTIVATION_DISTANCE).toBeLessThan(SILVERSTONE_CORNERS[17].distanceMeters);
+  });
+
+  it("registers three fully-derived championship circuits", () => {
+    expect(CIRCUITS.map((circuit) => circuit.id)).toEqual([
+      SILVERSTONE_CIRCUIT.id,
+      MONZA_CIRCUIT.id,
+      SUZUKA_CIRCUIT.id,
+    ]);
+    for (const circuit of CIRCUITS) {
+      expect(circuitById(circuit.id)).toBe(circuit);
+      expect(circuit.points.length).toBeGreaterThan(100);
+      expect(circuit.segments).toHaveLength(circuit.points.length);
+      expect(circuit.corners).toHaveLength(circuit.turns);
+      expect(circuit.pitLane.entryStart).toBeLessThan(circuit.lengthMeters);
+      expect(pointAtDistance(circuit.lengthMeters, circuit)).toEqual(pointAtDistance(0, circuit));
+    }
   });
 });

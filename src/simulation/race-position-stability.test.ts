@@ -14,10 +14,24 @@ describe("race position stability", () => {
       for (const car of snapshot.cars) {
         const before = previous.get(car.carId);
         if (!before) continue;
-        // Retirements and finishes legitimately reshuffle the order.
+        // Retirements, finishes, and cars crossing pit-lane runners legitimately
+        // reshuffle more than one classification place in a single simulation tick.
         if (car.incidentStatus === "RETIRED" || before.incidentStatus === "RETIRED") continue;
         if (car.finishTime !== null || before.finishTime !== null) continue;
         const delta = Math.abs(car.racePosition - before.racePosition);
+        const crossedPitCar = delta > 1 && snapshot.cars.some((candidate) => {
+          if (candidate.carId === car.carId) return false;
+          const candidateBefore = previous.get(candidate.carId);
+          if (!candidateBefore) return false;
+          const wasCrossed = car.racePosition < before.racePosition
+            ? candidateBefore.racePosition < before.racePosition &&
+              candidateBefore.racePosition >= car.racePosition
+            : candidateBefore.racePosition > before.racePosition &&
+              candidateBefore.racePosition <= car.racePosition;
+          return wasCrossed &&
+            (candidateBefore.pitStatus !== "TRACK" || candidate.pitStatus !== "TRACK");
+        });
+        if (crossedPitCar) continue;
         if (delta > 1 && jumps.length < 10) {
           jumps.push(`tick=${tick} ${car.carId} P${before.racePosition} -> P${car.racePosition}`);
         }

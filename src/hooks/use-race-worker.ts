@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef } from "react";
 
-import type { CoolingMode, EnergyMode, PaceMode, SimulationSpeed, TeamOrderType, TyreCompound, TyreMode, WeekendTyreInventory, WeekendTyreUsage } from "@/domain/race";
+import type { CoolingMode, EnergyMode, PaceMode, RaceReliabilityInput, RaceSnapshot, SimulationSpeed, TeamOrderType, TyreCompound, TyreMode, WeekendTyreInventory, WeekendTyreUsage } from "@/domain/race";
 import { DEFAULT_PLAYER_TEAM_ID } from "@/fixtures/grid";
 import { DEFAULT_SEED } from "@/simulation/engine";
 import type { WorkerCommand, WorkerEvent } from "@/simulation/protocol";
@@ -54,6 +54,7 @@ export function useRaceWorker() {
     servePenalty: (carId: string) => send({ type: "SERVE_PENALTY", carId }),
     stayOut: (carId: string) => send({ type: "CANCEL_PIT", carId }),
     setStartingTyre: (carId: string, compound: TyreCompound, tyreSetId?: string) => send({ type: "SET_START_TYRE", carId, compound, tyreSetId }),
-    reset: (seed = DEFAULT_SEED, gridOrder?: readonly string[], weekendTyreUsage?: WeekendTyreUsage, setupPerformanceByCar?: Readonly<Record<string, number>>, playerTeamId = DEFAULT_PLAYER_TEAM_ID, weekendTyreInventory?: WeekendTyreInventory) => send({ type: "RESET", seed, playerTeamId, gridOrder, weekendTyreUsage, weekendTyreInventory, setupPerformanceByCar }),
+    loadSnapshot: (snapshot: RaceSnapshot, speed: SimulationSpeed = 1, paused = true) => send({ type: "LOAD_SNAPSHOT", snapshot, speed, paused }),
+    reset: (seed = DEFAULT_SEED, gridOrder?: readonly string[], weekendTyreUsage?: WeekendTyreUsage, setupPerformanceByCar?: Readonly<Record<string, number>>, playerTeamId = DEFAULT_PLAYER_TEAM_ID, weekendTyreInventory?: WeekendTyreInventory, circuitId?: string, reliabilityByCar?: Readonly<Record<string, RaceReliabilityInput>>) => send({ type: "RESET", seed, circuitId, playerTeamId, gridOrder, weekendTyreUsage, weekendTyreInventory, setupPerformanceByCar, reliabilityByCar }),
   };
 }

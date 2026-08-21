@@ -18,9 +18,13 @@ export function TeamRadioOverlay() {
   const teamMessages = snapshot?.radioMessages
     .filter((message) => message.source !== "RACE CONTROL" && message.carId !== null && playerCarIds.includes(message.carId)) ?? [];
   const latestDriverMessage = teamMessages.find((message) => message.source === "DRIVER");
-  const latestCommandEngineerMessage = teamMessages.find((message) => message.source === "ENGINEER" && /-(pace|tyre|energy|box|stay-out|team-order|serve-penalty|cooling|brake-bias)$/.test(message.id));
+  const latestCommandEngineerMessage = [...teamMessages]
+    .filter((message) => message.source === "ENGINEER"
+      && (/-(pace|tyre|energy|box|stay-out|team-order|serve-penalty|cooling|brake-bias)$/.test(message.id)
+        || message.id.endsWith("-operations-radio-control-engineer")))
+    .sort((left, right) => right.elapsedTime - left.elapsedTime)[0];
   const radioMessages = [latestDriverMessage, latestCommandEngineerMessage].filter((message): message is NonNullable<typeof message> => Boolean(message));
-  const tone = team ? `#${team.primaryColor.toString(16).padStart(6, "0")}` : "#20d7e7";
+  const tone = team ? `#${team.primaryColor.toString(16).padStart(6, "0")}` : "#7b858f";
 
   return (
     <section

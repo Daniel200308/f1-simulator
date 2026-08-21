@@ -46,7 +46,20 @@ function smoothNoise(seed: number, stream: number, elapsedTime: number, interval
   return current + (next - current) * blend;
 }
 
-export type WeatherScenarioKind = "DRIZZLE" | "PASSING_SHOWERS" | "BUILDING_RAIN" | "SUDDEN_DOWNPOUR" | "PATCHY_CELLS" | "TWO_WAVE";
+export type WeatherScenarioKind =
+  | "CLEAR"
+  | "DRIZZLE"
+  | "PASSING_SHOWERS"
+  | "BUILDING_RAIN"
+  | "SUDDEN_DOWNPOUR"
+  | "PATCHY_CELLS"
+  | "TWO_WAVE"
+  | "SUSTAINED_RAIN"
+  | "HEAVY_SUSTAINED"
+  | "SUNSHOWER"
+  | "STOP_START_SHOWERS"
+  | "LATE_STORM"
+  | "CLEARING_RAIN";
 
 export interface WeatherCellPlan {
   id: string;
@@ -68,15 +81,87 @@ export interface WeatherScenario {
   cells: readonly WeatherCellPlan[];
 }
 
-const WEATHER_SCENARIO_KINDS: readonly WeatherScenarioKind[] = [
+const WEATHER_RAIN_SCENARIO_KINDS: readonly Exclude<WeatherScenarioKind, "CLEAR">[] = [
   "DRIZZLE",
   "PASSING_SHOWERS",
   "BUILDING_RAIN",
   "SUDDEN_DOWNPOUR",
   "PATCHY_CELLS",
   "TWO_WAVE",
+  "SUSTAINED_RAIN",
+  "HEAVY_SUSTAINED",
+  "SUNSHOWER",
+  "STOP_START_SHOWERS",
+  "LATE_STORM",
+  "CLEARING_RAIN",
 ];
+/** Keeps a useful dry-race baseline while retaining varied wet scenarios. */
+export const WEATHER_CLEAR_SCENARIO_SHARE = 0.14;
 const weatherScenarioCache = new Map<number, WeatherScenario>();
+
+interface WeatherScenarioProfile {
+  cellCount: number;
+  start: readonly [number, number];
+  duration: readonly [number, number];
+  peak: readonly [number, number];
+  stagger: readonly [number, number];
+  travel: readonly [number, number];
+  radius: readonly [number, number];
+  buildFraction: readonly [number, number];
+  buildExponent: readonly [number, number];
+  decayExponent: readonly [number, number];
+}
+
+const WEATHER_SCENARIO_PROFILES: Readonly<Record<Exclude<WeatherScenarioKind, "CLEAR">, WeatherScenarioProfile>> = {
+  DRIZZLE: {
+    cellCount: 1, start: [180, 3_100], duration: [1_200, 2_200], peak: [0.46, 0.68], stagger: [0, 0],
+    travel: [1.15, 1.75], radius: [0.52, 0.76], buildFraction: [0.34, 0.62], buildExponent: [0.7, 1.25], decayExponent: [0.75, 1.3],
+  },
+  PASSING_SHOWERS: {
+    cellCount: 2, start: [80, 2_850], duration: [700, 1_200], peak: [0.6, 0.84], stagger: [95, 360],
+    travel: [1.35, 2.05], radius: [0.36, 0.54], buildFraction: [0.24, 0.48], buildExponent: [0.5, 1.05], decayExponent: [0.65, 1.25],
+  },
+  BUILDING_RAIN: {
+    cellCount: 1, start: [120, 2_600], duration: [1_100, 2_000], peak: [0.66, 0.9], stagger: [0, 0],
+    travel: [1.1, 1.65], radius: [0.44, 0.66], buildFraction: [0.46, 0.7], buildExponent: [0.75, 1.4], decayExponent: [0.62, 1.0],
+  },
+  SUDDEN_DOWNPOUR: {
+    cellCount: 1, start: [110, 2_400], duration: [700, 1_100], peak: [0.82, 0.99], stagger: [0, 0],
+    travel: [1.35, 2.05], radius: [0.5, 0.72], buildFraction: [0.08, 0.2], buildExponent: [0.16, 0.36], decayExponent: [0.8, 1.5],
+  },
+  PATCHY_CELLS: {
+    cellCount: 3, start: [80, 2_850], duration: [650, 1_100], peak: [0.6, 0.86], stagger: [75, 260],
+    travel: [1.3, 2.0], radius: [0.32, 0.48], buildFraction: [0.24, 0.52], buildExponent: [0.5, 1.1], decayExponent: [0.7, 1.45],
+  },
+  TWO_WAVE: {
+    cellCount: 2, start: [90, 2_400], duration: [800, 1_350], peak: [0.62, 0.88], stagger: [620, 1_180],
+    travel: [1.2, 1.9], radius: [0.34, 0.54], buildFraction: [0.24, 0.5], buildExponent: [0.52, 1.05], decayExponent: [0.7, 1.3],
+  },
+  SUSTAINED_RAIN: {
+    cellCount: 1, start: [90, 1_750], duration: [2_400, 4_000], peak: [0.58, 0.86], stagger: [0, 0],
+    travel: [0.72, 1.2], radius: [0.6, 0.84], buildFraction: [0.18, 0.34], buildExponent: [0.48, 0.9], decayExponent: [0.25, 0.58],
+  },
+  HEAVY_SUSTAINED: {
+    cellCount: 1, start: [80, 1_900], duration: [1_900, 3_200], peak: [0.82, 0.99], stagger: [0, 0],
+    travel: [0.68, 1.1], radius: [0.58, 0.82], buildFraction: [0.12, 0.26], buildExponent: [0.3, 0.72], decayExponent: [0.22, 0.5],
+  },
+  SUNSHOWER: {
+    cellCount: 2, start: [140, 3_300], duration: [520, 850], peak: [0.56, 0.78], stagger: [120, 480],
+    travel: [1.5, 2.25], radius: [0.3, 0.46], buildFraction: [0.16, 0.38], buildExponent: [0.4, 0.9], decayExponent: [0.7, 1.4],
+  },
+  STOP_START_SHOWERS: {
+    cellCount: 3, start: [100, 2_200], duration: [620, 1_050], peak: [0.6, 0.86], stagger: [360, 760],
+    travel: [1.2, 1.95], radius: [0.32, 0.5], buildFraction: [0.18, 0.42], buildExponent: [0.42, 0.95], decayExponent: [0.62, 1.25],
+  },
+  LATE_STORM: {
+    cellCount: 2, start: [2_300, 4_000], duration: [900, 1_650], peak: [0.7, 0.99], stagger: [60, 260],
+    travel: [1.0, 1.7], radius: [0.46, 0.72], buildFraction: [0.1, 0.28], buildExponent: [0.22, 0.6], decayExponent: [0.45, 0.9],
+  },
+  CLEARING_RAIN: {
+    cellCount: 1, start: [-620, -80], duration: [1_700, 2_800], peak: [0.6, 0.86], stagger: [0, 0],
+    travel: [0.8, 1.35], radius: [0.52, 0.76], buildFraction: [0.14, 0.3], buildExponent: [0.34, 0.75], decayExponent: [0.42, 0.82],
+  },
+};
 
 function range(seed: number, stream: number, minimum: number, maximum: number): number {
   return minimum + hashNoise(seed, stream, 0) * (maximum - minimum);
@@ -86,39 +171,28 @@ function range(seed: number, stream: number, minimum: number, maximum: number): 
 export function createWeatherScenario(seed: number): WeatherScenario {
   const cached = weatherScenarioCache.get(seed);
   if (cached) return cached;
-  const kind = WEATHER_SCENARIO_KINDS[Math.min(
-    WEATHER_SCENARIO_KINDS.length - 1,
-    Math.floor(hashNoise(seed, 9_000, 0) * WEATHER_SCENARIO_KINDS.length),
+  const scenarioRoll = hashNoise(seed, 9_000, 0);
+  if (scenarioRoll < WEATHER_CLEAR_SCENARIO_SHARE) {
+    const clearScenario = { kind: "CLEAR" as const, cells: [] };
+    weatherScenarioCache.set(seed, clearScenario);
+    return clearScenario;
+  }
+  const rainRoll = (scenarioRoll - WEATHER_CLEAR_SCENARIO_SHARE) / (1 - WEATHER_CLEAR_SCENARIO_SHARE);
+  const kind = WEATHER_RAIN_SCENARIO_KINDS[Math.min(
+    WEATHER_RAIN_SCENARIO_KINDS.length - 1,
+    Math.floor(rainRoll * WEATHER_RAIN_SCENARIO_KINDS.length),
   )];
-  const count = kind === "PATCHY_CELLS" ? 3 : kind === "TWO_WAVE" || kind === "PASSING_SHOWERS" ? 2 : 1;
-  const baseStart = kind === "SUDDEN_DOWNPOUR"
-    ? range(seed, 9_010, 110, 2_400)
-    : kind === "DRIZZLE"
-      ? range(seed, 9_010, 180, 3_100)
-      : range(seed, 9_010, 80, 2_850);
-  const cells = Array.from({ length: count }, (_, index): WeatherCellPlan => {
+  const profile = WEATHER_SCENARIO_PROFILES[kind];
+  const baseStart = range(seed, 9_010, profile.start[0], profile.start[1]);
+  const cells = Array.from({ length: profile.cellCount }, (_, index): WeatherCellPlan => {
     const stream = 9_100 + index * 20;
     const directionRadians = range(seed, stream, 0, Math.PI * 2);
-    const perpendicularOffset = range(seed, stream + 1, -0.42, 0.42);
+    const perpendicularOffset = range(seed, stream + 1, -0.3, 0.3);
     const directionX = Math.cos(directionRadians);
     const directionY = Math.sin(directionRadians);
-    const durationSeconds = kind === "DRIZZLE"
-      ? range(seed, stream + 2, 720, 1_500)
-      : kind === "BUILDING_RAIN"
-        ? range(seed, stream + 2, 760, 1_420)
-        : kind === "SUDDEN_DOWNPOUR"
-          ? range(seed, stream + 2, 210, 460)
-          : range(seed, stream + 2, 260, 760);
-    const peakIntensity = kind === "DRIZZLE"
-      ? range(seed, stream + 3, 0.1, 0.3)
-      : kind === "SUDDEN_DOWNPOUR"
-        ? range(seed, stream + 3, 0.76, 0.98)
-        : kind === "BUILDING_RAIN"
-          ? range(seed, stream + 3, 0.46, 0.78)
-          : range(seed, stream + 3, 0.24, 0.72);
-    const stagger = index === 0 ? 0
-      : kind === "TWO_WAVE" ? index * range(seed, stream + 4, 620, 1_180)
-        : index * range(seed, stream + 4, 95, 390);
+    const durationSeconds = range(seed, stream + 2, profile.duration[0], profile.duration[1]);
+    const peakIntensity = range(seed, stream + 3, profile.peak[0], profile.peak[1]);
+    const stagger = index === 0 ? 0 : index * range(seed, stream + 4, profile.stagger[0], profile.stagger[1]);
     const originX = 0.5 - directionX * range(seed, stream + 5, 0.72, 1.05) - directionY * perpendicularOffset;
     const originY = 0.5 - directionY * range(seed, stream + 6, 0.72, 1.05) + directionX * perpendicularOffset;
     return {
@@ -129,11 +203,11 @@ export function createWeatherScenario(seed: number): WeatherScenario {
       originX,
       originY,
       directionRadians,
-      travelDistance: range(seed, stream + 7, 1.45, 2.2),
-      radius: kind === "DRIZZLE" ? range(seed, stream + 8, 0.34, 0.52) : range(seed, stream + 8, 0.2, 0.42),
-      buildFraction: kind === "SUDDEN_DOWNPOUR" ? range(seed, stream + 9, 0.08, 0.2) : range(seed, stream + 9, 0.28, 0.6),
-      buildExponent: kind === "SUDDEN_DOWNPOUR" ? range(seed, stream + 10, 0.16, 0.36) : range(seed, stream + 10, 0.55, 1.25),
-      decayExponent: range(seed, stream + 11, 0.65, 1.55),
+      travelDistance: range(seed, stream + 7, profile.travel[0], profile.travel[1]),
+      radius: range(seed, stream + 8, profile.radius[0], profile.radius[1]),
+      buildFraction: range(seed, stream + 9, profile.buildFraction[0], profile.buildFraction[1]),
+      buildExponent: range(seed, stream + 10, profile.buildExponent[0], profile.buildExponent[1]),
+      decayExponent: range(seed, stream + 11, profile.decayExponent[0], profile.decayExponent[1]),
     };
   });
   const scenario = { kind, cells } satisfies WeatherScenario;
@@ -337,6 +411,14 @@ const TRACK_TEMPERATURE_BASE_C = 28;
 const TRACK_TEMPERATURE_EVOLUTION_C = 5.5;
 /** Time to reach most of that evolution, roughly a full race distance. */
 const TRACK_EVOLUTION_TIME_CONSTANT_SECONDS = 1_800;
+/** Small solar/sky oscillation keeps the live readout moving between rain cells. */
+const TRACK_TEMPERATURE_SOLAR_SWING_C = 0.55;
+const AIR_TEMPERATURE_BASE_C = 22;
+const AIR_TEMPERATURE_SWING_C = 0.65;
+
+function weatherCycle(elapsedTime: number, periodSeconds: number, phase = 0): number {
+  return Math.sin((Math.max(0, elapsedTime) / periodSeconds) * Math.PI * 2 + phase);
+}
 
 /**
  * Surface temperature follows track evolution and the weather together.
@@ -346,13 +428,28 @@ const TRACK_EVOLUTION_TIME_CONSTANT_SECONDS = 1_800;
  * surface directly and standing water keeps it cool afterwards, which is why a
  * wet track stays cold even once the shower has passed.
  */
-export function trackTemperatureFor(elapsedTime: number, rainIntensity: number, trackWetness: number): number {
+export function trackTemperatureFor(
+  elapsedTime: number,
+  rainIntensity: number,
+  trackWetness: number,
+  rainProbability = rainIntensity,
+): number {
   const evolution = 1 - Math.exp(-Math.max(0, elapsedTime) / TRACK_EVOLUTION_TIME_CONSTANT_SECONDS);
+  const forecastCloud = clamp01(rainProbability * 0.78 + trackWetness * 0.24);
   // Rain suppresses the rubbering-in benefit as well as cooling the surface.
   const evolutionGain = TRACK_TEMPERATURE_EVOLUTION_C * evolution * (1 - Math.min(1, trackWetness * 1.15));
-  const rainCooling = rainIntensity * 9;
+  const solarSwing = weatherCycle(elapsedTime, 3_600, 0.25)
+    * TRACK_TEMPERATURE_SOLAR_SWING_C
+    * (1 - forecastCloud);
+  const rainCooling = rainIntensity * 9 + rainProbability * 1.2;
   const wetCooling = trackWetness * 4.5;
-  return Math.max(12, TRACK_TEMPERATURE_BASE_C + evolutionGain - rainCooling - wetCooling);
+  return Math.max(12, Math.min(40, TRACK_TEMPERATURE_BASE_C + evolutionGain + solarSwing - rainCooling - wetCooling));
+}
+
+function airTemperatureFor(elapsedTime: number, rainIntensity: number, rainProbability: number): number {
+  const atmosphericSwing = weatherCycle(elapsedTime, 4_800, -0.35) * AIR_TEMPERATURE_SWING_C;
+  const rainCooling = rainIntensity * 3.5 + rainProbability * 0.8;
+  return Math.max(12, Math.min(29, AIR_TEMPERATURE_BASE_C + atmosphericSwing - rainCooling));
 }
 
 function assembleWeather(seed: number, elapsedTime: number, zones: readonly TrackSurfaceZone[]): WeatherState {
@@ -375,8 +472,8 @@ function assembleWeather(seed: number, elapsedTime: number, zones: readonly Trac
     condition: conditionFor(rainIntensity, rainProbability, trackWetness),
     rainIntensity,
     trackWetness,
-    airTemperature: 22 - rainIntensity * 3.5,
-    trackTemperature: trackTemperatureFor(elapsedTime, rainIntensity, trackWetness),
+    airTemperature: airTemperatureFor(elapsedTime, rainIntensity, rainProbability),
+    trackTemperature: trackTemperatureFor(elapsedTime, rainIntensity, trackWetness, rainProbability),
     forecastRainInMinutes: nextRain,
     radarCells,
     surfaceZones: zones,

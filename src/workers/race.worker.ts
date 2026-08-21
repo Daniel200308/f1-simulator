@@ -62,11 +62,21 @@ context.onmessage = (message: MessageEvent<WorkerCommand>) => {
     switch (message.data.type) {
       case "INIT":
       case "RESET":
-        snapshot = createInitialSnapshot(message.data.seed, "PAUSED", message.data.gridOrder, message.data.weekendTyreUsage, message.data.setupPerformanceByCar, message.data.playerTeamId, message.data.weekendTyreInventory);
+        snapshot = createInitialSnapshot(message.data.seed, "PAUSED", message.data.gridOrder, message.data.weekendTyreUsage, message.data.setupPerformanceByCar, message.data.playerTeamId, message.data.weekendTyreInventory, message.data.circuitId, message.data.reliabilityByCar);
         paused = true;
         autoPauseReason = null;
         accumulator = 0;
         previousWallTime = performance.now();
+        publish();
+        break;
+      case "LOAD_SNAPSHOT":
+        snapshot = message.data.snapshot;
+        speed = message.data.speed ?? 1;
+        paused = message.data.paused ?? true;
+        autoPauseReason = null;
+        accumulator = 0;
+        previousWallTime = performance.now();
+        if (paused && snapshot.status === "RUNNING") snapshot = { ...snapshot, status: "PAUSED" };
         publish();
         break;
       case "PLAY":

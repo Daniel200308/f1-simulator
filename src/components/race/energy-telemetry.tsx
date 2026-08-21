@@ -4,21 +4,22 @@ import type { CSSProperties } from "react";
 import type { RaceCarState } from "@/domain/race";
 import { AeroWingCar } from "@/components/race/aero-wing-car";
 import { predictEnergySoc } from "@/simulation/energy/energy-prediction";
-import { migrateEnergySystemState } from "@/simulation/energy/energy-system";
+import { energyFlowStateFor, migrateEnergySystemState } from "@/simulation/energy/energy-system";
 
 export function EnergyTelemetry({ car }: { car: RaceCarState }) {
   const energy = migrateEnergySystemState(car.energySystem, car.batteryPercent, car.energyStoreTemperature);
   const soc = Math.round(energy.stateOfCharge * 100);
   const target = Math.round(energy.targetSocAtLapEnd * 100);
-  const deploying = energy.currentDeployPowerKW >= energy.currentHarvestPowerKW && energy.currentDeployPowerKW > 1;
-  const harvesting = energy.currentHarvestPowerKW > energy.currentDeployPowerKW && energy.currentHarvestPowerKW > 1;
-  const flow = energy.clippingActive ? "CLIPPING" : deploying ? "DEPLOY" : harvesting ? "HARVEST" : "IDLE";
+  const energyFlow = energyFlowStateFor(energy);
+  const deploying = energyFlow === "DEPLOYING" || energyFlow === "OVERTAKE" || energyFlow === "DEFENDING";
+  const harvesting = energyFlow === "HARVESTING";
+  const flow = energyFlow === "CLIPPING" ? "CLIPPING" : deploying ? "DEPLOY" : harvesting ? "HARVEST" : "IDLE";
   const [, oneLapSoc, threeLapSoc, fiveLapSoc] = predictEnergySoc(energy, energy.deploymentMode).map((value) => Math.round(value * 100));
   const rechargeThreshold = Math.max(18, target - 8);
   const rechargeAt = ([oneLapSoc, threeLapSoc, fiveLapSoc] as const).findIndex((value) => value <= rechargeThreshold);
   const rechargeInLaps = rechargeAt < 0 ? null : ([1, 3, 5] as const)[rechargeAt];
   const statusColor = energy.clippingActive || energy.thermalBand === "CRITICAL" ? "var(--red)"
-    : harvesting ? "#398cff"
+    : harvesting ? "#526271"
       : deploying ? "var(--red)"
         : soc < 24 || energy.thermalBand === "HOT" ? "var(--yellow)" : "var(--green)";
   const flowLabel = harvesting ? "CHARGING" : deploying ? "DEPLOYING" : energy.clippingActive ? "CLIPPING" : "STANDBY";

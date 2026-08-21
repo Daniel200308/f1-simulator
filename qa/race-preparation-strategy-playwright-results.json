@@ -84,11 +84,11 @@
         {
           "selector": "[class*='preRacePlanRows'] > article:nth-child(3)",
           "left": 507.5625,
-          "top": 478.765625,
+          "top": 479.765625,
           "right": 1399,
           "bottom": 520.65625,
           "width": 891.4375,
-          "height": 41.890625
+          "height": 40.890625
         },
         {
           "selector": "[class*='raceDebriefArea'] button",
@@ -228,11 +228,11 @@
         {
           "selector": "[class*='preRacePlanRows'] > article:nth-child(3)",
           "left": 448.15625,
-          "top": 397.125,
+          "top": 397.78125,
           "right": 1245.984375,
           "bottom": 427.59375,
           "width": 797.828125,
-          "height": 30.46875
+          "height": 29.8125
         },
         {
           "selector": "[class*='raceDebriefArea'] button",

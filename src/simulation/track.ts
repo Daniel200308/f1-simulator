@@ -143,10 +143,10 @@ const SPEED_BY_KIND: Record<SegmentKind, number> = {
 
 /** Official 2026 Silverstone Straight Mode sections, mapped to lap ratios. */
 export const SILVERSTONE_STRAIGHT_MODE_ZONES = [
-  { id: "SM1", label: "HAMILTON", from: "T18", to: "T1", startRatio: 0.00, endRatio: 0.10 },
-  { id: "SM2", label: "WELLINGTON", from: "T5", to: "T6", startRatio: 0.24, endRatio: 0.32 },
-  { id: "SM3", label: "NATIONAL", from: "T7", to: "T9", startRatio: 0.40, endRatio: 0.50 },
-  { id: "SM4", label: "HANGAR", from: "T14", to: "T15", startRatio: 0.73, endRatio: 0.83 },
+  { id: "SM1", label: "Hamilton Straight", from: "T18", to: "T1", startRatio: 0.00, endRatio: 0.10 },
+  { id: "SM2", label: "Wellington Straight", from: "T5", to: "T6", startRatio: 0.24, endRatio: 0.32 },
+  { id: "SM3", label: "National Straight", from: "T7", to: "T9", startRatio: 0.40, endRatio: 0.50 },
+  { id: "SM4", label: "Hangar Straight", from: "T14", to: "T15", startRatio: 0.73, endRatio: 0.83 },
 ] as const;
 
 function distance(a: TrackPoint, b: TrackPoint): number {
@@ -218,7 +218,7 @@ function isActiveAeroDistance(ratio: number): boolean {
   return SILVERSTONE_STRAIGHT_MODE_ZONES.some((zone) => ratio >= zone.startRatio && ratio <= zone.endRatio);
 }
 
-function buildCircuit(): CircuitDefinition {
+function buildSilverstoneCircuit(): CircuitDefinition {
   const points = rotateClosedCurve(smoothClosedCurve(SILVERSTONE_ANCHORS), SILVERSTONE_START_POINT_INDEX);
   const normalizedLengths = points.map((point, index) => distance(point, points[(index + 1) % points.length]));
   const totalNormalized = normalizedLengths.reduce((sum, length) => sum + length, 0);
@@ -246,36 +246,58 @@ function buildCircuit(): CircuitDefinition {
     cumulativeDistances.push(cursor);
   });
 
+  const corners = SILVERSTONE_CORNER_ANCHORS.map(({ number, name, anchorIndex }) => ({
+    number,
+    name,
+    distanceMeters: cumulativeDistances[
+      (anchorIndex * CURVE_SUBDIVISIONS - SILVERSTONE_START_POINT_INDEX + points.length)
+        % points.length
+    ],
+  }));
+  const sectorEnds = [corners[4].distanceMeters + 30, corners[10].distanceMeters] as const;
+  const clubCornerGap = corners[17].distanceMeters - corners[16].distanceMeters;
+
   return {
     id: "silverstone-grand-prix-circuit",
     name: "Silverstone Circuit",
+    shortName: "SILVERSTONE",
+    location: "Silverstone",
     country: "United Kingdom",
     lengthMeters,
     totalLaps: 52,
+    turns: 18,
+    referenceLapSeconds: 89.438,
     points,
     segments,
     cumulativeDistances,
+    corners,
+    sectorEnds,
+    straightZones: SILVERSTONE_STRAIGHT_MODE_ZONES,
+    overtakeZone: {
+      detectionDistance: corners[16].distanceMeters + Math.min(42, clubCornerGap * 0.28),
+      activationDistance: corners[17].distanceMeters - Math.min(34, clubCornerGap * 0.2),
+      endDistance: lengthMeters * 0.1,
+    },
+    pitLane: {
+      entryStart: lengthMeters - 185,
+      limiterStart: lengthMeters - 135,
+      boxDistance: lengthMeters - 45,
+      exitEnd: 155,
+      boxFrontageMeters: 80,
+    },
   };
 }
 
-export const SILVERSTONE_CIRCUIT = buildCircuit();
+export const SILVERSTONE_CIRCUIT = buildSilverstoneCircuit();
 
-export const SILVERSTONE_CORNERS = SILVERSTONE_CORNER_ANCHORS.map(({ number, name, anchorIndex }) => ({
-  number,
-  name,
-  distanceMeters: SILVERSTONE_CIRCUIT.cumulativeDistances[
-    (anchorIndex * CURVE_SUBDIVISIONS - SILVERSTONE_START_POINT_INDEX + SILVERSTONE_CIRCUIT.points.length)
-      % SILVERSTONE_CIRCUIT.points.length
-  ],
-}));
+export const SILVERSTONE_CORNERS = SILVERSTONE_CIRCUIT.corners;
 
 // 2026 Silverstone uses one Overtake Mode detection point just after T17 and
 // an activation line just before T18. The public circuit guide does not publish
 // metre coordinates, so the game maps "just after/before" onto this centreline.
-const CLUB_CORNER_GAP = SILVERSTONE_CORNERS[17].distanceMeters - SILVERSTONE_CORNERS[16].distanceMeters;
-export const SILVERSTONE_OVERTAKE_DETECTION_DISTANCE = SILVERSTONE_CORNERS[16].distanceMeters + Math.min(42, CLUB_CORNER_GAP * 0.28);
-export const SILVERSTONE_OVERTAKE_ACTIVATION_DISTANCE = SILVERSTONE_CORNERS[17].distanceMeters - Math.min(34, CLUB_CORNER_GAP * 0.2);
-export const SILVERSTONE_OVERTAKE_ZONE_END_DISTANCE = SILVERSTONE_CIRCUIT.lengthMeters * 0.1;
+export const SILVERSTONE_OVERTAKE_DETECTION_DISTANCE = SILVERSTONE_CIRCUIT.overtakeZone.detectionDistance;
+export const SILVERSTONE_OVERTAKE_ACTIVATION_DISTANCE = SILVERSTONE_CIRCUIT.overtakeZone.activationDistance;
+export const SILVERSTONE_OVERTAKE_ZONE_END_DISTANCE = SILVERSTONE_CIRCUIT.overtakeZone.endDistance;
 
 /**
  * Silverstone's two movable-aerodynamic zones.
@@ -313,21 +335,164 @@ export function wingZoneAtDistance(distanceMeters: number): typeof SILVERSTONE_W
   return SILVERSTONE_WING_ZONES.find((zone) => lapDistance >= zone.openAtMeters && lapDistance < zone.closeAtMeters) ?? null;
 }
 
-export const SILVERSTONE_SECTOR_ENDS = [
-  SILVERSTONE_CORNERS[4].distanceMeters + 30,
-  SILVERSTONE_CORNERS[10].distanceMeters,
-] as const;
+export const SILVERSTONE_SECTOR_ENDS = SILVERSTONE_CIRCUIT.sectorEnds;
 
-export function sectorAtDistance(distanceMeters: number): 1 | 2 | 3 {
-  const lapDistance = normalizeLapDistance(distanceMeters);
-  if (lapDistance < SILVERSTONE_SECTOR_ENDS[0]) return 1;
-  if (lapDistance < SILVERSTONE_SECTOR_ENDS[1]) return 2;
+interface CircuitBlueprint {
+  id: string;
+  name: string;
+  shortName: string;
+  location: string;
+  country: string;
+  lengthMeters: number;
+  totalLaps: number;
+  turns: number;
+  referenceLapSeconds: number;
+  anchors: readonly TrackPoint[];
+  cornerNames: readonly string[];
+  sectorRatios: readonly [number, number];
+  straightZones: readonly { id: string; label: string; startRatio: number; endRatio: number }[];
+  overtakeRatios: readonly [number, number, number];
+  pitRatios: readonly [number, number, number, number];
+}
+
+function buildCircuitFromBlueprint(blueprint: CircuitBlueprint): CircuitDefinition {
+  const points = smoothClosedCurve(blueprint.anchors, 8);
+  const normalizedLengths = points.map((point, index) => distance(point, points[(index + 1) % points.length]));
+  const totalNormalized = normalizedLengths.reduce((sum, length) => sum + length, 0);
+  const cumulativeDistances: number[] = [0];
+  const segments: TrackSegment[] = [];
+  let cursor = 0;
+  points.forEach((point, index) => {
+    const length = (normalizedLengths[index] / totalNormalized) * blueprint.lengthMeters;
+    const kind = segmentKind(points, index);
+    segments.push({
+      id: `${blueprint.id}-${index + 1}`,
+      startDistance: cursor,
+      endDistance: cursor + length,
+      length,
+      kind,
+      speedLimitKph: SPEED_BY_KIND[kind],
+      activeAeroAllowed: blueprint.straightZones.some((zone) => (
+        cursor / blueprint.lengthMeters >= zone.startRatio &&
+        cursor / blueprint.lengthMeters <= zone.endRatio
+      )),
+      p1: point,
+      p2: points[(index + 1) % points.length],
+    });
+    cursor += length;
+    cumulativeDistances.push(cursor);
+  });
+
+  const corners = blueprint.cornerNames.map((name, index) => ({
+    number: index + 1,
+    name,
+    distanceMeters: ((index + 0.55) / blueprint.cornerNames.length) * blueprint.lengthMeters,
+  }));
+  return {
+    id: blueprint.id,
+    name: blueprint.name,
+    shortName: blueprint.shortName,
+    location: blueprint.location,
+    country: blueprint.country,
+    lengthMeters: blueprint.lengthMeters,
+    totalLaps: blueprint.totalLaps,
+    turns: blueprint.turns,
+    referenceLapSeconds: blueprint.referenceLapSeconds,
+    points,
+    segments,
+    cumulativeDistances,
+    corners,
+    sectorEnds: [blueprint.sectorRatios[0] * blueprint.lengthMeters, blueprint.sectorRatios[1] * blueprint.lengthMeters],
+    straightZones: blueprint.straightZones,
+    overtakeZone: {
+      detectionDistance: blueprint.overtakeRatios[0] * blueprint.lengthMeters,
+      activationDistance: blueprint.overtakeRatios[1] * blueprint.lengthMeters,
+      endDistance: blueprint.overtakeRatios[2] * blueprint.lengthMeters,
+    },
+    pitLane: {
+      entryStart: blueprint.pitRatios[0] * blueprint.lengthMeters,
+      limiterStart: blueprint.pitRatios[1] * blueprint.lengthMeters,
+      boxDistance: blueprint.pitRatios[2] * blueprint.lengthMeters,
+      exitEnd: blueprint.pitRatios[3] * blueprint.lengthMeters,
+      boxFrontageMeters: 80,
+    },
+  };
+}
+
+export const MONZA_CIRCUIT = buildCircuitFromBlueprint({
+  id: "monza-grand-prix-circuit",
+  name: "Autodromo Nazionale Monza",
+  shortName: "MONZA",
+  location: "Monza",
+  country: "Italy",
+  lengthMeters: 5_793,
+  totalLaps: 53,
+  turns: 11,
+  referenceLapSeconds: 81.1,
+  anchors: [
+    { x: 0.58, y: 0.92 }, { x: 0.60, y: 0.69 }, { x: 0.55, y: 0.57 }, { x: 0.61, y: 0.52 },
+    { x: 0.79, y: 0.43 }, { x: 0.89, y: 0.30 }, { x: 0.84, y: 0.18 }, { x: 0.70, y: 0.11 },
+    { x: 0.49, y: 0.10 }, { x: 0.35, y: 0.16 }, { x: 0.28, y: 0.27 }, { x: 0.31, y: 0.37 },
+    { x: 0.47, y: 0.42 }, { x: 0.43, y: 0.51 }, { x: 0.25, y: 0.58 }, { x: 0.11, y: 0.70 },
+    { x: 0.13, y: 0.82 }, { x: 0.28, y: 0.89 }, { x: 0.47, y: 0.91 },
+  ],
+  cornerNames: ["Rettifilo", "Curva Grande", "Roggia", "Lesmo 1", "Lesmo 2", "Serraglio", "Ascari 1", "Ascari 2", "Ascari 3", "Parabolica In", "Parabolica Out"],
+  sectorRatios: [0.34, 0.66],
+  straightZones: [
+    { id: "SM1", label: "Rettifilo", startRatio: 0, endRatio: 0.17 },
+    { id: "SM2", label: "Serraglio", startRatio: 0.46, endRatio: 0.60 },
+    { id: "SM3", label: "Parabolica", startRatio: 0.83, endRatio: 0.98 },
+  ],
+  overtakeRatios: [0.93, 0.97, 0.16],
+  pitRatios: [0.955, 0.968, 0.987, 0.032],
+});
+
+export const SUZUKA_CIRCUIT = buildCircuitFromBlueprint({
+  id: "suzuka-grand-prix-circuit",
+  name: "Suzuka International Racing Course",
+  shortName: "SUZUKA",
+  location: "Suzuka",
+  country: "Japan",
+  lengthMeters: 5_807,
+  totalLaps: 53,
+  turns: 18,
+  referenceLapSeconds: 90.4,
+  anchors: [
+    { x: 0.77, y: 0.82 }, { x: 0.67, y: 0.73 }, { x: 0.48, y: 0.70 }, { x: 0.30, y: 0.77 },
+    { x: 0.15, y: 0.73 }, { x: 0.11, y: 0.61 }, { x: 0.22, y: 0.53 }, { x: 0.40, y: 0.50 },
+    { x: 0.57, y: 0.55 }, { x: 0.70, y: 0.50 }, { x: 0.80, y: 0.39 }, { x: 0.77, y: 0.25 },
+    { x: 0.64, y: 0.17 }, { x: 0.49, y: 0.20 }, { x: 0.40, y: 0.31 }, { x: 0.47, y: 0.42 },
+    { x: 0.61, y: 0.43 }, { x: 0.72, y: 0.35 }, { x: 0.86, y: 0.32 }, { x: 0.91, y: 0.45 },
+    { x: 0.87, y: 0.61 }, { x: 0.82, y: 0.74 },
+  ],
+  cornerNames: ["First", "Second", "S Curves 1", "S Curves 2", "S Curves 3", "Dunlop", "Degner 1", "Degner 2", "Hairpin", "200R", "Spoon 1", "Spoon 2", "130R", "Casio 1", "Casio 2", "Casio 3", "Final", "Main Straight"],
+  sectorRatios: [0.35, 0.70],
+  straightZones: [
+    { id: "SM1", label: "Main Straight", startRatio: 0.90, endRatio: 1 },
+    { id: "SM2", label: "Back Straight", startRatio: 0.66, endRatio: 0.82 },
+  ],
+  overtakeRatios: [0.87, 0.92, 0.12],
+  pitRatios: [0.947, 0.960, 0.982, 0.035],
+});
+
+export const CIRCUITS = [SILVERSTONE_CIRCUIT, MONZA_CIRCUIT, SUZUKA_CIRCUIT] as const;
+export const DEFAULT_CIRCUIT_ID = SILVERSTONE_CIRCUIT.id;
+const CIRCUIT_BY_ID = new Map<string, CircuitDefinition>(CIRCUITS.map((circuit) => [circuit.id, circuit]));
+
+export function circuitById(circuitId?: string | null): CircuitDefinition {
+  return (circuitId ? CIRCUIT_BY_ID.get(circuitId) : undefined) ?? SILVERSTONE_CIRCUIT;
+}
+
+export function sectorAtDistance(distanceMeters: number, circuit = SILVERSTONE_CIRCUIT): 1 | 2 | 3 {
+  const lapDistance = normalizeLapDistance(distanceMeters, circuit.lengthMeters);
+  if (lapDistance < circuit.sectorEnds[0]) return 1;
+  if (lapDistance < circuit.sectorEnds[1]) return 2;
   return 3;
 }
 
-export function upcomingCornerAtDistance(distanceMeters: number) {
-  const lapDistance = normalizeLapDistance(distanceMeters);
-  return SILVERSTONE_CORNERS.find((corner) => corner.distanceMeters >= lapDistance) ?? SILVERSTONE_CORNERS[0];
+export function upcomingCornerAtDistance(distanceMeters: number, circuit = SILVERSTONE_CIRCUIT) {
+  const lapDistance = normalizeLapDistance(distanceMeters, circuit.lengthMeters);
+  return circuit.corners.find((corner) => corner.distanceMeters >= lapDistance) ?? circuit.corners[0];
 }
 
 export function normalizeLapDistance(distanceMeters: number, trackLength = SILVERSTONE_CIRCUIT.lengthMeters): number {
@@ -349,4 +514,25 @@ export function pointAtDistance(distanceMeters: number, circuit = SILVERSTONE_CI
     x: segment.p1.x + (segment.p2.x - segment.p1.x) * progress,
     y: segment.p1.y + (segment.p2.y - segment.p1.y) * progress,
   };
+}
+
+/**
+ * Silverstone has source telemetry; other circuits use a geometry-derived
+ * target that preserves their own straight/corner character deterministically.
+ */
+export function referenceSpeedAtDistance(distanceMeters: number, circuit = SILVERSTONE_CIRCUIT): number {
+  const segmentIndex = segmentIndexAtDistance(distanceMeters, circuit);
+  const segment = circuit.segments[segmentIndex];
+  const previous = circuit.segments[(segmentIndex - 1 + circuit.segments.length) % circuit.segments.length];
+  const next = circuit.segments[(segmentIndex + 1) % circuit.segments.length];
+  const progress = clampUnit((normalizeLapDistance(distanceMeters, circuit.lengthMeters) - segment.startDistance) / Math.max(1, segment.length));
+  const entryBlend = progress < 0.3 ? progress / 0.3 : 1;
+  const exitBlend = progress > 0.72 ? (1 - progress) / 0.28 : 1;
+  const entryTarget = previous.speedLimitKph + (segment.speedLimitKph - previous.speedLimitKph) * entryBlend;
+  const exitTarget = next.speedLimitKph + (segment.speedLimitKph - next.speedLimitKph) * exitBlend;
+  return Math.max(72, Math.min(segment.speedLimitKph, entryTarget, exitTarget));
+}
+
+function clampUnit(value: number): number {
+  return Math.max(0, Math.min(1, value));
 }

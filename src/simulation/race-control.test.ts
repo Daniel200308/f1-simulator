@@ -176,26 +176,44 @@ describe("safety car position and queue", () => {
     expect(twoLaps.pitEntryDistance).toBe(oneLap.pitEntryDistance + 5_891);
   });
 
-  it("advances a physical safety car and wraps its lap position", () => {
+  it("holds the physical safety car at pit exit before joining the circuit", () => {
     const initial = advanceSafetyCarPosition({
       previousTotalDistance: null,
       leaderTotalDistance: 5_880,
       circuitLengthMeters: 5_891,
       phase: "DEPLOYED",
       stepSeconds: 0.1,
+      phaseElapsedSeconds: 0.1,
+      pitExitDistance: 155,
+      firstCarDistance: 5_880,
     });
-    const next = advanceSafetyCarPosition({
+    const held = advanceSafetyCarPosition({
       previousTotalDistance: initial.totalDistance,
       leaderTotalDistance: 5_885,
       circuitLengthMeters: 5_891,
       phase: "DEPLOYED",
       stepSeconds: 1,
+      phaseElapsedSeconds: 1.5,
+      pitExitDistance: 155,
+      firstCarDistance: 5_885,
+    });
+    const joined = advanceSafetyCarPosition({
+      previousTotalDistance: held.totalDistance,
+      leaderTotalDistance: 6_030,
+      circuitLengthMeters: 5_891,
+      phase: "DEPLOYED",
+      stepSeconds: 1,
+      phaseElapsedSeconds: 3.2,
+      pitExitDistance: 155,
+      firstCarDistance: 6_030,
     });
 
-    expect(initial.totalDistance).toBe(5_952);
-    expect(initial.lapDistance).toBe(61);
-    expect(next.totalDistance).toBeGreaterThan(initial.totalDistance);
-    expect(next.lapDistance).toBeGreaterThan(initial.lapDistance);
+    expect(initial.totalDistance).toBe(6_046);
+    expect(initial.lapDistance).toBe(155);
+    expect(initial.speedKph).toBeLessThan(100);
+    expect(held.totalDistance).toBe(initial.totalDistance);
+    expect(joined.totalDistance).toBeGreaterThan(held.totalDistance);
+    expect(joined.speedKph).toBe(155);
   });
 
   it("creates unique compressed targets in frozen race order", () => {

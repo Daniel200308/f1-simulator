@@ -4,7 +4,6 @@ import { memo, useEffect, useMemo, useRef } from "react";
 import { MapPinned } from "lucide-react";
 
 import { DRIVER_BY_ID, TEAM_BY_ID } from "@/fixtures/grid";
-import { PIT_ENTRY_START, PIT_EXIT_END } from "@/simulation/engine";
 import {
   activeQualifyingTrafficTargets,
   interpolateTrackProgress,
@@ -71,24 +70,25 @@ const SECTOR_TWO_EXTERIOR_ANCHOR = closestTrackProgressInRange(
   SECTOR_RATIOS[1],
 );
 const SECTOR_LABEL_CONFIGS = [
-  { id: "S1", progress: SECTOR_RATIOS[0] / 2, candidates: [{ x: 0.64, y: 0.37 }, { x: 0.58, y: 0.63 }, { x: 0.72, y: 0.58 }] },
+  { id: "S1", progress: SECTOR_RATIOS[0] / 2, candidates: [{ x: 0.52, y: 0.3 }, { x: 0.52, y: 0.56 }, { x: 0.7, y: 0.78 }] },
   {
     id: "S2",
     progress: SECTOR_TWO_EXTERIOR_ANCHOR,
-    candidates: [{ x: 0.12, y: 0.315 }],
+    candidates: [{ x: 0.11, y: 0.29 }, { x: 0.08, y: 0.39 }],
     exteriorDock: "RIGHT",
   },
-  { id: "S3", progress: (SECTOR_RATIOS[1] + 1) / 2, candidates: [{ x: 0.42, y: 0.76 }, { x: 0.34, y: 0.7 }, { x: 0.52, y: 0.7 }] },
+  { id: "S3", progress: (SECTOR_RATIOS[1] + 1) / 2, candidates: [{ x: 0.3, y: 0.64 }, { x: 0.22, y: 0.72 }, { x: 0.42, y: 0.62 }] },
 ] as const;
-const SECTOR_LABEL_HALF_WIDTH = 0.065;
-const SECTOR_LABEL_HALF_HEIGHT = 0.026;
-const SECTOR_LABEL_TRACK_CLEARANCE = 0.018;
+const SECTOR_LABEL_HALF_WIDTH = 0.085;
+const SECTOR_LABEL_HALF_HEIGHT = 0.019;
+const SECTOR_LABEL_TRACK_CLEARANCE = 0.015;
 const OPPONENT_MARKER_RADIUS = 5.2;
 const PLAYER_MARKER_RADIUS = 8.4;
 const PLAYER_MARKER_CORE_RADIUS = 3.4;
 const OPPONENT_LABEL_FONT_SIZE = 12;
 const PLAYER_LABEL_FONT_SIZE = 15;
 const MARKER_CORE_OPACITY = 1;
+const DIAGNOSTICS_INTERVAL_MS = 180;
 
 function closestTrackProgressInRange(
   target: { x: number; y: number },
@@ -155,12 +155,13 @@ function samplesToRangePath(startProgress: number, endProgress: number): string 
   return path;
 }
 
-function trackAnnotation(progress: number, offset = 0.042) {
-  const point = sampledTrackPoint(progress);
-  const outwardX = point.x - 0.5;
-  const outwardY = point.y - 0.5;
-  const magnitude = Math.max(0.0001, Math.hypot(outwardX, outwardY));
-  return { x: point.x + (outwardX / magnitude) * offset, y: point.y + (outwardY / magnitude) * offset };
+function pitAnnotation(routeProgress: number, position: { x: number; y: number }) {
+  const point = sampledPitPoint(routeProgress);
+  return {
+    point,
+    x: position.x,
+    y: position.y,
+  };
 }
 
 function timingLine(progress: number, halfLength = 0.016) {
@@ -218,9 +219,8 @@ function StaticCircuitBackdrop() {
   const sectorLabels = qualifyingSectorLabelLayouts();
   const boundaries = [timingLine(SECTOR_RATIOS[0]), timingLine(SECTOR_RATIOS[1])];
   const startFinishLine = timingLine(0, 0.021);
-  const startFinishLabel = trackAnnotation(0, 0.052);
-  const pitEntryLabel = trackAnnotation(PIT_ENTRY_START / SILVERSTONE_CIRCUIT.lengthMeters, 0.03);
-  const pitExitLabel = trackAnnotation(PIT_EXIT_END / SILVERSTONE_CIRCUIT.lengthMeters, 0.03);
+  const pitEntryLabel = pitAnnotation(0.07, { x: 0.1, y: 0.8 });
+  const pitExitLabel = pitAnnotation(0.93, { x: 0.3, y: 0.44 });
   return <svg aria-hidden="true" className={styles.circuitBackdrop} preserveAspectRatio="xMidYMid meet" viewBox="0 0 1 1">
     <path className={styles.trackHalo} d={TRACK_PATH} />
     <path className={styles.trackLine} d={TRACK_PATH} />
@@ -233,14 +233,21 @@ function StaticCircuitBackdrop() {
       {sectorLabels.map((label, index) => <g className={styles.sectorLabel} data-sector={label.id} data-sector-label={label.id} key={label.id}>
         <polyline className={styles.sectorLabelLeader} points={`${label.anchor.x},${label.anchor.y} ${label.elbow.x},${label.elbow.y} ${label.edge.x},${label.edge.y}`} />
         <circle className={styles.sectorLabelAnchor} cx={label.anchor.x} cy={label.anchor.y} r=".0035" />
-        <rect height=".044" rx=".011" width=".122" x={label.x - 0.061} y={label.y - 0.022} />
-        <text x={label.x} y={label.y}>{`SECTOR ${index + 1}`}</text>
+        <rect height=".038" rx=".009" width=".17" x={label.x - 0.085} y={label.y - 0.019} />
+        <text x={label.x} y={label.y}>{`SECTOR ${String(index + 1).padStart(2, "0")}`}</text>
       </g>)}
     </g>
     <g className={styles.circuitLabels}>
-      <text data-map-label="START_FINISH" x={startFinishLabel.x} y={startFinishLabel.y}>START / FINISH</text>
-      <text data-map-label="PIT_ENTRY" x={pitEntryLabel.x} y={pitEntryLabel.y}>PIT ENTRY</text>
-      <text data-map-label="PIT_EXIT" x={pitExitLabel.x} y={pitExitLabel.y}>PIT EXIT</text>
+      <line className={styles.pitLabelLeader} data-map-label="PIT_ENTRY_LEADER" x1={pitEntryLabel.point.x} x2={pitEntryLabel.x} y1={pitEntryLabel.point.y} y2={pitEntryLabel.y} />
+      <line className={styles.pitLabelLeader} data-map-label="PIT_EXIT_LEADER" x1={pitExitLabel.point.x} x2={pitExitLabel.x} y1={pitExitLabel.point.y} y2={pitExitLabel.y} />
+      <g className={styles.pitLabel} data-map-label="PIT_ENTRY">
+        <rect height=".024" rx=".006" width=".105" x={pitEntryLabel.x - 0.0525} y={pitEntryLabel.y - 0.012} />
+        <text x={pitEntryLabel.x} y={pitEntryLabel.y}>PIT ENTRY</text>
+      </g>
+      <g className={styles.pitLabel} data-map-label="PIT_EXIT">
+        <rect height=".024" rx=".006" width=".09" x={pitExitLabel.x - 0.045} y={pitExitLabel.y - 0.012} />
+        <text x={pitExitLabel.x} y={pitExitLabel.y}>PIT EXIT</text>
+      </g>
     </g>
   </svg>;
 }
@@ -267,7 +274,7 @@ function boxesOverlap(a: LabelBox, b: LabelBox): boolean {
 function phaseMarkerColor(marker: AnimatedCar): string {
   if (marker.phase === "ABORTED_LAP") return "#ff5269";
   if (marker.phase === "PUSH_LAP") return "#ff5269";
-  if (marker.phase === "OUT_LAP") return "#20d7e7";
+  if (marker.phase === "OUT_LAP") return "#7b858f";
   if (marker.phase === "IN_LAP" || marker.phase === "PIT_ENTRY") return "#82969d";
   return "#9aa9ae";
 }
@@ -423,7 +430,7 @@ function drawCarLabel(
     context.lineWidth = 2.5;
     context.strokeStyle = "rgba(3, 10, 15, .98)";
     context.strokeText(decisionLabel, labelX, yieldY);
-    context.fillStyle = marker.phase === "ABORTED_LAP" ? "#ff5269" : marker.yielding ? "#f2b84b" : "#f4d35e";
+    context.fillStyle = marker.phase === "ABORTED_LAP" ? "#ff5269" : marker.yielding ? "#f2b84b" : "#f2b84b";
     context.fillText(decisionLabel, labelX, yieldY);
     if (marker.conflictGapSeconds !== null) {
       const gapY = yieldY + 8;
@@ -527,6 +534,8 @@ export const QualifyingTrafficOverview = memo(function QualifyingTrafficOverview
     let width = 1;
     let height = 1;
     let destroyed = false;
+    let lastDiagnosticsAt = Number.NEGATIVE_INFINITY;
+    canvas.dataset.renderMode = "CIRCUIT";
 
     function resize() {
       const ratio = Math.min(window.devicePixelRatio || 1, 1.5);
@@ -580,34 +589,36 @@ export const QualifyingTrafficOverview = memo(function QualifyingTrafficOverview
       for (const item of [...positioned].sort((a, b) => Number(b.marker.player) - Number(a.marker.player) || a.marker.carId.localeCompare(b.marker.carId))) {
         if (drawCarLabel(context!, item, occupied, width, height, now) && !pausedRef.current) animating = true;
       }
-      let overlapPairs = 0;
-      for (let first = 0; first < positioned.length; first += 1) {
-        for (let second = first + 1; second < positioned.length; second += 1) {
-          if (Math.hypot(positioned[first].x - positioned[second].x, positioned[first].y - positioned[second].y) < 5) overlapPairs += 1;
+      if (now - lastDiagnosticsAt >= DIAGNOSTICS_INTERVAL_MS) {
+        lastDiagnosticsAt = now;
+        let overlapPairs = 0;
+        for (let first = 0; first < positioned.length; first += 1) {
+          for (let second = first + 1; second < positioned.length; second += 1) {
+            if (Math.hypot(positioned[first].x - positioned[second].x, positioned[first].y - positioned[second].y) < 5) overlapPairs += 1;
+          }
         }
-      }
-      const trackProgresses = markers.filter((marker) => !marker.pitLane).map((marker) => marker.currentProgress).sort((a, b) => a - b);
-      let minimumProgressGap = 1;
-      if (trackProgresses.length > 1) {
-        for (let index = 0; index < trackProgresses.length; index += 1) {
-          const next = trackProgresses[(index + 1) % trackProgresses.length] + (index === trackProgresses.length - 1 ? 1 : 0);
-          minimumProgressGap = Math.min(minimumProgressGap, next - trackProgresses[index]);
+        const trackProgresses = markers.filter((marker) => !marker.pitLane).map((marker) => marker.currentProgress).sort((a, b) => a - b);
+        let minimumProgressGap = 1;
+        if (trackProgresses.length > 1) {
+          for (let index = 0; index < trackProgresses.length; index += 1) {
+            const next = trackProgresses[(index + 1) % trackProgresses.length] + (index === trackProgresses.length - 1 ? 1 : 0);
+            minimumProgressGap = Math.min(minimumProgressGap, next - trackProgresses[index]);
+          }
         }
+        canvas!.dataset.activeCars = String(markers.length);
+        canvas!.dataset.labelledCars = String(positioned.length);
+        canvas!.dataset.adjustedLabels = String(markers.filter((marker) => marker.labelAdjusted).length);
+        canvas!.dataset.flyingCars = String(markers.filter((marker) => marker.phase === "PUSH_LAP").length);
+        canvas!.dataset.outLapCars = String(markers.filter((marker) => marker.phase === "OUT_LAP").length);
+        canvas!.dataset.inLapCars = String(markers.filter((marker) => marker.phase === "IN_LAP").length);
+        canvas!.dataset.pitEntryCars = String(markers.filter((marker) => marker.phase === "PIT_ENTRY").length);
+        canvas!.dataset.recoveryLapCars = String(markers.filter((marker) => marker.phase === "IN_LAP" && marker.recoveryLap).length);
+        canvas!.dataset.yieldingCars = String(markers.filter((marker) => marker.yielding).length);
+        canvas!.dataset.abortedCars = String(markers.filter((marker) => marker.phase === "ABORTED_LAP").length);
+        canvas!.dataset.trafficConflicts = String(markers.filter((marker) => marker.decisionState === "TRAFFIC").length);
+        canvas!.dataset.markerOverlapPairs = String(overlapPairs);
+        canvas!.dataset.minimumProgressGap = minimumProgressGap.toFixed(6);
       }
-      canvas!.dataset.activeCars = String(markers.length);
-      canvas!.dataset.labelledCars = String(positioned.length);
-      canvas!.dataset.adjustedLabels = String(markers.filter((marker) => marker.labelAdjusted).length);
-      canvas!.dataset.flyingCars = String(markers.filter((marker) => marker.phase === "PUSH_LAP").length);
-      canvas!.dataset.outLapCars = String(markers.filter((marker) => marker.phase === "OUT_LAP").length);
-      canvas!.dataset.inLapCars = String(markers.filter((marker) => marker.phase === "IN_LAP").length);
-      canvas!.dataset.pitEntryCars = String(markers.filter((marker) => marker.phase === "PIT_ENTRY").length);
-      canvas!.dataset.recoveryLapCars = String(markers.filter((marker) => marker.phase === "IN_LAP" && marker.recoveryLap).length);
-      canvas!.dataset.yieldingCars = String(markers.filter((marker) => marker.yielding).length);
-      canvas!.dataset.abortedCars = String(markers.filter((marker) => marker.phase === "ABORTED_LAP").length);
-      canvas!.dataset.trafficConflicts = String(markers.filter((marker) => marker.decisionState === "TRAFFIC").length);
-      canvas!.dataset.markerOverlapPairs = String(overlapPairs);
-      canvas!.dataset.minimumProgressGap = minimumProgressGap.toFixed(6);
-      canvas!.dataset.renderMode = "CIRCUIT";
       frameRef.current = 0;
       if (animating && visibleRef.current && document.visibilityState === "visible") frameRef.current = window.requestAnimationFrame(draw);
     }

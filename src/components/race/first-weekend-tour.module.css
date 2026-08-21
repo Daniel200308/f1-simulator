@@ -1,0 +1,16 @@
+.backdrop { position: fixed; inset: 0; z-index: 270; display: grid; place-items: center; padding: 16px; background: rgba(1,5,8,.88); }
+.panel { position: relative; width: min(430px,calc(100vw - 24px)); padding: 30px; border: 1px solid rgba(123, 133, 143,.38); border-radius: 18px; color: #e9f4f6; background: #071116; box-shadow: 0 30px 100px rgba(0,0,0,.62); }
+.close { position: absolute; top: 14px; right: 14px; width: 34px; height: 34px; display: grid; place-items: center; border: 0; border-radius: 10px; color: #78929b; background: #0b1920; cursor: pointer; }
+.icon { width: 58px; height: 58px; display: grid; place-items: center; margin-bottom: 22px; border-radius: 15px; color: #031014; background: #7b858f; box-shadow: 0 14px 36px rgba(123, 133, 143,.18); }
+.panel > small { color: #7b858f; font: 900 9px var(--font-mono); letter-spacing: .12em; }
+.panel h2 { margin: 9px 0 10px; font-size: 28px; letter-spacing: -.03em; }
+.panel p { min-height: 58px; margin: 0; color: #8aa0a7; font: 11px/1.65 var(--font-mono); }
+.progress { display: flex; gap: 6px; margin: 23px 0 14px; }.progress i { width: 28px; height: 3px; border-radius: 3px; background: #203238; }.progress i[data-active="true"] { background: #7b858f; }
+.next { min-height: 42px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; width: 100%; border: 0; border-radius: 11px; color: #031014; background: #7b858f; cursor: pointer; font: 900 10px var(--font-mono); text-transform: uppercase; }
+button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
+/* Midnight violet surface treatment for the first-weekend guide. */
+.backdrop { background: rgba(0,0,0,.9); }
+.panel { border-color: var(--surface-line-strong); background: linear-gradient(145deg, var(--surface-raised), var(--surface-deep)); box-shadow: 0 30px 100px var(--surface-shadow); }
+.close { background: var(--surface-deep); }
+.progress i { background: color-mix(in srgb, var(--surface-vivid) 44%, #000); }

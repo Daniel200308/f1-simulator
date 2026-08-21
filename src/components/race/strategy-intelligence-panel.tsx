@@ -29,7 +29,7 @@ import {
   type StrategyScenarioKind,
 } from "@/simulation/strategy-intelligence";
 import { buildRaceStrategyPlans, type RaceStrategyPlan } from "@/simulation/race-strategy-plans";
-import { SILVERSTONE_CIRCUIT } from "@/simulation/track";
+import { circuitById } from "@/simulation/track";
 
 import styles from "./strategy-intelligence-panel.module.css";
 
@@ -310,26 +310,28 @@ export function StrategyIntelligencePanel({
   const closeRef = useRef<HTMLButtonElement>(null);
   const driver = DRIVER_BY_ID.get(car.driverId);
   const team = TEAM_BY_ID.get(car.teamId);
+  const circuit = circuitById(snapshot.circuitId);
   const assessment = useMemo(() => calculateStrategyIntelligence({
     raceControl: snapshot.raceControl,
     pitLaneOpen: snapshot.pitLaneOpen,
     weather: snapshot.weather,
     cars: snapshot.cars,
     elapsedTime: snapshot.elapsedTime,
-    totalLaps: SILVERSTONE_CIRCUIT.totalLaps,
-  }, car.carId), [car.carId, snapshot.cars, snapshot.elapsedTime, snapshot.pitLaneOpen, snapshot.raceControl, snapshot.weather]);
+    circuitId: circuit.id,
+    totalLaps: circuit.totalLaps,
+  }, car.carId), [car.carId, circuit.id, circuit.totalLaps, snapshot.cars, snapshot.elapsedTime, snapshot.pitLaneOpen, snapshot.raceControl, snapshot.weather]);
   const recommended = assessment.scenarios.find((scenario) => scenario.recommended)!;
   const racePlans = useMemo(() => buildRaceStrategyPlans({
     currentLap: car.currentLap,
-    totalLaps: SILVERSTONE_CIRCUIT.totalLaps,
+    totalLaps: circuit.totalLaps,
     tyreCompound: car.tyreCompound,
     tyreLife: car.tyreLife,
     tyreAgeLaps: car.tyreAgeLaps,
     tyreSets: car.tyreSets,
     weather: snapshot.weather,
     raceControl: snapshot.raceControl,
-  }), [car.currentLap, car.tyreAgeLaps, car.tyreCompound, car.tyreLife, car.tyreSets, snapshot.raceControl, snapshot.weather]);
-  const teamColor = team ? `#${team.primaryColor.toString(16).padStart(6, "0")}` : "#20d7e7";
+  }), [car.currentLap, car.tyreAgeLaps, car.tyreCompound, car.tyreLife, car.tyreSets, circuit.totalLaps, snapshot.raceControl, snapshot.weather]);
+  const teamColor = team ? `#${team.primaryColor.toString(16).padStart(6, "0")}` : "#7b858f";
 
   useEffect(() => {
     const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -387,7 +389,7 @@ export function StrategyIntelligencePanel({
             <p id="strategy-intelligence-summary">Three full-race tyre plans plus live tactical calls from traffic, weather and Race Control data.</p>
           </div>
           <div className={styles.sessionMeta}>
-            <span>LAP <b>{car.currentLap}/{SILVERSTONE_CIRCUIT.totalLaps}</b></span>
+            <span>LAP <b>{car.currentLap}/{circuit.totalLaps}</b></span>
             <span>RUNNING <b>P{car.racePosition}</b></span>
             <span>CONTROL <b>{snapshot.raceControl.replace("_", " ")}</b></span>
           </div>
@@ -410,7 +412,7 @@ export function StrategyIntelligencePanel({
           <button className={styles.primaryAction} onClick={() => executeScenario(recommended)} type="button">EXECUTE CALL</button>
         </div>
 
-        <PlanTimeline currentLap={car.currentLap} plans={racePlans} totalLaps={SILVERSTONE_CIRCUIT.totalLaps} />
+        <PlanTimeline currentLap={car.currentLap} plans={racePlans} totalLaps={circuit.totalLaps} />
 
         {/*
          * The recommended call gets the full card; the alternatives collapse into
@@ -431,7 +433,7 @@ export function StrategyIntelligencePanel({
 
         <footer className={styles.dialogFooter}>
           <span><CircleAlert size={13} aria-hidden="true" /> Projections update with live race state; confidence is model certainty, not a guaranteed result.</span>
-          <span><BrainCircuit size={13} aria-hidden="true" /> SILVERSTONE TELEMETRY · SPATIAL WEATHER · LIVE TRAFFIC</span>
+          <span><BrainCircuit size={13} aria-hidden="true" /> {circuit.shortName} TELEMETRY · SPATIAL WEATHER · LIVE TRAFFIC</span>
           <button onClick={onClose} type="button">RETURN TO PIT WALL</button>
         </footer>
       </section>

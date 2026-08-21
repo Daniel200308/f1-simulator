@@ -1,5 +1,6 @@
 import type {
   EnergyDeploymentMode,
+  EnergyFlowState,
   EnergyManagementContext,
   EnergySystemConfig,
   EnergySystemState,
@@ -74,6 +75,35 @@ export function energyThermalBand(temperatureC: number, config = ENERGY_SYSTEM_C
   if (temperatureC < config.warningTemperatureC) return "WARM";
   if (temperatureC < config.criticalTemperatureC) return "HOT";
   return "CRITICAL";
+}
+
+/**
+ * Classify the battery flow that is physically happening right now.
+ *
+ * `deploymentMode` is the driver's requested tendency (and can stay
+ * BALANCED while the car automatically deploys on a straight or harvests
+ * under braking). The live marker and the simulation both need the actual
+ * power flow, otherwise the player car cannot show the same state as the AI.
+ */
+export function energyFlowStateFor(
+  state: Pick<EnergySystemState, "clippingActive" | "overtakeActive" | "boostActive" | "currentDeployPowerKW" | "currentHarvestPowerKW">,
+): EnergyFlowState {
+  if (state.clippingActive) return "CLIPPING";
+
+  const deploying = state.currentDeployPowerKW >= state.currentHarvestPowerKW && state.currentDeployPowerKW > 1;
+  const harvesting = state.currentHarvestPowerKW > state.currentDeployPowerKW && state.currentHarvestPowerKW > 1;
+  if (deploying) {
+    if (state.overtakeActive) return "OVERTAKE";
+    if (state.boostActive) return "DEFENDING";
+    return "DEPLOYING";
+  }
+  if (harvesting) return "HARVESTING";
+
+  // Keep the intent visible when an overtake/boost command is armed but the
+  // current segment is not allowing power delivery yet.
+  if (state.overtakeActive) return "OVERTAKE";
+  if (state.boostActive) return "DEFENDING";
+  return "NEUTRAL";
 }
 
 export function createEnergySystemState(

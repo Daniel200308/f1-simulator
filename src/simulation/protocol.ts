@@ -1,7 +1,8 @@
-import type { CoolingMode, EnergyMode, PaceMode, RaceSnapshot, SimulationSpeed, TeamOrderType, TyreCompound, TyreMode, WeekendTyreInventory, WeekendTyreUsage } from "@/domain/race";
+import type { CoolingMode, EnergyMode, PaceMode, RaceReliabilityInput, RaceSnapshot, SimulationSpeed, TeamOrderType, TyreCompound, TyreMode, WeekendTyreInventory, WeekendTyreUsage } from "@/domain/race";
 
 export type WorkerCommand =
-  | { type: "INIT"; seed: number; playerTeamId?: string; gridOrder?: readonly string[]; weekendTyreUsage?: WeekendTyreUsage; weekendTyreInventory?: WeekendTyreInventory; setupPerformanceByCar?: Readonly<Record<string, number>> }
+  | { type: "INIT"; seed: number; circuitId?: string; playerTeamId?: string; gridOrder?: readonly string[]; weekendTyreUsage?: WeekendTyreUsage; weekendTyreInventory?: WeekendTyreInventory; setupPerformanceByCar?: Readonly<Record<string, number>>; reliabilityByCar?: Readonly<Record<string, RaceReliabilityInput>> }
+  | { type: "LOAD_SNAPSHOT"; snapshot: RaceSnapshot; speed?: SimulationSpeed; paused?: boolean }
   | { type: "PLAY" }
   | { type: "PAUSE" }
   | { type: "SET_AUTO_PAUSE"; enabled: boolean }
@@ -17,7 +18,7 @@ export type WorkerCommand =
   | { type: "SERVE_PENALTY"; carId: string }
   | { type: "CANCEL_PIT"; carId: string }
   | { type: "SET_START_TYRE"; carId: string; compound: TyreCompound; tyreSetId?: string }
-  | { type: "RESET"; seed: number; playerTeamId?: string; gridOrder?: readonly string[]; weekendTyreUsage?: WeekendTyreUsage; weekendTyreInventory?: WeekendTyreInventory; setupPerformanceByCar?: Readonly<Record<string, number>> };
+  | { type: "RESET"; seed: number; circuitId?: string; playerTeamId?: string; gridOrder?: readonly string[]; weekendTyreUsage?: WeekendTyreUsage; weekendTyreInventory?: WeekendTyreInventory; setupPerformanceByCar?: Readonly<Record<string, number>>; reliabilityByCar?: Readonly<Record<string, RaceReliabilityInput>> };
 
 export type EnergyDebugAction = "SOC_FULL" | "SOC_LOW" | "HEAT" | "CLIPPING" | "BOOST" | "OVERTAKE" | "TOGGLE_AI";
 

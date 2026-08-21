@@ -1,5 +1,5 @@
 import type { BattleStatus, EnergyMode, PaceMode, RaceCarState, RaceControlStatus, RacingLineMode, WeatherState } from "@/domain/race";
-import { normalizeLapDistance, SILVERSTONE_CIRCUIT, SILVERSTONE_WING_ZONES, wingZoneAtDistance } from "@/simulation/track";
+import { circuitById, normalizeLapDistance } from "@/simulation/track";
 
 export type RacecraftIntent = "ATTACK" | "DEFEND" | "HARVEST" | "HOLD";
 
@@ -69,10 +69,11 @@ function inactiveRacecraftDecision(car: RaceCarState): RacecraftDecision {
 
 function calculateActiveRacecraftDecision(context: RacecraftContext, field: readonly RaceCarState[], index: number): RacecraftDecision {
   const car = field[index];
+  const circuit = circuitById(car.circuitId);
   const ahead = field[index - 1];
   const behind = field[index + 1];
   const green = context.raceControl === "GREEN" && car.pitStatus === "TRACK" && car.incidentStatus === "RUNNING";
-  const segment = SILVERSTONE_CIRCUIT.segments[car.currentSegment];
+  const segment = circuit.segments[car.currentSegment];
   const lowGrip = context.weather.trackWetness > 0.42;
   const gapAhead = ahead ? car.gapToCarAhead : Infinity;
   const gapBehind = behind ? car.gapToCarBehind : Infinity;
@@ -132,9 +133,10 @@ function calculateActiveRacecraftDecision(context: RacecraftContext, field: read
    * and a car whose rival is on materially worse tyres presses that advantage
    * even from a gap that would otherwise read as out of range.
    */
-  const wingZone = wingZoneAtDistance(car.lapDistance);
-  const nextWingZone = SILVERSTONE_WING_ZONES.find((zone) => zone.openAtMeters > normalizeLapDistance(car.lapDistance));
-  const metresToWingZone = nextWingZone ? nextWingZone.openAtMeters - normalizeLapDistance(car.lapDistance) : Infinity;
+  const lapDistance = normalizeLapDistance(car.lapDistance, circuit.lengthMeters);
+  const wingZone = circuit.straightZones.find((zone) => lapDistance >= zone.startRatio * circuit.lengthMeters && lapDistance < zone.endRatio * circuit.lengthMeters) ?? null;
+  const nextWingZone = circuit.straightZones.find((zone) => zone.startRatio * circuit.lengthMeters > lapDistance);
+  const metresToWingZone = nextWingZone ? nextWingZone.startRatio * circuit.lengthMeters - lapDistance : Infinity;
   const approachingWingZone = metresToWingZone <= 320;
   const wingAttackWindow = Boolean(ahead && (wingZone || approachingWingZone) && gapAhead <= 1.0);
   // A tyre-life edge is worth using even from further back.

@@ -1,29 +1,36 @@
 "use client";
 
-import { memo } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import {
   ArrowDownToLine,
   Clock3,
   Flag,
+  HardDrive,
+  Menu,
   Pause,
   Play,
   RotateCcw,
+  Settings2,
   SkipForward,
   Snowflake,
   Target,
   Thermometer,
   TimerReset,
+  Trophy,
+  X,
   Zap,
 } from "lucide-react";
 
 import { formatLapTime } from "@/components/race/format";
 import { QualifyingTrafficOverview } from "@/components/race/qualifying-traffic-overview";
+import { RaceMap } from "@/components/race/race-map";
 import { TyreBadge } from "@/components/race/tyre-badge";
 import { SessionReport } from "@/components/race/weekend-hub";
 import { DRIVER_BY_ID, playerCarIdsFor, TEAM_BY_ID } from "@/fixtures/grid";
 import type { TyreCompound } from "@/domain/race";
 import type { SectorTimingTone } from "@/simulation/sector-timing";
+import { circuitById, SILVERSTONE_CIRCUIT } from "@/simulation/track";
 import { raceStartTyreInventory } from "@/simulation/tyre-allocation";
 import {
   liveQualifyingClassification,
@@ -31,7 +38,6 @@ import {
   qualifyingDisplayStatus,
   qualifyingReleaseForecast,
   type QualifyingAttackMode,
-  type QualifyingFuelPlan,
   type QualifyingOutLapMode,
   type QualifyingSimulationSpeed,
   type QualifyingCarState,
@@ -51,11 +57,6 @@ const ATTACK_MODES: readonly { mode: QualifyingAttackMode; label: string; compac
   { mode: "NORMAL", label: "Push", compact: "PUSH", hint: "Commit to the reference qualifying lap" },
   { mode: "ATTACK", label: "Attack", compact: "ATK", hint: "Trade consistency for lap time" },
   { mode: "MAXIMUM", label: "Maximum", compact: "MAX", hint: "Maximum pace with the highest lock-up and deletion risk" },
-];
-const FUEL_PLANS: readonly { plan: QualifyingFuelPlan; label: string; compact: string; hint: string }[] = [
-  { plan: "ONE_LAP", label: "1 Flying Lap", compact: "1 LAP", hint: "Lowest fuel mass and no second attempt" },
-  { plan: "TWO_LAPS", label: "2 Flying Laps", compact: "2 LAPS", hint: "Two attempts with a cool-down lap between" },
-  { plan: "TWO_LAPS_MARGIN", label: "2 Laps + Margin", compact: "MARGIN", hint: "Extra fuel for traffic or a delayed attempt" },
 ];
 const QUALIFYING_SPEEDS: readonly QualifyingSimulationSpeed[] = [1, 2, 4, 8, 16];
 const QUALIFYING_COMPOUNDS: readonly TyreCompound[] = ["SOFT", "MEDIUM", "HARD", "INTERMEDIATE", "WET"];
@@ -77,12 +78,16 @@ interface QualifyingRaceViewProps {
   onReturnToPits: (carId: string) => void;
   onOutLapModeChange: (carId: string, mode: QualifyingOutLapMode) => void;
   onAttackModeChange: (carId: string, mode: QualifyingAttackMode) => void;
-  onFuelPlanChange: (carId: string, plan: QualifyingFuelPlan) => void;
   onTyreSetChange: (carId: string, tyreSetId: string) => void;
   onSpeedChange: (speed: QualifyingSimulationSpeed) => void;
   onPause: () => void;
   onSkipSession: () => void;
   onReset: () => void;
+  onOpenSave: () => void;
+  onOpenChampionship: () => void;
+  onOpenPreferences: () => void;
+  saveReady: boolean;
+  pendingGridPenaltyPlaces: number;
 }
 
 function formatClock(seconds: number): string {
@@ -97,8 +102,50 @@ function teamTone(carId: string): string {
   return `#${(team?.primaryColor ?? 0x20d7e7).toString(16).padStart(6, "0")}`;
 }
 
-function QualifyingTopbar({ state, onStart, onSpeedChange, onPause, onReset, onSkipSession }: Pick<QualifyingRaceViewProps, "state" | "onStart" | "onSpeedChange" | "onPause" | "onReset" | "onSkipSession">) {
+function QualifyingSystemTools({ onReset, onOpenSave, onOpenChampionship, onOpenPreferences, saveReady, pendingGridPenaltyPlaces }: Pick<QualifyingRaceViewProps, "onReset" | "onOpenSave" | "onOpenChampionship" | "onOpenPreferences" | "saveReady" | "pendingGridPenaltyPlaces">) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
+  const runAction = (action: () => void) => {
+    setOpen(false);
+    action();
+  };
+
+  return (
+    <div className={styles.utilityStack} ref={rootRef}>
+      <button aria-label="Return to team selection" className={`reset-button reset-button--icon ${styles.utilityReset}`} onClick={onReset} title="Reset race weekend" type="button"><RotateCcw aria-hidden="true" size={16} /></button>
+      <button aria-controls="qualifying-system-tools" aria-expanded={open} aria-label={open ? "Close system tools" : "Open system tools"} className={styles.utilityToggle} onClick={() => setOpen((current) => !current)} title={open ? "Close save, season and settings" : "Open save, season and settings"} type="button">
+        {open ? <X aria-hidden="true" size={16} /> : <Menu aria-hidden="true" size={16} />}
+        <span>TOOLS</span>
+      </button>
+      {open && <div aria-label="System tools" className={styles.utilityPanel} id="qualifying-system-tools" role="group">
+        <button disabled={!saveReady} onClick={() => runAction(onOpenSave)} title="Save and restore" type="button"><HardDrive aria-hidden="true" size={17} /><span>SAVE<small>LOCAL STATE</small></span></button>
+        <button onClick={() => runAction(onOpenChampionship)} title={`Season${pendingGridPenaltyPlaces > 0 ? ` · ${pendingGridPenaltyPlaces}-PLACE GRID DROP` : ""}`} type="button"><Trophy aria-hidden="true" size={17} /><span>SEASON<small>{pendingGridPenaltyPlaces > 0 ? `${pendingGridPenaltyPlaces} GRID DROP` : "CHAMPIONSHIP"}</small></span>{pendingGridPenaltyPlaces > 0 && <b>{pendingGridPenaltyPlaces}</b>}</button>
+        <button onClick={() => runAction(onOpenPreferences)} title="Display and audio settings" type="button"><Settings2 aria-hidden="true" size={17} /><span>SETTINGS<small>DISPLAY + AUDIO</small></span></button>
+      </div>}
+    </div>
+  );
+}
+
+function QualifyingTopbar({ state, onStart, onSpeedChange, onPause, onReset, onSkipSession, onOpenSave, onOpenChampionship, onOpenPreferences, saveReady, pendingGridPenaltyPlaces }: Pick<QualifyingRaceViewProps, "state" | "onStart" | "onSpeedChange" | "onPause" | "onReset" | "onSkipSession" | "onOpenSave" | "onOpenChampionship" | "onOpenPreferences" | "saveReady" | "pendingGridPenaltyPlaces">) {
   const live = state.qualifyingLive!;
+  const circuit = circuitById(state.circuitId);
   const cut = qualifyingCutPosition(state);
   const carsOnTrack = Object.values(live.cars).filter((car) => car.phase !== "GARAGE").length;
   const chequered = live.status === "CHECKERED";
@@ -111,9 +158,9 @@ function QualifyingTopbar({ state, onStart, onSpeedChange, onPause, onReset, onS
       : `${carsOnTrack} cars circulating · pit exit open`;
   return (
     <header className={`topbar topbar--telemetry ${styles.topbar}`} aria-label={`${live.session} qualifying header`}>
-      <div className="brand-block brand-block--signal"><div className="brand-copy"><strong>PROJECT PITWALL</strong><small>SILVERSTONE QUALIFYING</small></div></div>
+      <div className="brand-block brand-block--signal"><div className="brand-copy"><strong>PROJECT PITWALL</strong><small>{circuit.shortName} QUALIFYING</small></div></div>
       <div className={`broadcast-strip broadcast-strip--iconic ${styles.broadcast}`}>
-        <section className="broadcast-session session-copy-panel"><div className="hud-stat-copy"><span>ROUND 09</span><strong>{live.session}</strong><small>QUALIFYING</small></div></section>
+        <section className="broadcast-session session-copy-panel"><div className="hud-stat-copy"><span>{circuit.shortName}</span><strong>{live.session}</strong><small>QUALIFYING</small></div></section>
         <section
           aria-label={chequered ? "Chequered flag" : flagLabel}
           aria-live="polite"
@@ -130,7 +177,7 @@ function QualifyingTopbar({ state, onStart, onSpeedChange, onPause, onReset, onS
           : <button aria-label={live.paused ? "Resume qualifying" : "Pause qualifying"} aria-pressed={live.paused} className={styles.pauseButton} onClick={onPause} title={live.paused ? "Resume qualifying" : "Pause qualifying"} type="button">{live.paused ? <Play aria-hidden="true" fill="currentColor" size={15} /> : <Pause aria-hidden="true" fill="currentColor" size={15} />}</button>}
         <div className="speed-selector" role="group" aria-label="Simulation speed"><span className="speed-selector-label"><Zap size={13} aria-hidden="true" /> SIM RATE</span><div className="speed-buttons speed-rail"><i className="speed-rail-line" aria-hidden="true" />{QUALIFYING_SPEEDS.map((speed) => <button aria-label={`Set simulation speed to ${speed} times`} aria-pressed={live.speed === speed} className={`speed-step ${live.speed === speed ? "is-active" : ""}`} key={speed} onClick={() => onSpeedChange(speed)} type="button"><i className="speed-pip" aria-hidden="true" /><span>{speed}×</span></button>)}</div></div>
         <button className={styles.skipButton} onClick={onSkipSession} title={`Simulate the remainder of ${live.session}`} type="button"><SkipForward aria-hidden="true" size={15} />SKIP {live.session}</button>
-        <button className="reset-button reset-button--icon" aria-label="Return to team selection" onClick={onReset} type="button"><RotateCcw size={16} aria-hidden="true" /></button>
+        <QualifyingSystemTools onOpenChampionship={onOpenChampionship} onOpenPreferences={onOpenPreferences} onOpenSave={onOpenSave} onReset={onReset} pendingGridPenaltyPlaces={pendingGridPenaltyPlaces} saveReady={saveReady} />
       </nav>
     </header>
   );
@@ -276,7 +323,6 @@ function TyreTelemetry({ car }: { car: QualifyingCarState }) {
         >
           <b><abbr title={name}>{label}</abbr></b>
           <strong>{temperature.toFixed(0)}<small>°C</small></strong>
-          <em>{stateLabel}</em>
         </span>;
       })}
     </div>
@@ -298,9 +344,8 @@ function QualifyingCommandDock({
   onReturnToPits,
   onOutLapModeChange,
   onAttackModeChange,
-  onFuelPlanChange,
   onTyreSetChange,
-}: Pick<QualifyingRaceViewProps, "state" | "selectedCarId" | "onSelectCar" | "onRelease" | "onAbortLap" | "onCoolDown" | "onReturnToPits" | "onOutLapModeChange" | "onAttackModeChange" | "onFuelPlanChange" | "onTyreSetChange"> & { playerCars: readonly string[] }) {
+}: Pick<QualifyingRaceViewProps, "state" | "selectedCarId" | "onSelectCar" | "onRelease" | "onAbortLap" | "onCoolDown" | "onReturnToPits" | "onOutLapModeChange" | "onAttackModeChange" | "onTyreSetChange"> & { playerCars: readonly string[] }) {
   const live = state.qualifyingLive!;
   const carId = live.cars[selectedCarId] ? selectedCarId : playerCars.find((candidate) => live.cars[candidate]);
   if (!carId) return <aside className={`${styles.controlRail} ${styles.eliminatedRail}`} aria-label="Team qualifying status" data-team-eliminated="true">
@@ -397,7 +442,6 @@ function QualifyingCommandDock({
         <ControlSection control="release" priority={car.phase === "GARAGE"} title="PIT RELEASE" value={releaseStatus}><div aria-label={`${driver.shortName} pit release controls`} className={`${styles.orbOptions} ${styles.releaseOptions}`} role="group">
           <button aria-label={`${driver.shortName} Release Now`} data-ready={canRelease} data-risk={releaseRisk} disabled={!canRelease} onClick={() => onRelease(carId)} title="Release the car into the current track window" type="button"><i><Play aria-hidden="true" fill="currentColor" size={17} /></i><span><strong>RELEASE</strong><small>{releaseHint}</small></span></button>
         </div></ControlSection>
-        <ControlSection control="fuel" priority={car.phase === "GARAGE"} title="FUEL PLAN" value={`${car.fuelLoadKg.toFixed(1)} kg`}><div className={styles.segmentOptions}>{FUEL_PLANS.map((option) => <button aria-label={`${driver.shortName} set fuel plan ${option.label}`} aria-pressed={car.fuelPlan === option.plan} disabled={car.phase !== "GARAGE"} key={option.plan} onClick={() => onFuelPlanChange(carId, option.plan)} title={option.hint} type="button"><span>{option.compact}</span></button>)}</div></ControlSection>
         <ControlSection control="out-lap" priority={car.phase === "OUT_LAP"} title="OUT LAP PACE" value={car.outLapMode}><div className={styles.segmentOptions}>{OUT_LAP_MODES.map((option) => <button aria-label={`${driver.shortName} set out lap pace ${option.label}`} aria-pressed={car.outLapMode === option.mode} disabled={car.phase === "PUSH_LAP"} key={option.mode} onClick={() => onOutLapModeChange(carId, option.mode)} title={option.hint} type="button"><span>{option.compact}</span></button>)}</div></ControlSection>
         <ControlSection control="attack" priority={car.phase === "PUSH_LAP"} title="FLYING ATTACK" value={car.attackMode}><div className={styles.segmentOptions}>{ATTACK_MODES.map((option) => <button aria-label={`${driver.shortName} set flying lap attack ${option.label}`} aria-pressed={car.attackMode === option.mode} disabled={car.phase === "PUSH_LAP"} key={option.mode} onClick={() => onAttackModeChange(carId, option.mode)} title={option.hint} type="button"><span>{option.compact}</span></button>)}</div></ControlSection>
         <ControlSection control="lap-action" priority={car.phase !== "GARAGE"} title="LAP ACTION" value={status}><div aria-label={`${driver.shortName} lap actions`} className={styles.orbOptions} role="group">
@@ -466,13 +510,19 @@ export function QualifyingRaceView(props: QualifyingRaceViewProps) {
   if (!live) return null;
   const playerCars = playerCarIdsFor(props.state.playerTeamId);
   const selectedCarId = live.cars[props.selectedCarId] ? props.selectedCarId : playerCars.find((carId) => live.cars[carId]) ?? props.selectedCarId;
+  const circuit = circuitById(props.state.circuitId);
+  const useLegacyTrafficOverview = circuit.id === SILVERSTONE_CIRCUIT.id;
   const reportClassification = props.activeReport?.session.startsWith("Q") ? props.state.results.find((result) => result.session === props.activeReport?.session) ?? null : null;
   const nextQualifyingSession = props.activeReport?.session === "FP3" ? "Q1" : props.activeReport?.session === "Q1" ? "Q2" : props.activeReport?.session === "Q2" ? "Q3" : null;
   return <main className={`pitwall-shell ${styles.shell}`} data-qualifying-paused={live.paused} data-qualifying-session={live.session} data-qualifying-status={live.status}>
-    <QualifyingTopbar onPause={props.onPause} onReset={props.onReset} onSkipSession={props.onSkipSession} onSpeedChange={props.onSpeedChange} onStart={props.onStart} state={props.state} />
+    <QualifyingTopbar onOpenChampionship={props.onOpenChampionship} onOpenPreferences={props.onOpenPreferences} onOpenSave={props.onOpenSave} onPause={props.onPause} onReset={props.onReset} onSkipSession={props.onSkipSession} onSpeedChange={props.onSpeedChange} onStart={props.onStart} pendingGridPenaltyPlaces={props.pendingGridPenaltyPlaces} saveReady={props.saveReady} state={props.state} />
     <section className={`race-grid ${styles.grid}`}>
       <MemoQualifyingTower onSelectCar={props.onSelectCar} playerCars={playerCars} state={props.state} />
-      <section className={styles.workspace}><QualifyingTrafficOverview live={live} playerCars={playerCars} /></section>
+      <section className={styles.workspace} data-qualifying-renderer={useLegacyTrafficOverview ? "CANVAS_TRAFFIC" : "PIXI_SHARED_MAP"}>
+        {useLegacyTrafficOverview
+          ? <QualifyingTrafficOverview live={live} playerCars={playerCars} />
+          : <RaceMap lightsOn={0} qualifyingState={props.state} startPhase="MENU" />}
+      </section>
       <QualifyingCommandDock {...props} playerCars={playerCars} selectedCarId={selectedCarId} />
     </section>
     {props.activeReport && <SessionReport actionLabel={nextQualifyingSession ? `START ${nextQualifyingSession}` : "CONTINUE TO RACE"} classification={reportClassification} onAction={() => { props.onCloseReport(); if (nextQualifyingSession) props.onStart(); }} onClose={props.onCloseReport} report={props.activeReport} />}

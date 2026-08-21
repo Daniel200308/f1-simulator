@@ -1,4 +1,5 @@
 .next/
+.playwright-mcp/
 node_modules/
 coverage/
 *.log

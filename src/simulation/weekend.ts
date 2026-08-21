@@ -1,8 +1,7 @@
-import type { TyreCompound, TyreTemperatureState, WeekendTyreInventory } from "@/domain/race";
+import type { CircuitDefinition, TyreCompound, TyreTemperatureState, WeekendTyreInventory } from "@/domain/race";
 import { DEFAULT_PLAYER_TEAM_ID, DRIVER_BY_ID, DRIVERS, playerCarIdsFor, TEAM_BY_ID } from "@/fixtures/grid";
 import { season2026PracticePenaltySeconds, season2026QualifyingPenaltySeconds, season2026QualifyingStrength } from "@/fixtures/season-2026-performance";
 import { qualifyingErrorRisk } from "@/simulation/driver-risk";
-import { PIT_BOX_DISTANCE, PIT_ENTRY_START, PIT_EXIT_END } from "@/simulation/engine";
 import { buildSessionDriverMessage } from "@/simulation/message-library";
 import { hashNoise, signedNoise } from "@/simulation/random";
 import {
@@ -19,7 +18,7 @@ import {
   type SectorToneTuple,
 } from "@/simulation/sector-timing";
 import { telemetrySpeedAtDistance } from "@/simulation/silverstone-telemetry";
-import { pointAtDistance, segmentIndexAtDistance, SILVERSTONE_CIRCUIT, SILVERSTONE_SECTOR_ENDS } from "@/simulation/track";
+import { circuitById, pointAtDistance, referenceSpeedAtDistance, segmentIndexAtDistance, SILVERSTONE_CIRCUIT } from "@/simulation/track";
 import {
   completeWeekendTyreRun,
   createWeekendTyreInventory,
@@ -101,6 +100,7 @@ export type QualifyingSimulationSpeed = 1 | 2 | 4 | 8 | 16;
 
 export interface QualifyingCarState {
   carId: string;
+  circuitId?: string;
   phase: QualifyingCarPhase;
   phaseRemainingSeconds: number;
   phaseDurationSeconds: number;
@@ -181,6 +181,7 @@ export interface QualifyingAiRunPlan {
 }
 
 export interface LiveQualifyingState {
+  circuitId?: string;
   session: QualifyingSession;
   status: QualifyingSessionStatus;
   elapsedSeconds: number;
@@ -241,6 +242,7 @@ export interface QualifyingRecord {
 
 export interface WeekendState {
   seed: number;
+  circuitId: string;
   playerTeamId: string;
   currentSession: WeekendSession;
   completedSessions: readonly (PracticeSession | QualifyingSession)[];
@@ -281,6 +283,25 @@ const PRACTICE_COMPOUND: Record<PracticeSession, TyreCompound> = { FP1: "HARD", 
 
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.max(minimum, Math.min(maximum, value));
+}
+
+function circuitForState(state: Pick<WeekendState, "circuitId">): CircuitDefinition {
+  return circuitById(state.circuitId);
+}
+
+function circuitForQualifyingCar(car: Pick<QualifyingCarState, "circuitId">): CircuitDefinition {
+  return circuitById(car.circuitId);
+}
+
+function qualifyingPitEntryProgress(circuitId?: string): number {
+  const circuit = circuitById(circuitId);
+  return circuit.pitLane.entryStart / circuit.lengthMeters;
+}
+
+function qualifyingReferenceSpeed(distanceMeters: number, circuit: CircuitDefinition): number {
+  return circuit.id === SILVERSTONE_CIRCUIT.id
+    ? telemetrySpeedAtDistance(distanceMeters)
+    : referenceSpeedAtDistance(distanceMeters, circuit);
 }
 
 function roundMillis(seconds: number): number {
@@ -473,24 +494,33 @@ function averageQualifyingTyreTemperature(temperatures: TyreTemperatureState): n
   return (temperatures.frontLeft + temperatures.frontRight + temperatures.rearLeft + temperatures.rearRight) / 4;
 }
 
-function buildSilverstoneSectorTimeFractions(): readonly [number, number, number] {
+function buildCircuitSectorTimeFractions(circuit: CircuitDefinition): readonly [number, number, number] {
   const sectorSeconds = [0, 0, 0];
   const sampleDistance = 20;
-  for (let distance = 0; distance < SILVERSTONE_CIRCUIT.lengthMeters; distance += sampleDistance) {
+  for (let distance = 0; distance < circuit.lengthMeters; distance += sampleDistance) {
     const midpoint = distance + sampleDistance / 2;
-    const sectorIndex = midpoint < SILVERSTONE_SECTOR_ENDS[0] ? 0 : midpoint < SILVERSTONE_SECTOR_ENDS[1] ? 1 : 2;
-    sectorSeconds[sectorIndex] += Math.min(sampleDistance, SILVERSTONE_CIRCUIT.lengthMeters - distance) / (telemetrySpeedAtDistance(midpoint) / 3.6);
+    const sectorIndex = midpoint < circuit.sectorEnds[0] ? 0 : midpoint < circuit.sectorEnds[1] ? 1 : 2;
+    sectorSeconds[sectorIndex] += Math.min(sampleDistance, circuit.lengthMeters - distance) / (qualifyingReferenceSpeed(midpoint, circuit) / 3.6);
   }
   const total = sectorSeconds.reduce((sum, value) => sum + value, 0);
   return [sectorSeconds[0] / total, sectorSeconds[1] / total, sectorSeconds[2] / total];
 }
 
-const SILVERSTONE_SECTOR_TIME_FRACTIONS = buildSilverstoneSectorTimeFractions();
-const SILVERSTONE_SECTOR_COMPLETION_FRACTIONS = [
-  SILVERSTONE_SECTOR_TIME_FRACTIONS[0],
-  SILVERSTONE_SECTOR_TIME_FRACTIONS[0] + SILVERSTONE_SECTOR_TIME_FRACTIONS[1],
-  1,
-] as const;
+const SECTOR_TIME_FRACTIONS = new Map<string, readonly [number, number, number]>();
+
+function circuitSectorTimeFractions(circuitId?: string): readonly [number, number, number] {
+  const resolvedId = circuitById(circuitId).id;
+  const cached = SECTOR_TIME_FRACTIONS.get(resolvedId);
+  if (cached) return cached;
+  const fractions = buildCircuitSectorTimeFractions(circuitById(resolvedId));
+  SECTOR_TIME_FRACTIONS.set(resolvedId, fractions);
+  return fractions;
+}
+
+function circuitSectorCompletionFractions(circuitId?: string): readonly [number, number, number] {
+  const fractions = circuitSectorTimeFractions(circuitId);
+  return [fractions[0], fractions[0] + fractions[1], 1];
+}
 
 // An out lap begins in the pit lane rather than at the timing line. Showing S3
 // shortly before the phase changes leaves enough screen time for the complete
@@ -502,12 +532,13 @@ function qualifyingSectorTargets(
   car: QualifyingCarState,
   lapSeconds: number,
 ): readonly [number, number, number] {
+  const fractions = circuitSectorTimeFractions(state.circuitId);
   const driverIndex = Math.max(0, DRIVERS.findIndex((driver) => driver.id === car.carId));
   const run = car.completedRuns;
   const firstBias = signedNoise(state.seed, 2_940 + driverIndex, run * 3 + 1) * 0.18;
   const secondBias = signedNoise(state.seed, 2_941 + driverIndex, run * 3 + 2) * 0.24;
-  const sectorOne = roundMillis(lapSeconds * SILVERSTONE_SECTOR_TIME_FRACTIONS[0] + firstBias);
-  const sectorTwo = roundMillis(lapSeconds * SILVERSTONE_SECTOR_TIME_FRACTIONS[1] + secondBias);
+  const sectorOne = roundMillis(lapSeconds * fractions[0] + firstBias);
+  const sectorTwo = roundMillis(lapSeconds * fractions[1] + secondBias);
   const sectorThree = roundMillis(lapSeconds - sectorOne - sectorTwo);
   return [sectorOne, sectorTwo, sectorThree];
 }
@@ -517,12 +548,13 @@ function qualifyingOutLapSectorTargets(
   car: QualifyingCarState,
   lapSeconds: number,
 ): readonly [number, number, number] {
+  const fractions = circuitSectorTimeFractions(state.circuitId);
   const driverIndex = Math.max(0, DRIVERS.findIndex((driver) => driver.id === car.carId));
   const run = car.completedRuns;
   const firstBias = signedNoise(state.seed, 3_140 + driverIndex, run * 3 + 1) * 0.72;
   const secondBias = signedNoise(state.seed, 3_141 + driverIndex, run * 3 + 2) * 0.88;
-  const sectorOne = roundMillis(lapSeconds * SILVERSTONE_SECTOR_TIME_FRACTIONS[0] + firstBias);
-  const sectorTwo = roundMillis(lapSeconds * SILVERSTONE_SECTOR_TIME_FRACTIONS[1] + secondBias);
+  const sectorOne = roundMillis(lapSeconds * fractions[0] + firstBias);
+  const sectorTwo = roundMillis(lapSeconds * fractions[1] + secondBias);
   const sectorThree = roundMillis(lapSeconds - sectorOne - sectorTwo);
   return [sectorOne, sectorTwo, sectorThree];
 }
@@ -532,7 +564,7 @@ function updateQualifyingLapSectorTiming(
   live: LiveQualifyingState,
   remainingSeconds: number,
   trafficPenaltySeconds: number,
-  completionFractions: readonly [number, number, number] = SILVERSTONE_SECTOR_COMPLETION_FRACTIONS,
+  completionFractions: readonly [number, number, number] = circuitSectorCompletionFractions(car.circuitId),
 ): QualifyingCarState {
   if (!car.provisionalSectorTargets) return car;
   const lapProgress = clamp(1 - remainingSeconds / Math.max(1, car.phaseDurationSeconds), 0, 1);
@@ -591,9 +623,10 @@ function reconcileLiveQualifyingSectorTones(
   }));
 }
 
-function initialQualifyingCar(carId: string): QualifyingCarState {
+function initialQualifyingCar(carId: string, circuitId: string): QualifyingCarState {
   return {
     carId,
+    circuitId,
     phase: "GARAGE",
     phaseRemainingSeconds: 0,
     phaseDurationSeconds: 0,
@@ -645,6 +678,7 @@ function prepareQualifyingSession(state: WeekendState, session: QualifyingSessio
   const entrants = qualifyingEntrantsFor(state, session);
   const durationSeconds = qualifyingDurationSeconds(session);
   return {
+    circuitId: state.circuitId,
     session,
     status: "READY",
     elapsedSeconds: 0,
@@ -654,7 +688,7 @@ function prepareQualifyingSession(state: WeekendState, session: QualifyingSessio
     paused: false,
     trackEvolutionPercent: 0,
     timing: createQualifyingSessionTimingState(),
-    cars: Object.fromEntries(entrants.map((carId) => [carId, initialQualifyingCar(carId)])),
+    cars: Object.fromEntries(entrants.map((carId) => [carId, initialQualifyingCar(carId, state.circuitId)])),
   };
 }
 
@@ -666,7 +700,7 @@ function reconcileQualifyingEntrants(state: WeekendState, live: LiveQualifyingSt
   if (alreadyValid) return live;
   return {
     ...live,
-    cars: Object.fromEntries(entrantIds.map((carId) => [carId, live.cars[carId] ?? initialQualifyingCar(carId)])),
+    cars: Object.fromEntries(entrantIds.map((carId) => [carId, live.cars[carId] ?? initialQualifyingCar(carId, state.circuitId)])),
   };
 }
 
@@ -676,7 +710,6 @@ function qualifyingPhaseProgress(car: QualifyingCarState): number {
   return clamp(1 - car.phaseRemainingSeconds / car.phaseDurationSeconds, 0, 1);
 }
 
-const QUALIFYING_PIT_ENTRY_PROGRESS = PIT_ENTRY_START / SILVERSTONE_CIRCUIT.lengthMeters;
 const QUALIFYING_FULL_IN_LAP_SECONDS = 69;
 const QUALIFYING_PIT_ENTRY_SECONDS = 7;
 
@@ -695,7 +728,7 @@ function startQualifyingReturn(
   resetCurrentTiming = false,
 ): QualifyingCarState {
   const normalizedStart = normalizeQualifyingProgress(startProgress);
-  const distanceToPitEntry = forwardQualifyingProgress(normalizedStart, QUALIFYING_PIT_ENTRY_PROGRESS);
+  const distanceToPitEntry = forwardQualifyingProgress(normalizedStart, qualifyingPitEntryProgress(car.circuitId));
   const durationSeconds = Math.max(3, Math.round(distanceToPitEntry * QUALIFYING_FULL_IN_LAP_SECONDS));
   return {
     ...car,
@@ -923,46 +956,48 @@ function qualifyingFuelLoadKg(plan: QualifyingFuelPlan): number {
 }
 
 function qualifyingTrackProgress(car: QualifyingCarState): number | null {
+  const circuit = circuitForQualifyingCar(car);
   const progress = qualifyingPhaseProgress(car);
   if (car.phase === "GARAGE") return null;
   if (car.phase === "OUT_LAP") {
     if (progress < 0.12) return null;
     const trackProgress = (progress - 0.12) / 0.88;
-    return clamp((PIT_EXIT_END + (SILVERSTONE_CIRCUIT.lengthMeters - PIT_EXIT_END) * trackProgress) / SILVERSTONE_CIRCUIT.lengthMeters, 0, 1);
+    return clamp((circuit.pitLane.exitEnd + (circuit.lengthMeters - circuit.pitLane.exitEnd) * trackProgress) / circuit.lengthMeters, 0, 1);
   }
   if (car.phase === "PUSH_LAP") return progress;
   if (car.phase === "PIT_ENTRY") return null;
   // A recovery in-lap continues around to the timing line; a returning in-lap
   // runs only as far as the pit entry.
   if (isQualifyingRecoveryLap(car)) return clamp(car.phaseStartProgress + (1 - car.phaseStartProgress) * progress, 0, 1);
-  const distanceToPitEntry = forwardQualifyingProgress(car.phaseStartProgress, QUALIFYING_PIT_ENTRY_PROGRESS);
+  const distanceToPitEntry = forwardQualifyingProgress(car.phaseStartProgress, qualifyingPitEntryProgress(car.circuitId));
   return normalizeQualifyingProgress(car.phaseStartProgress + distanceToPitEntry * progress);
 }
 
 function qualifyingDistanceForTelemetry(car: QualifyingCarState): { distanceMeters: number; pitLane: boolean } | null {
+  const circuit = circuitForQualifyingCar(car);
   const progress = qualifyingPhaseProgress(car);
   if (car.phase === "GARAGE") return null;
   if (car.phase === "OUT_LAP" && progress < 0.12) {
     return {
-      distanceMeters: PIT_BOX_DISTANCE + (SILVERSTONE_CIRCUIT.lengthMeters + PIT_EXIT_END - PIT_BOX_DISTANCE) * (progress / 0.12),
+      distanceMeters: circuit.pitLane.boxDistance + (circuit.lengthMeters + circuit.pitLane.exitEnd - circuit.pitLane.boxDistance) * (progress / 0.12),
       pitLane: true,
     };
   }
   if (car.phase === "PIT_ENTRY") {
     return {
-      distanceMeters: PIT_ENTRY_START + (PIT_BOX_DISTANCE - PIT_ENTRY_START) * progress,
+      distanceMeters: circuit.pitLane.entryStart + (circuit.pitLane.boxDistance - circuit.pitLane.entryStart) * progress,
       pitLane: true,
     };
   }
   const trackProgress = qualifyingTrackProgress(car);
-  return trackProgress === null ? null : { distanceMeters: trackProgress * SILVERSTONE_CIRCUIT.lengthMeters, pitLane: false };
+  return trackProgress === null ? null : { distanceMeters: trackProgress * circuit.lengthMeters, pitLane: false };
 }
 
 function qualifyingSpeedTarget(car: QualifyingCarState): number {
   const telemetry = qualifyingDistanceForTelemetry(car);
   if (!telemetry) return 0;
   if (telemetry.pitLane) return 80;
-  const reference = telemetrySpeedAtDistance(telemetry.distanceMeters);
+  const reference = qualifyingReferenceSpeed(telemetry.distanceMeters, circuitForQualifyingCar(car));
   const normalPaceFactor = car.phase === "PUSH_LAP"
     ? car.attackMode === "SAFE" ? 0.985 : car.attackMode === "ATTACK" ? 1.008 : car.attackMode === "MAXIMUM" ? 1.014 : 1
     : car.phase === "OUT_LAP"
@@ -975,10 +1010,10 @@ function qualifyingSpeedTarget(car: QualifyingCarState): number {
   return clamp(reference * paceFactor, minimum, car.phase === "PUSH_LAP" ? 330 : 292);
 }
 
-function qualifyingCornerThermalLoad(distanceMeters: number): { intensity: number; hotterSide: "LEFT" | "RIGHT" | null } {
-  const before = pointAtDistance(distanceMeters - 32);
-  const centre = pointAtDistance(distanceMeters);
-  const after = pointAtDistance(distanceMeters + 32);
+function qualifyingCornerThermalLoad(distanceMeters: number, circuit: CircuitDefinition): { intensity: number; hotterSide: "LEFT" | "RIGHT" | null } {
+  const before = pointAtDistance(distanceMeters - 32, circuit);
+  const centre = pointAtDistance(distanceMeters, circuit);
+  const after = pointAtDistance(distanceMeters + 32, circuit);
   const incomingX = centre.x - before.x;
   const incomingY = centre.y - before.y;
   const outgoingX = after.x - centre.x;
@@ -1001,8 +1036,9 @@ function advanceQualifyingTyreTemperatures(car: QualifyingCarState, nextSpeedKph
     };
   }
 
-  const segment = SILVERSTONE_CIRCUIT.segments[segmentIndexAtDistance(telemetry.distanceMeters)];
-  const corner = qualifyingCornerThermalLoad(telemetry.distanceMeters);
+  const circuit = circuitForQualifyingCar(car);
+  const segment = circuit.segments[segmentIndexAtDistance(telemetry.distanceMeters, circuit)];
+  const corner = qualifyingCornerThermalLoad(telemetry.distanceMeters, circuit);
   const brakingHeat = clamp(Math.max(0, car.currentSpeedKph - nextSpeedKph) * 0.038, 0, 9);
   const tractionHeat = clamp(Math.max(0, nextSpeedKph - car.currentSpeedKph) * 0.027, 0, 7);
   const speedHeat = clamp((nextSpeedKph - 170) * 0.024, -3.6, 4.2);
@@ -1044,6 +1080,7 @@ export interface QualifyingTrafficDecision {
   spacingFactor: number;
   flyingConflictCarId: string | null;
   flyingConflictGapSeconds: number | null;
+  shouldAbortFlyingLap: boolean;
 }
 
 const QUALIFYING_YIELD_APPROACH_SECONDS = 5.5;
@@ -1055,6 +1092,7 @@ function distanceTimeGap(distanceMeters: number, speedKph: number): number {
 }
 
 export function qualifyingTrafficDecision(live: LiveQualifyingState, car: QualifyingCarState): QualifyingTrafficDecision {
+  const circuit = circuitById(live.circuitId);
   const progress = qualifyingTrackProgress(car);
   if (progress === null) {
     return {
@@ -1069,6 +1107,7 @@ export function qualifyingTrafficDecision(live: LiveQualifyingState, car: Qualif
       spacingFactor: 1,
       flyingConflictCarId: null,
       flyingConflictGapSeconds: null,
+      shouldAbortFlyingLap: false,
     };
   }
   let gapAheadMeters = Number.POSITIVE_INFINITY;
@@ -1080,8 +1119,8 @@ export function qualifyingTrafficDecision(live: LiveQualifyingState, car: Qualif
     if (other.carId === car.carId) continue;
     const otherProgress = qualifyingTrackProgress(other);
     if (otherProgress === null) continue;
-    const ahead = ((otherProgress - progress + 1) % 1) * SILVERSTONE_CIRCUIT.lengthMeters;
-    const behind = ((progress - otherProgress + 1) % 1) * SILVERSTONE_CIRCUIT.lengthMeters;
+    const ahead = ((otherProgress - progress + 1) % 1) * circuit.lengthMeters;
+    const behind = ((progress - otherProgress + 1) % 1) * circuit.lengthMeters;
     if (ahead > 1 && ahead < gapAheadMeters) {
       gapAheadMeters = ahead;
       nearestAhead = other;
@@ -1090,7 +1129,7 @@ export function qualifyingTrafficDecision(live: LiveQualifyingState, car: Qualif
       gapBehindMeters = behind;
       nearestBehind = other;
     }
-    if (other.phase === "PUSH_LAP" && behind < SILVERSTONE_CIRCUIT.lengthMeters * 0.5) {
+    if (other.phase === "PUSH_LAP" && behind < circuit.lengthMeters * 0.5) {
       flyingBehind.push({ car: other, gapSeconds: distanceTimeGap(behind, other.currentSpeedKph) });
     }
   }
@@ -1112,9 +1151,9 @@ export function qualifyingTrafficDecision(live: LiveQualifyingState, car: Qualif
   const currentTargetProgress = currentTarget ? qualifyingTrackProgress(currentTarget) : null;
 
   if (eligibleToYield && currentTarget?.phase === "PUSH_LAP" && currentTargetProgress !== null && car.yieldingDurationSeconds < QUALIFYING_YIELD_MAX_SECONDS) {
-    const targetBehindMeters = normalizeQualifyingProgress(progress - currentTargetProgress) * SILVERSTONE_CIRCUIT.lengthMeters;
-    const targetAheadMeters = normalizeQualifyingProgress(currentTargetProgress - progress) * SILVERSTONE_CIRCUIT.lengthMeters;
-    const targetBehind = targetBehindMeters < SILVERSTONE_CIRCUIT.lengthMeters * 0.5;
+    const targetBehindMeters = normalizeQualifyingProgress(progress - currentTargetProgress) * circuit.lengthMeters;
+    const targetAheadMeters = normalizeQualifyingProgress(currentTargetProgress - progress) * circuit.lengthMeters;
+    const targetBehind = targetBehindMeters < circuit.lengthMeters * 0.5;
     const targetGapSeconds = distanceTimeGap(targetBehind ? targetBehindMeters : targetAheadMeters, currentTarget.currentSpeedKph);
     const stillApproaching = targetBehind && targetGapSeconds <= QUALIFYING_YIELD_APPROACH_SECONDS + 1.5;
     const passedButNotClear = !targetBehind && targetGapSeconds < QUALIFYING_YIELD_SAFE_GAP_SECONDS;
@@ -1159,6 +1198,7 @@ export function qualifyingTrafficDecision(live: LiveQualifyingState, car: Qualif
     && gapAheadSeconds <= 1
     && nearestAhead.timing.currentLapValid
     && nearestAhead.lastRunNote !== "TRACK LIMITS";
+  const flyingConflictSeconds = flyingConflict ? car.flyingConflictSeconds + 1 : 0;
 
   return {
     level,
@@ -1172,6 +1212,7 @@ export function qualifyingTrafficDecision(live: LiveQualifyingState, car: Qualif
     spacingFactor,
     flyingConflictCarId: flyingConflict ? nearestAhead!.carId : null,
     flyingConflictGapSeconds: flyingConflict ? gapAheadSeconds : null,
+    shouldAbortFlyingLap: flyingConflictSeconds >= 3,
   };
 }
 
@@ -1188,8 +1229,9 @@ function predictedPitExitGaps(live: LiveQualifyingState, outLapDurationSeconds: 
   nearestFlyingGapSeconds: number | null;
   mergeSafe: boolean;
 } {
+  const circuit = circuitById(live.circuitId);
   const arrivalSeconds = outLapDurationSeconds * 0.12;
-  const pitExitProgress = PIT_EXIT_END / SILVERSTONE_CIRCUIT.lengthMeters;
+  const pitExitProgress = circuit.pitLane.exitEnd / circuit.lengthMeters;
   let nearestTimeGap = 12;
   let nearestFlyingGap = Number.POSITIVE_INFINITY;
   let mergeSafe = true;
@@ -1222,9 +1264,9 @@ function predictedPitExitGaps(live: LiveQualifyingState, outLapDurationSeconds: 
     const progress = qualifyingTrackProgress(other);
     if (progress === null) continue;
     const projectedMeters = Math.max(52, other.currentSpeedKph / 3.6) * arrivalSeconds;
-    const projectedProgress = (progress + projectedMeters / SILVERSTONE_CIRCUIT.lengthMeters) % 1;
-    const aheadMeters = ((projectedProgress - pitExitProgress + 1) % 1) * SILVERSTONE_CIRCUIT.lengthMeters;
-    const behindMeters = ((pitExitProgress - projectedProgress + 1) % 1) * SILVERSTONE_CIRCUIT.lengthMeters;
+    const projectedProgress = (progress + projectedMeters / circuit.lengthMeters) % 1;
+    const aheadMeters = ((projectedProgress - pitExitProgress + 1) % 1) * circuit.lengthMeters;
+    const behindMeters = ((pitExitProgress - projectedProgress + 1) % 1) * circuit.lengthMeters;
     const aheadGapSeconds = distanceTimeGap(aheadMeters, other.currentSpeedKph);
     const behindGapSeconds = distanceTimeGap(behindMeters, other.currentSpeedKph);
     nearestTimeGap = Math.min(nearestTimeGap, aheadGapSeconds, behindGapSeconds);
@@ -1423,7 +1465,8 @@ function qualifyingTrafficLapDelta(car: QualifyingCarState, traffic: QualifyingT
   if (car.phase !== "PUSH_LAP" || traffic.gapAheadSeconds === null || traffic.gapAheadSeconds >= 2.8) return 0;
   const telemetry = qualifyingDistanceForTelemetry(car);
   if (!telemetry || telemetry.pitLane) return 0;
-  const segment = SILVERSTONE_CIRCUIT.segments[segmentIndexAtDistance(telemetry.distanceMeters)];
+  const circuit = circuitForQualifyingCar(car);
+  const segment = circuit.segments[segmentIndexAtDistance(telemetry.distanceMeters, circuit)];
   const gap = traffic.gapAheadSeconds;
 
   if (gap <= 1) {
@@ -1573,6 +1616,26 @@ function updateQualifyingCarOneSecond(
     tyreTemperatures,
     tyreTemperatureC: averageQualifyingTyreTemperature(tyreTemperatures),
   };
+  const shouldAbortFlyingLap = traffic.shouldAbortFlyingLap
+    // The controlled car follows the pitwall's persistent-conflict rule. AI
+    // cars only abandon at a near-contact gap; normal traffic remains a
+    // recoverable time loss so the qualifying field does not mass-abort.
+    && (playerCar || (traffic.flyingConflictGapSeconds ?? Number.POSITIVE_INFINITY) <= 0.1);
+  if (car.phase === "PUSH_LAP" && shouldAbortFlyingLap) {
+    const conflictCar = {
+      ...car,
+      ...trafficState,
+      ...telemetryState,
+      lastRunNote: "ABORTED" as const,
+      timing: invalidateQualifyingLapTiming(car.timing),
+      trafficDecisionState: "ABORTED" as const,
+      trafficDecisionMessage: `Gap below ${(traffic.flyingConflictGapSeconds ?? 1).toFixed(1)}s · lap aborted`,
+    };
+    return {
+      car: startQualifyingReturn(conflictCar, qualifyingTrackProgress(car) ?? qualifyingPhaseProgress(car), "ABORTED", true),
+      consumedCompound: null,
+    };
+  }
   if (car.phase === "OUT_LAP") {
     const energyChange = car.outLapMode === "FAST" ? 0.08 : car.outLapMode === "SLOW" ? 0.24 : 0.16;
     const warmed = updateQualifyingLapSectorTiming({
@@ -1767,7 +1830,7 @@ function updateQualifyingCarOneSecond(
         phase: "PIT_ENTRY",
         phaseDurationSeconds: QUALIFYING_PIT_ENTRY_SECONDS,
         phaseRemainingSeconds: QUALIFYING_PIT_ENTRY_SECONDS,
-        phaseStartProgress: QUALIFYING_PIT_ENTRY_PROGRESS,
+        phaseStartProgress: qualifyingPitEntryProgress(car.circuitId),
         currentSpeedKph: 80,
       },
       consumedCompound: null,
@@ -1861,13 +1924,15 @@ function qualifyingRecords(results: readonly WeekendSessionResult[]): Qualifying
   }));
 }
 
-export function createWeekendState(seed: number, playerTeamId = DEFAULT_PLAYER_TEAM_ID): WeekendState {
+export function createWeekendState(seed: number, playerTeamId = DEFAULT_PLAYER_TEAM_ID, circuitId = SILVERSTONE_CIRCUIT.id): WeekendState {
   if (!TEAM_BY_ID.has(playerTeamId)) throw new RangeError(`Unknown player team: ${playerTeamId}.`);
+  const circuit = circuitById(circuitId);
   const setups = Object.fromEntries(DRIVERS.map((driver) => [driver.id, initialSetupFor(seed, driver.id, playerTeamId)]));
   const tyreUsage = Object.fromEntries(DRIVERS.map((driver) => [driver.id, {}]));
   const tyreInventory = createWeekendTyreInventory(DRIVERS.map((driver) => driver.id));
   return {
     seed,
+    circuitId: circuit.id,
     playerTeamId,
     currentSession: "FP1",
     completedSessions: [],
@@ -2443,8 +2508,9 @@ export function recallQualifyingCar(state: WeekendState, carId: string): Weekend
   const car = live?.cars[carId];
   if (!live || !car || !playerCarIdsFor(state.playerTeamId).includes(carId)) return state;
   if (car.phase === "GARAGE" || car.phase === "PIT_ENTRY") return state;
+  const circuit = circuitForState(state);
   const startProgress = qualifyingTrackProgress(car)
-    ?? (car.phase === "OUT_LAP" ? PIT_EXIT_END / SILVERSTONE_CIRCUIT.lengthMeters : qualifyingPhaseProgress(car));
+    ?? (car.phase === "OUT_LAP" ? circuit.pitLane.exitEnd / circuit.lengthMeters : qualifyingPhaseProgress(car));
   return {
     ...state,
     qualifyingLive: {

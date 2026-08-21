@@ -1,15 +1,15 @@
 import type { EnergyDeploymentMode, EnergyManagementContext, EnergySystemState } from "@/domain/energy";
-import type { ActiveAeroMode, ActiveIncident, BattleStatus, CoolingMode, EnergyMode, EnergyState, PaceMode, PitStopIssue, RaceCarState, RaceControlStatus, RaceEvent, RaceSnapshot, RaceStatus, RacingLineMode, RadioMessage, TeamOrderType, TyreCompound, TyreMode, TyreSetState, TyreTemperatureState, WeatherState, WeekendTyreInventory, WeekendTyreUsage } from "@/domain/race";
+import type { ActiveAeroMode, ActiveIncident, BattleStatus, CoolingMode, DriverMoment, EnergyMode, EnergyState, PaceMode, PitStopIssue, RaceCarState, RaceControlStatus, RaceEvent, RaceReliabilityInput, RaceSnapshot, RaceStatus, RacingLineMode, RadioMessage, TeamOrderType, TyreCompound, TyreMode, TyreSetState, TyreTemperatureState, WeatherState, WeekendTyreInventory, WeekendTyreUsage } from "@/domain/race";
 import { DEFAULT_PLAYER_TEAM_ID, DRIVER_BY_ID, DRIVERS, TEAM_BY_ID } from "@/fixtures/grid";
-import { buildAiStrategyDecision } from "@/simulation/ai-strategy";
+import { buildAiStrategyDecision, weatherSurfaceSignal } from "@/simulation/ai-strategy";
 import { pitMistakeRiskBias, raceIncidentRiskMultiplier } from "@/simulation/driver-risk";
 import { ENERGY_SYSTEM_CONFIG, energyProfileForTeam, normalizeEnergyMode } from "@/simulation/energy/energy-config";
 import { buildEnergyRadioMessages } from "@/simulation/energy/energy-messages";
 import { chooseAiEnergyMode } from "@/simulation/energy/energy-strategy";
-import { completeEnergyLap, createEnergySystemState, migrateEnergySystemState, updateEnergySystem } from "@/simulation/energy/energy-system";
+import { completeEnergyLap, createEnergySystemState, energyFlowStateFor, migrateEnergySystemState, updateEnergySystem } from "@/simulation/energy/energy-system";
 import { buildRaceDriverRadio } from "@/simulation/message-library";
 import { resolvePitStopExecution } from "@/simulation/pit-operations";
-import { PIT_ENTRY_START, PIT_EXIT_END, PIT_LANE_START, pitBoxDistanceForTeam } from "@/simulation/pit-lane";
+import { pitBoxDistanceForTeam } from "@/simulation/pit-lane";
 import { signedNoise } from "@/simulation/random";
 import { calculateFieldRacecraft } from "@/simulation/racecraft";
 import { classifiedFieldHasFinished } from "@/simulation/race-finish";
@@ -18,6 +18,7 @@ import { advancePenaltyLifecycle, reviewStewarding } from "@/simulation/stewardi
 import { FIA_2026_PENALTY_RULES, isMandatoryPitPenalty, isTimePenalty, penaltyCrossingsRemaining, pitSpeedingIncidentQuota } from "@/simulation/fia-2026-rules";
 import {
   VSC_SPEED_FACTOR,
+  SAFETY_CAR_PIT_RELEASE_SECONDS,
   advanceSafetyCarPosition,
   advanceSafetyCarProcedure,
   buildSafetyCarSchedule,
@@ -37,19 +38,18 @@ import { raceStartTyreInventory, raceStartTyreSetsFor } from "@/simulation/tyre-
 import {
   normalizeLapDistance,
   pointAtDistance,
+  referenceSpeedAtDistance,
   sectorAtDistance,
   segmentIndexAtDistance,
+  circuitById,
   SILVERSTONE_CIRCUIT,
-  SILVERSTONE_CORNERS,
-  SILVERSTONE_OVERTAKE_ACTIVATION_DISTANCE,
-  SILVERSTONE_OVERTAKE_DETECTION_DISTANCE,
-  SILVERSTONE_OVERTAKE_ZONE_END_DISTANCE,
-  SILVERSTONE_SECTOR_ENDS,
 } from "@/simulation/track";
 import { createSpatialWeather, effectiveWaterAtDistance, updateSpatialWeather, WEATHER_SURFACE_ZONE_COUNT } from "@/simulation/weather";
 import type { EnergyDebugAction } from "@/simulation/protocol";
 
 export const FIXED_STEP_SECONDS = 0.1;
+const WEATHER_UPDATE_INTERVAL_TICKS = 5;
+const WEATHER_UPDATE_DELTA_SECONDS = FIXED_STEP_SECONDS * WEATHER_UPDATE_INTERVAL_TICKS;
 export const DEFAULT_SEED = 20_260_712;
 export const INCIDENT_BASE_PROBABILITY_PER_CAR_SECOND = 0.000018;
 export const INCIDENT_FIELD_COOLDOWN_SECONDS = 180;
@@ -64,13 +64,15 @@ export const MAX_RETIREMENTS_PER_RACE = 6;
  * severe incidents may use the race's single SC allocation before this point;
  * otherwise the scheduled recovery incident guarantees one deployment.
  */
-export function scheduledSafetyCarTriggerDistance(seed: number): number {
+export function scheduledSafetyCarTriggerDistance(seed: number, circuitId?: string): number {
+  const circuit = circuitById(circuitId);
   const lapNoise = (signedNoise(seed, 71_001, 0) + 1) / 2;
   const distanceNoise = (signedNoise(seed, 71_002, 0) + 1) / 2;
   const lap = SAFETY_CAR_RANDOM_MIN_LAP
     + Math.floor(lapNoise * (SAFETY_CAR_RANDOM_MAX_LAP - SAFETY_CAR_RANDOM_MIN_LAP + 1));
   const lapRatio = 0.14 + distanceNoise * 0.72;
-  return ((lap - 1) + lapRatio) * SILVERSTONE_CIRCUIT.lengthMeters;
+  const scaledLap = Math.min(circuit.totalLaps - 4, Math.max(5, lap / SILVERSTONE_CIRCUIT.totalLaps * circuit.totalLaps));
+  return ((scaledLap - 1) + lapRatio) * circuit.lengthMeters;
 }
 
 /** Seed-stable retirement target. Every race finishes with two to six classified retirements. */
@@ -80,14 +82,16 @@ export function plannedRetirementCount(seed: number): number {
 }
 
 /** Spreads the guaranteed retirements between roughly laps 9 and 45. */
-export function plannedRetirementTriggerDistance(seed: number, ordinal: number, targetCount = plannedRetirementCount(seed)): number {
+export function plannedRetirementTriggerDistance(seed: number, ordinal: number, targetCount = plannedRetirementCount(seed), circuitId?: string): number {
+  const circuit = circuitById(circuitId);
   const safeTarget = clamp(Math.round(targetCount), MIN_RETIREMENTS_PER_RACE, MAX_RETIREMENTS_PER_RACE);
   const safeOrdinal = clamp(Math.round(ordinal), 0, safeTarget - 1);
   const progress = safeTarget === 1 ? 0.5 : safeOrdinal / (safeTarget - 1);
   const jitter = signedNoise(seed, 72_100 + safeOrdinal, safeTarget) * 2.2;
   const lap = clamp(9 + progress * 35 + jitter, 8, 46);
   const lapRatio = 0.18 + ((signedNoise(seed, 72_200 + safeOrdinal, safeTarget) + 1) / 2) * 0.58;
-  return ((lap - 1) + lapRatio) * SILVERSTONE_CIRCUIT.lengthMeters;
+  const scaledLap = Math.min(circuit.totalLaps - 3, Math.max(5, lap / SILVERSTONE_CIRCUIT.totalLaps * circuit.totalLaps));
+  return ((scaledLap - 1) + lapRatio) * circuit.lengthMeters;
 }
 
 const PACE_SPEED: Record<PaceMode, number> = { ATTACK: 1.012, PUSH: 1.007, STANDARD: 1, CONSERVE: 0.985, COOL: 0.958 };
@@ -110,6 +114,8 @@ const GEARBOX_TEMPERATURE_MAX = 150;
 const ENERGY_STORE_TEMPERATURE_MIN = 18;
 const ENERGY_STORE_TEMPERATURE_MAX = 85;
 const DRY_COMPOUNDS: readonly TyreCompound[] = ["SOFT", "MEDIUM", "HARD"];
+const RELIABILITY_FAILURE_MIN_PROGRESS = 0.22;
+const RELIABILITY_FAILURE_MAX_PROGRESS = 0.88;
 const ENERGY_MODE_SPEED: Readonly<Record<EnergyDeploymentMode, number>> = {
   HARVEST: 0.9948,
   CONSERVE: 0.997,
@@ -192,6 +198,8 @@ function createCar(
   weekendTyreUsage?: WeekendTyreUsage,
   setupPerformanceByCar?: Readonly<Record<string, number>>,
   weekendTyreInventory?: WeekendTyreInventory,
+  circuitId = SILVERSTONE_CIRCUIT.id,
+  reliabilityByCar?: Readonly<Record<string, RaceReliabilityInput>>,
 ): RaceCarState {
   const driver = DRIVER_BY_ID.get(driverId);
   if (!driver) throw new Error(`Unknown driver: ${driverId}`);
@@ -200,9 +208,10 @@ function createCar(
   // The visual game map intentionally uses one line rather than the real
   // staggered two-column boxes requested for this prototype.
   const startingDistance = index === 0 ? 0 : -index * 6.8;
-  const segmentIndex = segmentIndexAtDistance(startingDistance);
-  const segment = SILVERSTONE_CIRCUIT.segments[segmentIndex];
-  const lapDistance = normalizeLapDistance(startingDistance);
+  const circuit = circuitById(circuitId);
+  const segmentIndex = segmentIndexAtDistance(startingDistance, circuit);
+  const segment = circuit.segments[segmentIndex];
+  const lapDistance = normalizeLapDistance(startingDistance, circuit.lengthMeters);
 
   const tyreCompound = startingTyre;
   const tyreSets = createTyreSets(driver.id, tyreCompound, weekendTyreUsage?.[driver.id], weekendTyreInventory);
@@ -210,11 +219,21 @@ function createCar(
   const activeTyreSetId = activeTyreSet.id;
   const initialSoc = (72 + (index % 4) * 4) / 100;
   const energySystem = createEnergySystemState(initialSoc, 43);
+  const reliability = reliabilityByCar?.[driver.id];
+  const reliabilityFailureRoll = (signedNoise(seed, 91_000 + driver.number, 0) + 1) / 2;
+  const reliabilityFailureProgressRoll = (signedNoise(seed, 92_000 + driver.number, 0) + 1) / 2;
+  const reliabilityFailureDistance = reliability && reliabilityFailureRoll < clamp(reliability.failureRiskPercent / 100, 0, 1)
+    ? circuit.lengthMeters * circuit.totalLaps * (
+      RELIABILITY_FAILURE_MIN_PROGRESS
+      + reliabilityFailureProgressRoll * (RELIABILITY_FAILURE_MAX_PROGRESS - RELIABILITY_FAILURE_MIN_PROGRESS)
+    )
+    : null;
 
   return {
     carId: driver.id,
     teamId: driver.teamId,
     driverId: driver.id,
+    circuitId: circuit.id,
     currentLap: 1,
     currentSegment: segmentIndex,
     segmentProgress: (lapDistance - segment.startDistance) / segment.length,
@@ -251,13 +270,19 @@ function createCar(
     brakeStress: 0,
     thermalDeratePercent: 0,
     thermalRiskPercent: 0,
+    reliabilityConditionPercent: reliability?.conditionPercent ?? 100,
+    reliabilityRiskPercent: reliability?.failureRiskPercent ?? 0,
+    reliabilityDeratePercent: reliability?.performanceDeratePercent ?? 0,
+    reliabilityLimitingComponent: reliability?.limitingComponent ?? "NONE",
+    reliabilityFailureDistance,
+    reliabilityFailureComponent: reliabilityFailureDistance === null ? null : reliability?.limitingComponent ?? "POWER UNIT",
     fuelRemainingKg: 105,
     setupPerformanceFactor: clamp(setupPerformanceByCar?.[driver.id] ?? 1, 0.996, 1),
     eventPerformanceFactor: 1 + signedNoise(seed, 88_000 + driver.number, 0) * 0.0032,
     paceMode: "STANDARD",
     tyreMode: "BALANCED",
     energyMode: "BALANCED",
-    energyAutoEnabled: driver.teamId !== playerTeamId,
+    energyAutoEnabled: true,
     energyState: "NEUTRAL",
     energySystem,
     batteryPercent: energySystem.stateOfCharge * 100,
@@ -287,8 +312,21 @@ function createCar(
     usedTyreCompounds: [tyreCompound],
     strategyIntent: "HOLD",
     strategyConfidence: 0.5,
+    aiDecision: {
+      intent: "HOLD",
+      objective: "Complete the opening stint",
+      targetCarId: null,
+      pitReason: null,
+      plannedPitLap: null,
+      reasons: ["Race start state"],
+      confidence: 0.5,
+      decidedAt: 0,
+    },
     incidentStatus: "RUNNING",
     incidentTimer: 0,
+    driverMoment: "NONE",
+    driverMomentTimer: 0,
+    lastDriverMomentAt: null,
     incidentStartedAt: null,
     incidentDirection: index % 2 === 0 ? 1 : -1,
     lastIncidentAt: null,
@@ -337,6 +375,8 @@ export function createInitialSnapshot(
   setupPerformanceByCar?: Readonly<Record<string, number>>,
   playerTeamId = DEFAULT_PLAYER_TEAM_ID,
   weekendTyreInventory?: WeekendTyreInventory,
+  circuitId = SILVERSTONE_CIRCUIT.id,
+  reliabilityByCar?: Readonly<Record<string, RaceReliabilityInput>>,
 ): RaceSnapshot {
   if (!TEAM_BY_ID.has(playerTeamId)) throw new RangeError(`Unknown player team: ${playerTeamId}.`);
   const knownCars = new Set(DRIVERS.map((driver) => driver.id));
@@ -344,11 +384,13 @@ export function createInitialSnapshot(
     && new Set(requestedGridOrder).size === DRIVERS.length
     && requestedGridOrder.every((carId) => knownCars.has(carId));
   const gridOrder = validGrid ? requestedGridOrder : DRIVERS.map((driver) => driver.id);
-  const weather = createSpatialWeather(seed);
+  const circuit = circuitById(circuitId);
+  const weather = createSpatialWeather(seed, 0, { trackLengthMeters: circuit.lengthMeters });
   const startingTyrePlan = buildRaceStartingTyrePlan({ seed, gridOrder, tyreUsage: weekendTyreUsage, weather });
-  const cars = gridOrder.map((driverId, index) => createCar(driverId, index, seed, playerTeamId, startingTyrePlan[driverId].compound, weekendTyreUsage, setupPerformanceByCar, weekendTyreInventory));
+  const cars = gridOrder.map((driverId, index) => createCar(driverId, index, seed, playerTeamId, startingTyrePlan[driverId].compound, weekendTyreUsage, setupPerformanceByCar, weekendTyreInventory, circuit.id, reliabilityByCar));
   return {
     seed,
+    circuitId: circuit.id,
     playerTeamId,
     tick: 0,
     elapsedTime: 0,
@@ -376,7 +418,7 @@ export function createInitialSnapshot(
     safetyCarLappedCarsMayOvertake: false,
     safetyCarWaveBy: [],
     safetyCarDeployments: 0,
-    scheduledSafetyCarDistance: scheduledSafetyCarTriggerDistance(seed),
+    scheduledSafetyCarDistance: scheduledSafetyCarTriggerDistance(seed, circuit.id),
     pitLaneOpen: true,
     pitLaneStatus: "OPEN",
     activeIncident: null,
@@ -402,7 +444,8 @@ function targetSpeedKph(car: RaceCarState, index: number, seed: number, tick: nu
   const team = TEAM_BY_ID.get(car.teamId);
   if (!driver || !team) return 100;
 
-  const segment = SILVERSTONE_CIRCUIT.segments[car.currentSegment];
+  const circuit = circuitById(car.circuitId);
+  const segment = circuit.segments[car.currentSegment];
   const formWave = Math.sin((tick * FIXED_STEP_SECONDS + index * 1.37) / 7.5) * 0.006;
   const stableNoise = signedNoise(seed, index, Math.floor(tick / 8)) * (0.004 / driver.consistency);
   const temperatureGrip = Math.max(0.94, 1 - Math.abs(car.tyreTemperature - 100) * 0.00145);
@@ -420,9 +463,73 @@ function targetSpeedKph(car: RaceCarState, index: number, seed: number, tick: nu
   const performance = team.performance * driver.pace * PACE_SPEED[car.paceMode] * TYRE_SPEED[car.tyreMode]
     * COMPOUND_SPEED[car.tyreCompound] * surfaceGrip(car.tyreCompound, trackWetness) * temperatureGrip * wearGrip * fuelWeight
     * slipstream * attackBoost * energyBoost * energyModeSpeed * lowEnergyPenalty * dirtyAirFactor * COOLING_SPEED[car.coolingMode ?? "NORMAL"]
-    * thermalPerformanceFactor(car) * (car.setupPerformanceFactor ?? 1) * (car.eventPerformanceFactor ?? 1) * (1 + formWave + stableNoise);
-  const telemetryTarget = telemetrySpeedAtDistance(car.lapDistance);
+    * thermalPerformanceFactor(car) * (1 - (car.reliabilityDeratePercent ?? 0) / 100) * (car.setupPerformanceFactor ?? 1) * (car.eventPerformanceFactor ?? 1) * (1 + formWave + stableNoise);
+  const telemetryTarget = circuit.id === SILVERSTONE_CIRCUIT.id
+    ? telemetrySpeedAtDistance(car.lapDistance)
+    : referenceSpeedAtDistance(car.lapDistance, circuit);
   return Math.max(65, telemetryTarget * performance);
+}
+
+function driverMomentLabel(moment: DriverMoment): string {
+  switch (moment) {
+    case "LOW_GRIP": return "LOW GRIP";
+    case "LOCK_UP": return "LOCK-UP";
+    case "REAR_SNAP": return "REAR SNAP";
+    case "SPRAY": return "SPRAY / VISIBILITY";
+    case "SPIN_RECOVERY": return "SPIN RECOVERY";
+    default: return "NONE";
+  }
+}
+
+function driverMomentSpeedFactor(moment: DriverMoment): number {
+  switch (moment) {
+    case "LOW_GRIP": return 0.84;
+    case "LOCK_UP": return 0.78;
+    case "REAR_SNAP": return 0.68;
+    case "SPRAY": return 0.9;
+    case "SPIN_RECOVERY": return 0.35;
+    default: return 1;
+  }
+}
+
+/**
+ * Creates short handling moments from the same local rain/water signal used by
+ * tyre strategy. The independent noise streams keep the events deterministic
+ * without making every car react in the same corner or on the same lap.
+ */
+function dynamicDriverMomentFor(input: {
+  car: RaceCarState;
+  index: number;
+  seed: number;
+  tick: number;
+  localWater: number;
+  localRain: number;
+}): { moment: Exclude<DriverMoment, "NONE">; durationSeconds: number } | null {
+  const { car, index, seed, tick, localWater, localRain } = input;
+  const wetSeverity = clamp(localWater * 0.76 + localRain * 0.48, 0, 1);
+  if (wetSeverity < 0.1) return null;
+  const circuit = circuitById(car.circuitId);
+  const segment = circuit.segments[car.currentSegment];
+  const fastSection = segment.kind === "FAST" || segment.kind === "MEDIUM";
+  const dryTyre = DRY_COMPOUNDS.includes(car.tyreCompound);
+  const exposure = segment.kind === "FAST" ? 1.28 : segment.kind === "MEDIUM" ? 1.08 : 0.84;
+  const attackExposure = car.paceMode === "ATTACK" || car.paceMode === "PUSH" ? 1.22 : 1;
+  const tyreRisk = dryTyre ? 1 : 0.48;
+  const chance = clamp((0.011 + wetSeverity * 0.032) * exposure * attackExposure * tyreRisk, 0.006, 0.064);
+  const eventRoll = (signedNoise(seed, 81_000 + index, Math.floor(tick / 10)) + 1) / 2;
+  if (eventRoll >= chance) return null;
+  const typeRoll = (signedNoise(seed, 82_000 + index, Math.floor(tick / 10)) + 1) / 2;
+
+  if (localRain >= 0.16 && (segment.kind === "STRAIGHT" || typeRoll > 0.88)) {
+    return { moment: "SPRAY", durationSeconds: 1.8 + typeRoll * 0.9 };
+  }
+  if (dryTyre && wetSeverity >= 0.28 && fastSection && typeRoll < 0.26) {
+    return { moment: "REAR_SNAP", durationSeconds: 1.7 + typeRoll * 1.8 };
+  }
+  if (fastSection && typeRoll < 0.56) {
+    return { moment: "LOCK_UP", durationSeconds: 1.1 + typeRoll * 1.2 };
+  }
+  return { moment: "LOW_GRIP", durationSeconds: 1.7 + typeRoll * 1.4 };
 }
 
 function clamp(value: number, minimum: number, maximum: number): number {
@@ -435,14 +542,106 @@ function clamp(value: number, minimum: number, maximum: number): number {
  */
 export const OPERATIONAL_RADIO_INTERVAL_TICKS = 2_200;
 
-function buildOperationalRadio(
+export interface OperationalRadioControlContext {
+  controlTransition?: boolean;
+  previousRaceControl?: RaceControlStatus;
+  safetyCarPhase?: RaceSnapshot["safetyCarPhase"];
+  safetyCarInPitLane?: boolean;
+  safetyCarLappedCarsMayOvertake?: boolean;
+  safetyCarFieldBunched?: boolean;
+  safetyCarWaveBy?: NonNullable<RaceSnapshot["safetyCarWaveBy"]>;
+  redFlagPhase?: RaceSnapshot["redFlagPhase"];
+  yellowSector?: RaceSnapshot["yellowSector"];
+}
+
+type OperationalRadioSituation = Parameters<typeof buildRaceDriverRadio>[0]["situation"];
+
+interface ControlRadioCall {
+  situation: OperationalRadioSituation;
+  priority: RadioMessage["priority"];
+  metric: string;
+}
+
+function controlRadioCallFor(
+  raceControl: RaceControlStatus,
+  context: OperationalRadioControlContext,
+  car: RaceCarState,
+): ControlRadioCall | null {
+  const gapAhead = car.gapToCarAhead > 0 ? `${car.gapToCarAhead.toFixed(2)}s to the car ahead` : "no car ahead in the queue";
+  if (raceControl === "SAFETY_CAR") {
+    const waveBy = context.safetyCarWaveBy?.find((entry) => entry.carId === car.carId);
+    if (context.safetyCarLappedCarsMayOvertake && waveBy?.active) {
+      return { situation: "SAFETY_CAR_WAVE_BY", priority: "WARNING", metric: `wave-by active · ${gapAhead}` };
+    }
+    if (context.safetyCarPhase === "RESTART" || context.safetyCarInPitLane) {
+      return { situation: "SAFETY_CAR_RESTART", priority: "WARNING", metric: `restart queue · ${gapAhead}` };
+    }
+    if (context.safetyCarPhase === "BUNCHING" || context.safetyCarFieldBunched) {
+      return { situation: "SAFETY_CAR_BUNCHING", priority: "WARNING", metric: `queue P${car.safetyCarQueuePosition ?? "—"} · ${gapAhead}` };
+    }
+    return { situation: "SAFETY_CAR_DEPLOYED", priority: "URGENT", metric: `sector ${car.currentSector} · ${gapAhead}` };
+  }
+  if (raceControl === "VSC") {
+    return { situation: "VSC_DELTA", priority: "URGENT", metric: `delta ${car.vscDeltaSeconds.toFixed(2)}s · ${gapAhead}` };
+  }
+  if (raceControl === "YELLOW") {
+    return { situation: "YELLOW_CONTROL", priority: "WARNING", metric: `sector ${context.yellowSector ?? car.currentSector} · lift and leave margin` };
+  }
+  if (raceControl === "RED_FLAG") {
+    const restarting = context.redFlagPhase === "RESTART_FORMATION" || context.redFlagPhase === "RESTART_COUNTDOWN";
+    return {
+      situation: restarting ? "RED_FLAG_RESTART" : "RED_FLAG_SUSPENSION",
+      priority: restarting ? "WARNING" : "URGENT",
+      metric: `${context.redFlagPhase?.replaceAll("_", " ") ?? "SUSPENDED"} · ${gapAhead}`,
+    };
+  }
+  if (context.previousRaceControl === "SAFETY_CAR") {
+    return { situation: "SAFETY_CAR_RESTART", priority: "WARNING", metric: `green flag release · ${gapAhead}` };
+  }
+  if (context.previousRaceControl === "RED_FLAG") {
+    return { situation: "RED_FLAG_RESTART", priority: "URGENT", metric: `green flag release · ${gapAhead}` };
+  }
+  if (context.previousRaceControl === "VSC") {
+    return { situation: "VSC_DELTA", priority: "WARNING", metric: `racing resumed · ${gapAhead}` };
+  }
+  return null;
+}
+
+function controlEngineerReply(situation: OperationalRadioSituation): string {
+  switch (situation) {
+    case "SAFETY_CAR_DEPLOYED": return "Safety Car confirmed. Catch the queue, no overtaking, pit lane closed for the deployment phase.";
+    case "SAFETY_CAR_BUNCHING": return "Keep the queue position and protect the tyre temperature. We will call the restart phase.";
+    case "SAFETY_CAR_WAVE_BY": return "Wave-by is active. Complete it safely and rejoin at the back before the window closes.";
+    case "SAFETY_CAR_RESTART": return "Safety Car procedure is ending. Tyres and brakes to the window; restart line is the reference.";
+    case "VSC_DELTA": return "Positive delta is the priority. No overtaking; we will call the next race-control change.";
+    case "YELLOW_CONTROL": return "Copy. Lift in the controlled sector and leave margin until the incident is clear.";
+    case "RED_FLAG_SUSPENSION": return "Red Flag confirmed. Bring the car safely to the pit-lane queue and wait for the FIA procedure.";
+    case "RED_FLAG_RESTART": return "Restart procedure confirmed. Build the tyres and brakes without exceeding the formation speed.";
+    default: return "Copy. We are monitoring the race-control picture.";
+  }
+}
+
+function driverMomentRadioCallFor(moment: DriverMoment): { situation: OperationalRadioSituation; priority: RadioMessage["priority"]; engineer: string } | null {
+  switch (moment) {
+    case "LOW_GRIP": return { situation: "LOW_GRIP", priority: "WARNING", engineer: "Understood. Lift the entry, protect the wet line, and give me the grip report after this sector." };
+    case "LOCK_UP": return { situation: "BRAKING_LOCKUP", priority: "URGENT", engineer: "Copy lock-up. Move the braking reference back and avoid the standing water until the axle is stable." };
+    case "REAR_SNAP": return { situation: "REAR_SNAP", priority: "URGENT", engineer: "Copy the snap. Calm the throttle and use the conservative exit; we are checking the surface map now." };
+    case "SPRAY": return { situation: "SPRAY_VISIBILITY", priority: "WARNING", engineer: "Copy. Hold the gap in the spray and wait for a clear reference before attacking." };
+    case "SPIN_RECOVERY": return { situation: "SPIN_RECOVERY", priority: "URGENT", engineer: "We have you. Rejoin only with a clear gap, check the car, then rebuild the tyres one corner at a time." };
+    default: return null;
+  }
+}
+
+export function buildOperationalRadio(
   cars: readonly RaceCarState[],
   tick: number,
   elapsedTime: number,
   playerTeamId: string,
   seed: number,
   weather: WeatherState,
+  raceControl: RaceControlStatus = "GREEN",
   previousCars: readonly RaceCarState[] = [],
+  controlContext: OperationalRadioControlContext = {},
 ): RadioMessage[] {
   /*
    * Routine driver/engineer calls are deliberately sparse. Two player cars are
@@ -450,36 +649,104 @@ function buildOperationalRadio(
    * 1100 ticks across the team rather than a constant stream. Urgent Race
    * Control, pit and thermal transitions remain event-driven elsewhere.
    */
-  const intervalTicks = OPERATIONAL_RADIO_INTERVAL_TICKS;
+  const intervalTicks = raceControl === "SAFETY_CAR" ? 320
+    : raceControl === "VSC" ? 280
+      : raceControl === "YELLOW" ? 420
+        : raceControl === "RED_FLAG" ? 360
+          : OPERATIONAL_RADIO_INTERVAL_TICKS;
   const playerCars = cars.filter((car) => car.teamId === playerTeamId);
   const messages: RadioMessage[] = [];
 
   playerCars.forEach((car, index) => {
-    if ((tick + index * Math.floor(intervalTicks / 2)) % intervalTicks !== 0 || car.finished || car.incidentStatus === "RETIRED") return;
+    const cadenceDue = (tick + index * Math.floor(intervalTicks / 2)) % intervalTicks === 0;
+    const transitionDue = controlContext.controlTransition === true;
+    const previous = previousCars.find((candidate) => candidate.carId === car.carId);
+    const currentMoment = car.driverMoment ?? "NONE";
+    const previousMoment = previous?.driverMoment ?? "NONE";
+    const momentTransition = currentMoment !== "NONE" && currentMoment !== previousMoment;
+    if ((!cadenceDue && !transitionDue && !momentTransition) || car.finished || car.incidentStatus === "RETIRED") return;
     const driver = DRIVER_BY_ID.get(car.driverId);
     if (!driver) return;
+    const circuit = circuitById(car.circuitId);
     const carIndex = Math.max(0, DRIVERS.findIndex((candidate) => candidate.id === car.carId));
+    const momentCall = momentTransition && raceControl === "GREEN" ? driverMomentRadioCallFor(currentMoment) : null;
+    if (momentCall) {
+      messages.push({
+        id: `${tick}-${car.carId}-operations-radio-moment-driver`,
+        elapsedTime,
+        carId: car.carId,
+        source: "DRIVER",
+        message: buildRaceDriverRadio({ seed, tick, carIndex, situation: momentCall.situation, metric: `${driverMomentLabel(currentMoment)} · sector ${car.currentSector}`, intensity: "HIGH" }),
+        priority: momentCall.priority,
+      });
+      messages.push({
+        id: `${tick}-${car.carId}-operations-radio-moment-engineer`,
+        elapsedTime: elapsedTime + 0.02,
+        carId: car.carId,
+        source: "ENGINEER",
+        message: momentCall.engineer,
+        priority: momentCall.priority,
+      });
+      return;
+    }
+    const controlCall = controlRadioCallFor(raceControl, controlContext, car);
+    if (controlCall) {
+      messages.push({
+        id: `${tick}-${car.carId}-operations-radio-control-driver`,
+        elapsedTime,
+        carId: car.carId,
+        source: "DRIVER",
+        message: buildRaceDriverRadio({ seed, tick, carIndex, situation: controlCall.situation, metric: controlCall.metric, intensity: "HIGH" }),
+        priority: controlCall.priority,
+      });
+      messages.push({
+        id: `${tick}-${car.carId}-operations-radio-control-engineer`,
+        elapsedTime: elapsedTime + 0.02,
+        carId: car.carId,
+        source: "ENGINEER",
+        message: controlEngineerReply(controlCall.situation),
+        priority: controlCall.priority,
+      });
+      return;
+    }
     const hotTyre = Math.max(car.tyreTemperatures.frontLeft, car.tyreTemperatures.frontRight, car.tyreTemperatures.rearLeft, car.tyreTemperatures.rearRight);
     const coldTyre = Math.min(car.tyreTemperatures.frontLeft, car.tyreTemperatures.frontRight, car.tyreTemperatures.rearLeft, car.tyreTemperatures.rearRight);
-    const localWater = effectiveWaterAtDistance(weather, car.lapDistance, SILVERSTONE_CIRCUIT.lengthMeters);
-    const normalizedDistance = normalizeLapDistance(car.lapDistance, SILVERSTONE_CIRCUIT.lengthMeters);
+    const localWater = effectiveWaterAtDistance(weather, car.lapDistance, circuit.lengthMeters);
+    const normalizedDistance = normalizeLapDistance(car.lapDistance, circuit.lengthMeters);
     const surfaceZones = weather.surfaceZones ?? [];
     const localZone = surfaceZones.length
-      ? surfaceZones[Math.min(surfaceZones.length - 1, Math.floor((normalizedDistance / SILVERSTONE_CIRCUIT.lengthMeters) * surfaceZones.length))]
+      ? surfaceZones[Math.min(surfaceZones.length - 1, Math.floor((normalizedDistance / circuit.lengthMeters) * surfaceZones.length))]
       : undefined;
     const localRain = localZone?.rainIntensity ?? weather.rainIntensity;
     const dryingLine = localZone?.dryingLine ?? Math.max(0, 1 - localWater);
     const onDryTyre = DRY_COMPOUNDS.includes(car.tyreCompound);
     const onWetWeatherTyre = car.tyreCompound === "INTERMEDIATE" || car.tyreCompound === "WET";
+    // The radio and pit-wall AI must consume the same spatial signal. A dry
+    // patch in the car's current sector is not enough to call for slicks while
+    // another sector is still wet or rain is still building.
+    const surface = weatherSurfaceSignal({
+      trackWetness: localWater,
+      weather,
+      raceControl,
+      pitLaneOpen: raceControl !== "RED_FLAG",
+      cars,
+    });
+    const dryCrossoverReady = surface.stableDrySurface && localWater <= 0.12 && dryingLine >= 0.68;
+    const wetRunningSignal = !surface.stableDrySurface
+      && (localWater >= 0.08 || localRain >= 0.045 || surface.wetCoverage >= 0.16 || surface.recommendedWetCompound !== null);
 
     /*
      * Situational judgement for the radio. Each of these reads live state the
      * driver would actually notice, so the call that comes out matches what is
      * happening rather than cycling a fixed rota.
      */
-    const previous = previousCars.find((candidate) => candidate.carId === car.carId);
     const positionChange = previous ? previous.racePosition - car.racePosition : 0;
     const carAhead = cars.find((candidate) => candidate.racePosition === car.racePosition - 1);
+    const gapDelta = previous && previous.gapToCarAhead > 0 && car.gapToCarAhead > 0
+      ? car.gapToCarAhead - previous.gapToCarAhead
+      : 0;
+    const carAheadClosing = gapDelta <= -0.22;
+    const carAheadPullingAway = gapDelta >= 0.28;
     // Being held up by a car that is genuinely slower, not simply defending well.
     const heldUpBySlowerCar = Boolean(carAhead
       && car.gapToCarAhead > 0 && car.gapToCarAhead < 1.6
@@ -489,7 +756,7 @@ function buildOperationalRadio(
     const tyreCallOverdue = car.tyreLife < 22 && !car.scheduledPitCompound && car.pitStatus === "TRACK";
     // Rain in the air before it reaches the surface.
     const rainOnVisor = localRain >= 0.02 && localRain < 0.045 && localWater < 0.05;
-    const finalLaps = car.currentLap >= SILVERSTONE_CIRCUIT.totalLaps - 2;
+    const finalLaps = car.currentLap >= circuit.totalLaps - 2;
     const strategyWorking = positionChange === 0 && car.pitStops > 0 && car.tyreLife > 68 && car.racePosition <= 6;
     const strategyDoubt = car.pitStops > 0 && car.tyreLife < 45 && car.racePosition > 10;
     const carFeelsGood = car.tyreLife > 76 && car.dirtyAirLoss < 0.002 && car.gapToCarAhead > 3.5;
@@ -511,13 +778,13 @@ function buildOperationalRadio(
       source = "DRIVER";
       priority = "WARNING";
       message = buildRaceDriverRadio({ seed, tick, carIndex, situation: "WET_GRIP", intensity: "HIGH" });
-    } else if (onWetWeatherTyre && localWater <= 0.12 && dryingLine >= 0.48) {
+    } else if (onWetWeatherTyre && dryCrossoverReady) {
       source = "DRIVER";
       priority = "WARNING";
       message = buildRaceDriverRadio({ seed, tick, carIndex, situation: "DRYING_LINE", intensity: "HIGH" });
-    } else if (onWetWeatherTyre && (localWater >= 0.24 || localRain >= 0.12)) {
+    } else if (onWetWeatherTyre && (localWater >= 0.24 || localRain >= 0.12 || wetRunningSignal)) {
       source = "DRIVER";
-      message = buildRaceDriverRadio({ seed, tick, carIndex, situation: "RAIN_RUNNING", metric: `wet running in sector ${car.currentSector}` });
+      message = buildRaceDriverRadio({ seed, tick, carIndex, situation: "RAIN_RUNNING", metric: `${surface.state.toLowerCase()} running in sector ${car.currentSector}` });
     } else if (localRain >= 0.045 && localWater < 0.14) {
       source = "DRIVER";
       priority = "WARNING";
@@ -545,6 +812,14 @@ function buildOperationalRadio(
         : buildRaceDriverRadio({ seed, tick, carIndex, situation: "ATTACK_TYRE", intensity: "HIGH" });
     } else if (car.batteryPercent < 18) {
       message = `Energy is low at ${Math.round(car.batteryPercent)} percent. Recharge through the next technical section.`;
+    } else if (carAheadClosing) {
+      source = "DRIVER";
+      priority = "WARNING";
+      message = buildRaceDriverRadio({ seed, tick, carIndex, situation: "CAR_AHEAD_CLOSING", metric: `gap falling to ${car.gapToCarAhead.toFixed(2)} seconds`, intensity: "HIGH" });
+    } else if (carAheadPullingAway) {
+      source = "DRIVER";
+      priority = "WARNING";
+      message = buildRaceDriverRadio({ seed, tick, carIndex, situation: "CAR_AHEAD_PULLING_AWAY", metric: `gap opening to ${car.gapToCarAhead.toFixed(2)} seconds`, intensity: "HIGH" });
     } else if (car.dirtyAirLoss > 0.006 || (car.gapToCarAhead > 0 && car.gapToCarAhead < 1.1)) {
       source = "DRIVER";
       message = buildRaceDriverRadio({ seed, tick, carIndex, situation: "DIRTY_AIR", intensity: "HIGH" });
@@ -626,11 +901,12 @@ function buildOperationalRadio(
   return messages;
 }
 
-function rainIntensityAtCar(weather: WeatherState, lapDistance: number): number {
+function rainIntensityAtCar(weather: WeatherState, lapDistance: number, circuitId?: string): number {
   const zones = weather.surfaceZones;
   if (!zones?.length) return weather.rainIntensity;
-  const normalized = normalizeLapDistance(lapDistance, SILVERSTONE_CIRCUIT.lengthMeters);
-  const index = Math.min(zones.length - 1, Math.floor((normalized / SILVERSTONE_CIRCUIT.lengthMeters) * zones.length));
+  const circuit = circuitById(circuitId);
+  const normalized = normalizeLapDistance(lapDistance, circuit.lengthMeters);
+  const index = Math.min(zones.length - 1, Math.floor((normalized / circuit.lengthMeters) * zones.length));
   return zones[index]?.rainIntensity ?? weather.rainIntensity;
 }
 
@@ -653,10 +929,11 @@ export function buildWeatherTransitionRadio(
   const sectorRain = weather.sectors?.map((sector) => sector.rainIntensity) ?? [weather.rainIntensity];
   const rainSpread = Math.max(...sectorRain) - Math.min(...sectorRain);
   const candidates = playerCars.flatMap((car) => {
-    const previousRain = rainIntensityAtCar(previousWeather, car.lapDistance);
-    const localRain = rainIntensityAtCar(weather, car.lapDistance);
-    const previousWater = effectiveWaterAtDistance(previousWeather, car.lapDistance, SILVERSTONE_CIRCUIT.lengthMeters);
-    const localWater = effectiveWaterAtDistance(weather, car.lapDistance, SILVERSTONE_CIRCUIT.lengthMeters);
+    const circuit = circuitById(car.circuitId);
+    const previousRain = rainIntensityAtCar(previousWeather, car.lapDistance, circuit.id);
+    const localRain = rainIntensityAtCar(weather, car.lapDistance, circuit.id);
+    const previousWater = effectiveWaterAtDistance(previousWeather, car.lapDistance, circuit.lengthMeters);
+    const localWater = effectiveWaterAtDistance(weather, car.lapDistance, circuit.lengthMeters);
     const carIndex = Math.max(0, DRIVERS.findIndex((candidate) => candidate.id === car.carId));
     let situation: Parameters<typeof buildRaceDriverRadio>[0]["situation"] | null = null;
     let priority: RadioMessage["priority"] = "WARNING";
@@ -716,11 +993,12 @@ interface CornerThermalLoad {
  * identifies the outside tyres without baking Silverstone's corner sequence
  * into the thermal model.
  */
-function cornerThermalLoadAtDistance(distanceMeters: number): CornerThermalLoad {
+function cornerThermalLoadAtDistance(distanceMeters: number, circuitId?: string): CornerThermalLoad {
+  const circuit = circuitById(circuitId);
   const sampleRadiusMeters = 32;
-  const before = pointAtDistance(distanceMeters - sampleRadiusMeters);
-  const centre = pointAtDistance(distanceMeters);
-  const after = pointAtDistance(distanceMeters + sampleRadiusMeters);
+  const before = pointAtDistance(distanceMeters - sampleRadiusMeters, circuit);
+  const centre = pointAtDistance(distanceMeters, circuit);
+  const after = pointAtDistance(distanceMeters + sampleRadiusMeters, circuit);
   const incomingX = centre.x - before.x;
   const incomingY = centre.y - before.y;
   const outgoingX = after.x - centre.x;
@@ -752,12 +1030,13 @@ function advanceTyreTemperatures(
   compound: TyreCompound,
   context: TyreThermalContext,
 ): TyreTemperatureState {
-  const segment = SILVERSTONE_CIRCUIT.segments[segmentIndexAtDistance(context.lapDistance)];
+  const circuit = circuitById(car.circuitId);
+  const segment = circuit.segments[segmentIndexAtDistance(context.lapDistance, circuit)];
   const water = clamp(context.localWater, 0, 1);
   const speed = Math.max(0, context.currentSpeedKph);
   const brakingRate = Math.max(0, context.previousSpeedKph - speed) / FIXED_STEP_SECONDS;
   const tractionRate = Math.max(0, speed - context.previousSpeedKph) / FIXED_STEP_SECONDS;
-  const corner = cornerThermalLoadAtDistance(context.lapDistance);
+  const corner = cornerThermalLoadAtDistance(context.lapDistance, car.circuitId);
 
   const climateOffset = (context.trackTemperature - 31) * 0.22 + (context.airTemperature - 22) * 0.1;
   const segmentOffset = segment.kind === "FAST" ? 2.5 : segment.kind === "MEDIUM" ? 1 : segment.kind === "SLOW" ? -0.5 : -2.5;
@@ -854,7 +1133,8 @@ function advancePowerUnitTemperatures(
   const accelerationKphPerSecond = (context.currentSpeedKph - context.previousSpeedKph) / FIXED_STEP_SECONDS;
   const accelerationLoad = clamp(Math.max(0, accelerationKphPerSecond) / 70, 0, 1);
   const shiftLoad = clamp(Math.abs(accelerationKphPerSecond) / 85, 0, 1);
-  const segment = SILVERSTONE_CIRCUIT.segments[segmentIndexAtDistance(context.lapDistance)];
+  const circuit = circuitById(car.circuitId);
+  const segment = circuit.segments[segmentIndexAtDistance(context.lapDistance, circuit)];
   const segmentLoad = segment.kind === "STRAIGHT" ? 1 : segment.kind === "FAST" ? 0.82 : segment.kind === "MEDIUM" ? 0.58 : 0.4;
   const paceLoad = PACE_THERMAL_LOAD[car.paceMode];
   const energyLoad = car.energyState === "OVERTAKE"
@@ -906,10 +1186,11 @@ function advancePowerUnitTemperatures(
 }
 
 function withPositionData(car: RaceCarState): RaceCarState {
-  const lapDistance = normalizeLapDistance(car.totalDistance);
-  const currentSegment = segmentIndexAtDistance(lapDistance);
-  const segment = SILVERSTONE_CIRCUIT.segments[currentSegment];
-  const currentLap = Math.min(SILVERSTONE_CIRCUIT.totalLaps, Math.max(1, Math.floor(car.totalDistance / SILVERSTONE_CIRCUIT.lengthMeters) + 1));
+  const circuit = circuitById(car.circuitId);
+  const lapDistance = normalizeLapDistance(car.totalDistance, circuit.lengthMeters);
+  const currentSegment = segmentIndexAtDistance(lapDistance, circuit);
+  const segment = circuit.segments[currentSegment];
+  const currentLap = Math.min(circuit.totalLaps, Math.max(1, Math.floor(car.totalDistance / circuit.lengthMeters) + 1));
   return {
     ...car,
     currentLap,
@@ -983,12 +1264,13 @@ function rankCars(cars: readonly RaceCarState[], raceControl: RaceControlStatus)
 }
 
 function withTimingData(previous: RaceCarState, next: RaceCarState, elapsedTime: number): RaceCarState {
-  const trackLength = SILVERSTONE_CIRCUIT.lengthMeters;
+  const circuit = circuitById(next.circuitId);
+  const trackLength = circuit.lengthMeters;
   const previousCompletedLaps = Math.max(0, Math.floor(previous.totalDistance / trackLength));
   const completedLaps = Math.max(0, Math.floor(next.totalDistance / trackLength));
   const crossedTimingLine = completedLaps > previousCompletedLaps;
   const enteredTrack = previous.totalDistance < 0 && next.totalDistance >= 0;
-  const nextSector = sectorAtDistance(next.totalDistance);
+  const nextSector = sectorAtDistance(next.totalDistance, circuit);
 
   if (crossedTimingLine) {
     const lapTime = elapsedTime - previous.lapStartedAt;
@@ -1044,15 +1326,16 @@ function withTimingData(previous: RaceCarState, next: RaceCarState, elapsedTime:
   };
 }
 
-function surfaceTrafficForCars(cars: readonly RaceCarState[]): number[] {
+function surfaceTrafficForCars(cars: readonly RaceCarState[], circuitId?: string): number[] {
+  const circuit = circuitById(circuitId ?? cars[0]?.circuitId);
   const traffic = Array.from({ length: WEATHER_SURFACE_ZONE_COUNT }, () => 0.08);
   for (const car of cars) {
     if (car.finished || car.pitStatus !== "TRACK") continue;
     const distanceCovered = Math.max(24, car.currentSpeed / 3.6);
     const samples = Math.max(2, Math.ceil(distanceCovered / 24));
     for (let sample = 0; sample <= samples; sample += 1) {
-      const distance = normalizeLapDistance(car.lapDistance - distanceCovered + (distanceCovered * sample) / samples);
-      const zoneIndex = Math.min(WEATHER_SURFACE_ZONE_COUNT - 1, Math.floor((distance / SILVERSTONE_CIRCUIT.lengthMeters) * WEATHER_SURFACE_ZONE_COUNT));
+      const distance = normalizeLapDistance(car.lapDistance - distanceCovered + (distanceCovered * sample) / samples, circuit.lengthMeters);
+      const zoneIndex = Math.min(WEATHER_SURFACE_ZONE_COUNT - 1, Math.floor((distance / circuit.lengthMeters) * WEATHER_SURFACE_ZONE_COUNT));
       traffic[zoneIndex] = Math.min(1, traffic[zoneIndex] + 0.16);
     }
   }
@@ -1067,26 +1350,29 @@ function incidentSeverity(status: "SPUN" | "DAMAGED" | "RETIRED", safetyCarAvail
   return { control: "YELLOW", duration: 16 };
 }
 
-function nearestCornerAtDistance(distanceMeters: number) {
-  const distance = normalizeLapDistance(distanceMeters);
-  return SILVERSTONE_CORNERS.reduce((nearest, corner) => {
-    const nearestDelta = Math.min(Math.abs(nearest.distanceMeters - distance), SILVERSTONE_CIRCUIT.lengthMeters - Math.abs(nearest.distanceMeters - distance));
-    const cornerDelta = Math.min(Math.abs(corner.distanceMeters - distance), SILVERSTONE_CIRCUIT.lengthMeters - Math.abs(corner.distanceMeters - distance));
+function nearestCornerAtDistance(distanceMeters: number, circuitId?: string) {
+  const circuit = circuitById(circuitId);
+  const distance = normalizeLapDistance(distanceMeters, circuit.lengthMeters);
+  return circuit.corners.reduce((nearest, corner) => {
+    const nearestDelta = Math.min(Math.abs(nearest.distanceMeters - distance), circuit.lengthMeters - Math.abs(nearest.distanceMeters - distance));
+    const cornerDelta = Math.min(Math.abs(corner.distanceMeters - distance), circuit.lengthMeters - Math.abs(corner.distanceMeters - distance));
     return cornerDelta < nearestDelta ? corner : nearest;
   });
 }
 
-function actualLapsDownFromLeader(leaderDistance: number, carDistance: number): number {
+function actualLapsDownFromLeader(leaderDistance: number, carDistance: number, circuitId?: string): number {
+  const circuit = circuitById(circuitId);
   const distanceDeficit = Math.max(0, leaderDistance - carDistance);
-  return Math.max(0, Math.floor((distanceDeficit + 0.001) / SILVERSTONE_CIRCUIT.lengthMeters));
+  return Math.max(0, Math.floor((distanceDeficit + 0.001) / circuit.lengthMeters));
 }
 
 function blueFlagRequiredFor(car: RaceCarState, reference: RaceCarState | undefined): boolean {
   if (car.finished || car.incidentStatus === "RETIRED" || car.pitStatus !== "TRACK") return false;
   if (!reference || reference.carId === car.carId || reference.finished || reference.pitStatus !== "TRACK") return false;
+  const circuit = circuitById(car.circuitId);
   const distanceAdvantage = reference.totalDistance - car.totalDistance;
-  if (distanceAdvantage < SILVERSTONE_CIRCUIT.lengthMeters * 0.72) return false;
-  const closingDistance = (car.lapDistance - reference.lapDistance + SILVERSTONE_CIRCUIT.lengthMeters) % SILVERSTONE_CIRCUIT.lengthMeters;
+  if (distanceAdvantage < circuit.lengthMeters * 0.72) return false;
+  const closingDistance = (car.lapDistance - reference.lapDistance + circuit.lengthMeters) % circuit.lengthMeters;
   // The instruction is shown only once the lapping car is close enough for a
   // prompt, controlled pass. Flagging from 235 m away kept the whole backfield
   // under instruction for too long and manufactured ignored-blue penalties.
@@ -1127,7 +1413,35 @@ function serviceCarDuringRedFlag(car: RaceCarState, weather: WeatherState): Race
   };
 }
 
+function dryAiServiceFallback(
+  car: RaceCarState,
+  scheduledCompound: TyreCompound | null,
+  weather: WeatherState,
+  raceControl: RaceControlStatus,
+  cars: readonly RaceCarState[],
+  playerTeamId: string,
+): { compound: TyreCompound; tyreSetId: string } | null {
+  if (car.teamId === playerTeamId || (scheduledCompound !== "INTERMEDIATE" && scheduledCompound !== "WET")) return null;
+  const localWater = effectiveWaterAtDistance(weather, car.lapDistance, circuitById(car.circuitId).lengthMeters);
+  const surface = weatherSurfaceSignal({
+    trackWetness: localWater,
+    weather,
+    raceControl,
+    pitLaneOpen: raceControl !== "RED_FLAG",
+    cars,
+  });
+  if (!surface.stableDrySurface) return null;
+  const dryCompounds: readonly TyreCompound[] = ["MEDIUM", "HARD", "SOFT"];
+  for (const compound of dryCompounds) {
+    const replacement = car.tyreSets.find((set) => set.compound === compound && set.status === "AVAILABLE")
+      ?? car.tyreSets.find((set) => set.compound === compound && set.status === "USED");
+    if (replacement) return { compound, tyreSetId: replacement.id };
+  }
+  return null;
+}
+
 function updateIncidents(snapshot: RaceSnapshot, weather: WeatherState, tick: number, elapsedTime: number) {
+  const circuit = circuitById(snapshot.circuitId);
   let raceControlTimer = Math.max(0, snapshot.raceControlTimer - FIXED_STEP_SECONDS);
   let raceControl: RaceControlStatus = snapshot.raceControl === "SAFETY_CAR" || snapshot.raceControl === "RED_FLAG"
     ? snapshot.raceControl
@@ -1142,6 +1456,7 @@ function updateIncidents(snapshot: RaceSnapshot, weather: WeatherState, tick: nu
   const newEvents: RaceEvent[] = [];
   const newRadio: RadioMessage[] = [];
   let cars = [...snapshot.cars];
+  const controlSector = (): 1 | 2 | 3 => activeIncident?.sector ?? yellowSector ?? snapshot.yellowSector ?? 1;
 
   if (raceControl === "RED_FLAG") {
     if (redFlagPhase === "SUSPENDED" && redFlagTimerSeconds <= 0) {
@@ -1150,13 +1465,13 @@ function updateIncidents(snapshot: RaceSnapshot, weather: WeatherState, tick: nu
       redFlagTimerSeconds = 12;
       cars = cars.map((car) => serviceCarDuringRedFlag(car, weather));
       const message = `${redFlagRestartType} RESTART CONFIRMED · TYRE CHANGE AND GENUINE ACCIDENT REPAIR COMPLETE`;
-      newEvents.push({ id: `${tick}-red-restart-procedure`, elapsedTime, type: "RACE_CONTROL", message });
+      newEvents.push({ id: `${tick}-red-restart-procedure`, elapsedTime, type: "RACE_CONTROL", message, sector: controlSector() });
       newRadio.push({ id: `${tick}-red-restart-procedure-radio`, elapsedTime, carId: null, source: "RACE CONTROL", message, priority: "URGENT" });
     } else if (redFlagPhase === "RESTART_FORMATION" && redFlagTimerSeconds <= 0) {
       redFlagPhase = "RESTART_COUNTDOWN";
       redFlagTimerSeconds = 5;
       const message = `${redFlagRestartType} RESTART · FIVE SECOND COUNTDOWN`;
-      newEvents.push({ id: `${tick}-red-restart-countdown`, elapsedTime, type: "RACE_CONTROL", message });
+      newEvents.push({ id: `${tick}-red-restart-countdown`, elapsedTime, type: "RACE_CONTROL", message, sector: controlSector() });
       newRadio.push({ id: `${tick}-red-restart-countdown-radio`, elapsedTime, carId: null, source: "RACE CONTROL", message, priority: "URGENT" });
     } else if (redFlagPhase === "RESTART_COUNTDOWN" && redFlagTimerSeconds <= 0) {
       raceControl = "GREEN";
@@ -1164,14 +1479,14 @@ function updateIncidents(snapshot: RaceSnapshot, weather: WeatherState, tick: nu
       redFlagPhase = "NONE";
       redFlagTimerSeconds = 0;
       const message = "GREEN FLAG · RACE RESUMED";
-      newEvents.push({ id: `${tick}-red-restart-green`, elapsedTime, type: "RACE_CONTROL", message });
+      newEvents.push({ id: `${tick}-red-restart-green`, elapsedTime, type: "RACE_CONTROL", message, sector: controlSector() });
       newRadio.push({ id: `${tick}-red-restart-green-radio`, elapsedTime, carId: null, source: "RACE CONTROL", message, priority: "NORMAL" });
     }
   }
   let safetyCarDeployments = snapshot.safetyCarDeployments
     ?? (snapshot.raceControl === "SAFETY_CAR" ? 1 : 0);
   const scheduledSafetyCarDistance = snapshot.scheduledSafetyCarDistance
-    ?? scheduledSafetyCarTriggerDistance(snapshot.seed);
+    ?? scheduledSafetyCarTriggerDistance(snapshot.seed, circuit.id);
   let incidentCreated = false;
   const latestIncidentAt = snapshot.cars.reduce(
     (latest, car) => Math.max(latest, car.lastIncidentAt ?? Number.NEGATIVE_INFINITY),
@@ -1198,7 +1513,7 @@ function updateIncidents(snapshot: RaceSnapshot, weather: WeatherState, tick: nu
     redFlagOrder = [...cars].sort((a, b) => a.racePosition - b.racePosition).map((car) => car.carId);
     redFlagDeployments += 1;
     const message = "RED FLAG · RACE SUSPENDED · STANDING WATER AND VISIBILITY BELOW SAFE LIMIT";
-    newEvents.push({ id: `${tick}-weather-red-flag`, elapsedTime, type: "RACE_CONTROL", message });
+    newEvents.push({ id: `${tick}-weather-red-flag`, elapsedTime, type: "RACE_CONTROL", message, sector: controlSector() });
     newRadio.push({ id: `${tick}-weather-red-flag-radio`, elapsedTime, carId: null, source: "RACE CONTROL", message, priority: "URGENT" });
   }
 
@@ -1218,8 +1533,8 @@ function updateIncidents(snapshot: RaceSnapshot, weather: WeatherState, tick: nu
       const candidate = eligibleCars[Math.min(eligibleCars.length - 1, Math.floor(candidateRoll * eligibleCars.length))];
       const candidateIndex = cars.findIndex((car) => car.carId === candidate.carId);
       const directionRoll = (signedNoise(snapshot.seed, 71_004, 0) + 1) / 2;
-      const corner = nearestCornerAtDistance(candidate.lapDistance);
-      const incidentSector = sectorAtDistance(candidate.lapDistance);
+      const corner = nearestCornerAtDistance(candidate.lapDistance, circuit.id);
+      const incidentSector = sectorAtDistance(candidate.lapDistance, circuit);
       const driver = DRIVER_BY_ID.get(candidate.driverId);
       const location = `T${corner.number} ${corner.name}`;
       const cause = directionRoll > 0.66
@@ -1267,13 +1582,77 @@ function updateIncidents(snapshot: RaceSnapshot, weather: WeatherState, tick: nu
     }
   }
 
+  const reliabilityFailure = !incidentCreated
+    && tick % 10 === 0
+    && fieldIncidentReady
+    ? cars
+      .filter((car) => !car.finished
+        && car.incidentStatus === "RUNNING"
+        && car.pitStatus === "TRACK"
+        && car.reliabilityFailureDistance != null
+        && car.totalDistance >= car.reliabilityFailureDistance)
+      .sort((left, right) => (left.reliabilityFailureDistance ?? Number.POSITIVE_INFINITY) - (right.reliabilityFailureDistance ?? Number.POSITIVE_INFINITY))[0]
+    : undefined;
+
+  if (reliabilityFailure) {
+    const candidateIndex = cars.findIndex((car) => car.carId === reliabilityFailure.carId);
+    const corner = nearestCornerAtDistance(reliabilityFailure.lapDistance, circuit.id);
+    const incidentSector = sectorAtDistance(reliabilityFailure.lapDistance, circuit);
+    const driver = DRIVER_BY_ID.get(reliabilityFailure.driverId);
+    const component = reliabilityFailure.reliabilityFailureComponent ?? reliabilityFailure.reliabilityLimitingComponent ?? "POWER UNIT";
+    const cause = `${component} FAILURE`;
+    const severity = incidentSeverity("RETIRED", safetyCarDeployments === 0);
+    raceControl = severity.control;
+    raceControlTimer = severity.duration;
+    if (severity.control === "SAFETY_CAR") safetyCarDeployments += 1;
+    yellowSector = incidentSector;
+    activeIncident = {
+      carId: reliabilityFailure.carId,
+      distanceMeters: reliabilityFailure.lapDistance,
+      cornerNumber: corner.number,
+      cornerName: corner.name,
+      sector: incidentSector,
+      status: "RETIRED",
+      cause,
+    };
+    const location = `T${corner.number} ${corner.name}`;
+    newEvents.push({
+      id: `${tick}-${reliabilityFailure.carId}-reliability-failure`,
+      elapsedTime,
+      type: "INCIDENT",
+      message: `${driver?.shortName ?? reliabilityFailure.driverId} retired at ${location} · ${cause}`,
+      carId: reliabilityFailure.carId,
+    });
+    newRadio.push({
+      id: `${tick}-${reliabilityFailure.carId}-reliability-failure-radio`,
+      elapsedTime,
+      carId: reliabilityFailure.carId,
+      source: "ENGINEER",
+      message: `${component} FAILURE. STOP THE CAR, STOP THE CAR.`,
+      priority: "URGENT",
+    });
+    cars = cars.map((car, index) => index === candidateIndex ? {
+      ...car,
+      incidentStatus: "RETIRED",
+      incidentTimer: 0,
+      incidentStartedAt: elapsedTime,
+      incidentDirection: signedNoise(snapshot.seed, 93_000 + candidateIndex, tick) >= 0 ? 1 : -1,
+      lastIncidentAt: elapsedTime,
+      retiredReason: cause,
+      finished: true,
+      finishTime: null,
+      currentSpeed: 0,
+    } satisfies RaceCarState : car);
+    incidentCreated = true;
+  }
+
   const retirementTarget = plannedRetirementCount(snapshot.seed);
   const retiredCount = cars.filter((car) => car.incidentStatus === "RETIRED").length;
   const plannedRetirementDue = !incidentCreated
     && tick % 10 === 0
     && fieldIncidentReady
     && retiredCount < retirementTarget
-    && leadingRaceDistance >= plannedRetirementTriggerDistance(snapshot.seed, retiredCount, retirementTarget);
+    && leadingRaceDistance >= plannedRetirementTriggerDistance(snapshot.seed, retiredCount, retirementTarget, circuit.id);
 
   if (plannedRetirementDue) {
     const eligibleCars = cars
@@ -1291,8 +1670,8 @@ function updateIncidents(snapshot: RaceSnapshot, weather: WeatherState, tick: nu
       const variant = (signedNoise(snapshot.seed, 74_000 + candidateIndex, retiredCount + 1) + 1) / 2;
       const causes = ["POWER UNIT FAILURE", "HYDRAULIC PRESSURE LOSS", "GEARBOX FAILURE", "SUSPENSION DAMAGE", "ELECTRICAL SHUTDOWN", "CAR STOPPED ON CIRCUIT"] as const;
       const cause = causes[Math.min(causes.length - 1, Math.floor(variant * causes.length))];
-      const corner = nearestCornerAtDistance(candidate.lapDistance);
-      const incidentSector = sectorAtDistance(candidate.lapDistance);
+      const corner = nearestCornerAtDistance(candidate.lapDistance, circuit.id);
+      const incidentSector = sectorAtDistance(candidate.lapDistance, circuit);
       const driver = DRIVER_BY_ID.get(candidate.driverId);
       const severity = incidentSeverity("RETIRED", safetyCarDeployments === 0);
       raceControl = severity.control;
@@ -1325,7 +1704,7 @@ function updateIncidents(snapshot: RaceSnapshot, weather: WeatherState, tick: nu
       if (elapsedTime - (car.lastIncidentAt ?? Number.NEGATIVE_INFINITY) < INCIDENT_DRIVER_COOLDOWN_SECONDS) return car;
       const tyreRisk = Math.max(0, 35 - car.tyreLife) / 18;
       const speedRisk = car.currentSpeed > 270 ? 0.55 : 0;
-      const localWater = effectiveWaterAtDistance(weather, car.lapDistance, SILVERSTONE_CIRCUIT.lengthMeters);
+      const localWater = effectiveWaterAtDistance(weather, car.lapDistance, circuit.lengthMeters);
       const rotatingExposure = 1 + (((index + Math.floor(elapsedTime / 180)) % Math.max(1, cars.length)) / Math.max(1, cars.length - 1)) * 0.36;
       const driverRisk = raceIncidentRiskMultiplier(DRIVER_BY_ID.get(car.driverId)?.risk ?? 6);
       const risk = INCIDENT_BASE_PROBABILITY_PER_CAR_SECOND * rotatingExposure * driverRisk * (1 + localWater * 4.2 + tyreRisk + speedRisk);
@@ -1360,8 +1739,8 @@ function updateIncidents(snapshot: RaceSnapshot, weather: WeatherState, tick: nu
         raceControlTimer = severity.duration;
       }
       const driver = DRIVER_BY_ID.get(car.driverId);
-      const corner = nearestCornerAtDistance(car.lapDistance);
-      const incidentSector = sectorAtDistance(car.lapDistance);
+      const corner = nearestCornerAtDistance(car.lapDistance, circuit.id);
+      const incidentSector = sectorAtDistance(car.lapDistance, circuit);
       const cause = localWater > 0.48
         ? variantRoll > 0.5 ? "AQUAPLANING" : "LOSS OF GRIP ON WET SURFACE"
         : incidentStatus === "SPUN"
@@ -1421,16 +1800,19 @@ function updateIncidents(snapshot: RaceSnapshot, weather: WeatherState, tick: nu
       const safetyCar = advanceSafetyCarPosition({
         previousTotalDistance: snapshot.raceControl === "SAFETY_CAR" ? snapshot.safetyCarDistance : null,
         leaderTotalDistance: leader.totalDistance,
-        circuitLengthMeters: SILVERSTONE_CIRCUIT.lengthMeters,
+        circuitLengthMeters: circuit.lengthMeters,
         phase: safetyCarPhase,
         stepSeconds: FIXED_STEP_SECONDS,
+        phaseElapsedSeconds: safetyCarPhaseElapsedSeconds,
+        pitExitDistance: circuit.pitLane.exitEnd,
+        firstCarDistance: leader.totalDistance,
       });
       safetyCarDistance = safetyCar.totalDistance;
       safetyCarSpeed = safetyCar.speedKph;
 
       if (safetyCarDeploymentDistance === null || safetyCarEndingStartDistance === null || safetyCarPitEntryDistance === null) {
         const lappedCars = cars
-          .map((car) => ({ car, lapsDown: actualLapsDownFromLeader(leader.totalDistance, car.totalDistance) }))
+          .map((car) => ({ car, lapsDown: actualLapsDownFromLeader(leader.totalDistance, car.totalDistance, circuit.id) }))
           .filter(({ car, lapsDown }) => (
             !car.finished
             && car.incidentStatus !== "RETIRED"
@@ -1442,9 +1824,9 @@ function updateIncidents(snapshot: RaceSnapshot, weather: WeatherState, tick: nu
         const schedule = buildSafetyCarSchedule({
           deploymentDistance: safetyCar.totalDistance,
           targetLaps: safetyCarTargetLaps,
-          circuitLengthMeters: SILVERSTONE_CIRCUIT.lengthMeters,
-          sectorThreeStartDistance: SILVERSTONE_SECTOR_ENDS[1],
-          pitEntryLapDistance: PIT_ENTRY_START,
+          circuitLengthMeters: circuit.lengthMeters,
+          sectorThreeStartDistance: circuit.sectorEnds[1],
+          pitEntryLapDistance: circuit.pitLane.entryStart,
         });
         safetyCarDeploymentDistance = schedule.deploymentDistance;
         safetyCarEndingStartDistance = schedule.endingStartDistance;
@@ -1462,19 +1844,20 @@ function updateIncidents(snapshot: RaceSnapshot, weather: WeatherState, tick: nu
       }
 
       const unlappingStartDistance = safetyCarTargetLaps === 2 && safetyCarEndingStartDistance !== null
-        ? safetyCarEndingStartDistance - SILVERSTONE_CIRCUIT.lengthMeters
+        ? safetyCarEndingStartDistance - circuit.lengthMeters
         : null;
+      const waveByAlreadyOpen = safetyCarWaveBy.some((waveBy) => waveBy.active === true && !waveBy.completed);
       const waveByWindowOpen = safetyCarPhase === "BUNCHING"
         && unlappingStartDistance !== null
         && safetyCar.totalDistance >= unlappingStartDistance
-        && safetyCar.totalDistance < (safetyCarEndingStartDistance ?? Infinity);
+        && (safetyCar.totalDistance < (safetyCarEndingStartDistance ?? Infinity) || waveByAlreadyOpen);
 
       safetyCarWaveBy = safetyCarWaveBy.map((waveBy) => {
         const car = cars.find((candidate) => candidate.carId === waveBy.carId);
         if (!car || car.finished || car.incidentStatus === "RETIRED") {
           return { ...waveBy, active: false, completed: true };
         }
-        const lapsDown = Math.max(1, waveBy.lapsDown ?? actualLapsDownFromLeader(leader.totalDistance, car.totalDistance));
+        const lapsDown = Math.max(1, waveBy.lapsDown ?? actualLapsDownFromLeader(leader.totalDistance, car.totalDistance, circuit.id));
         if (waveByWindowOpen && !waveBy.completed && !waveBy.active) {
           return {
             ...waveBy,
@@ -1504,7 +1887,7 @@ function updateIncidents(snapshot: RaceSnapshot, weather: WeatherState, tick: nu
         .map((waveBy) => {
           const recoveredLaps = waveBy.completed ? 1 : 0;
           const preservedLapsDown = Math.max(0, (waveBy.lapsDown ?? 1) - recoveredLaps);
-          return [waveBy.carId, preservedLapsDown * SILVERSTONE_CIRCUIT.lengthMeters];
+          return [waveBy.carId, preservedLapsDown * circuit.lengthMeters];
         }));
       const baseFormation = buildSafetyCarFormation(
         cars,
@@ -1521,10 +1904,10 @@ function updateIncidents(snapshot: RaceSnapshot, weather: WeatherState, tick: nu
         if (!car || car.pitStatus !== "TRACK") return { ...waveBy, active: false, completed: true };
         const lapsDown = Math.max(1, waveBy.lapsDown ?? 1);
         const rejoinTarget = baseTailTarget
-          - (lapsDown - 1) * SILVERSTONE_CIRCUIT.lengthMeters
+          - (lapsDown - 1) * circuit.lengthMeters
           - (activeWaveByIndex + 1) * 18;
         activeWaveByIndex += 1;
-        const virtualTrackDistance = car.totalDistance + lapsDown * SILVERSTONE_CIRCUIT.lengthMeters;
+        const virtualTrackDistance = car.totalDistance + lapsDown * circuit.lengthMeters;
         const passedSafetyCar = waveBy.passedSafetyCar === true
           || virtualTrackDistance >= safetyCar.totalDistance + 8;
         const completed = passedSafetyCar && car.totalDistance >= rejoinTarget - 6;
@@ -1546,7 +1929,7 @@ function updateIncidents(snapshot: RaceSnapshot, weather: WeatherState, tick: nu
         .map((waveBy) => {
           const recoveredLaps = waveBy.completed ? 1 : 0;
           const preservedLapsDown = Math.max(0, (waveBy.lapsDown ?? 1) - recoveredLaps);
-          return [waveBy.carId, preservedLapsDown * SILVERSTONE_CIRCUIT.lengthMeters];
+          return [waveBy.carId, preservedLapsDown * circuit.lengthMeters];
         }));
       safetyCarFormation = buildSafetyCarFormation(
         cars,
@@ -1556,7 +1939,7 @@ function updateIncidents(snapshot: RaceSnapshot, weather: WeatherState, tick: nu
         finalQueueOffsetMetersByCarId,
       );
       safetyCarFieldBunched = safetyCarFormation.fieldBunched;
-      const safetyCarExitingPit = safetyCarPhase === "DEPLOYED" && safetyCarPhaseElapsedSeconds < 3.2;
+      const safetyCarExitingPit = safetyCarPhase === "DEPLOYED" && safetyCarPhaseElapsedSeconds < SAFETY_CAR_PIT_RELEASE_SECONDS;
       safetyCarInPitLane = safetyCarExitingPit
         || (safetyCarPhase === "RESTART" && (
           snapshot.safetyCarInPitLane
@@ -1568,6 +1951,7 @@ function updateIncidents(snapshot: RaceSnapshot, weather: WeatherState, tick: nu
         stepSeconds: FIXED_STEP_SECONDS,
         fieldBunched: safetyCarFieldBunched,
         endingSectorReached: safetyCarEndingStartDistance !== null && safetyCar.totalDistance >= safetyCarEndingStartDistance,
+        waveByComplete: safetyCarWaveBy.every((waveBy) => waveBy.completed),
         safetyCarInPitLane,
         leaderReachedRestartLine,
       });
@@ -1580,20 +1964,17 @@ function updateIncidents(snapshot: RaceSnapshot, weather: WeatherState, tick: nu
           waveByCarCount: safetyCarWaveBy.filter((waveBy) => !waveBy.completed).length,
         });
         const message = `${waveByMessage.headline} — ${waveByMessage.detail}`;
-        newEvents.push({ id: `${tick}-sc-wave-by`, elapsedTime, type: "RACE_CONTROL", message });
+        newEvents.push({ id: `${tick}-sc-wave-by`, elapsedTime, type: "RACE_CONTROL", message, sector: 3 });
         newRadio.push({ id: `${tick}-sc-wave-by-radio`, elapsedTime, carId: null, source: "RACE CONTROL", message, priority: waveByMessage.priority });
       }
       safetyCarPhase = procedure.phase;
       safetyCarPhaseElapsedSeconds = procedure.phaseElapsedSeconds;
       if (procedure.changed && procedure.phase === "RESTART") {
         safetyCarLappedCarsMayOvertake = false;
-        safetyCarWaveBy = safetyCarWaveBy.map((waveBy) => waveBy.active
-          ? { ...waveBy, active: false, completed: true }
-          : waveBy);
       }
       if (procedure.changed && procedure.message && procedure.phase !== "NONE") {
         const message = `${procedure.message.headline} — ${procedure.message.detail}`;
-        newEvents.push({ id: `${tick}-sc-phase`, elapsedTime, type: "RACE_CONTROL", message });
+        newEvents.push({ id: `${tick}-sc-phase`, elapsedTime, type: "RACE_CONTROL", message, sector: activeIncident?.sector ?? 3 });
         newRadio.push({ id: `${tick}-sc-phase-radio`, elapsedTime, carId: null, source: "RACE CONTROL", message, priority: procedure.message.priority });
       }
       if (procedure.phase === "NONE") {
@@ -1620,14 +2001,14 @@ function updateIncidents(snapshot: RaceSnapshot, weather: WeatherState, tick: nu
   const pitProcedure = pitLaneProcedureFor(raceControl, safetyCarPhase, safetyCarPhaseElapsedSeconds);
   const pitLaneOpen = pitProcedure.open;
   if (pitLaneOpen !== snapshot.pitLaneOpen) {
-    newEvents.push({ id: `${tick}-pit-procedure`, elapsedTime, type: "RACE_CONTROL", message: pitProcedure.message });
+    newEvents.push({ id: `${tick}-pit-procedure`, elapsedTime, type: "RACE_CONTROL", message: pitProcedure.message, sector: controlSector() });
     newRadio.push({ id: `${tick}-pit-procedure-radio`, elapsedTime, carId: null, source: "RACE CONTROL", message: pitProcedure.message, priority: pitLaneOpen ? "NORMAL" : "URGENT" });
   }
 
   if (raceControl !== snapshot.raceControl) {
     const procedureMessage = raceControlPhaseMessage({ raceControl, safetyCarPhase, yellowSector, pitLaneOpen });
     const message = `${procedureMessage.headline} — ${procedureMessage.detail}`;
-    newEvents.push({ id: `${tick}-control`, elapsedTime, type: "RACE_CONTROL", message });
+    newEvents.push({ id: `${tick}-control`, elapsedTime, type: "RACE_CONTROL", message, sector: controlSector() });
     newRadio.push({ id: `${tick}-control-radio`, elapsedTime, carId: null, source: "RACE CONTROL", message, priority: procedureMessage.priority });
   }
 
@@ -1712,7 +2093,8 @@ interface EnergyTactics {
 }
 
 function energyTacticsFor(car: RaceCarState, energySystem: EnergySystemState, raceControl: RaceControlStatus, trackWetness: number): EnergyTactics {
-  const segment = SILVERSTONE_CIRCUIT.segments[car.currentSegment];
+  const circuit = circuitById(car.circuitId);
+  const segment = circuit.segments[car.currentSegment];
   const lowGrip = trackWetness > 0.48;
   const activeAeroMode: ActiveAeroMode = lowGrip && segment.activeAeroAllowed
     ? "PARTIAL"
@@ -1720,19 +2102,15 @@ function energyTacticsFor(car: RaceCarState, energySystem: EnergySystemState, ra
   const overtakeEligible = energySystem.overtakeEligible;
   const overtakeActive = energySystem.overtakeActive;
   const boostActive = energySystem.boostActive;
-  const energyState: EnergyState = energySystem.clippingActive ? "CLIPPING"
-    : overtakeActive ? "OVERTAKE"
-      : boostActive ? "DEFENDING"
-        : energySystem.currentDeployPowerKW > 1 ? "DEPLOYING"
-          : energySystem.currentHarvestPowerKW > 1 ? "HARVESTING" : "NEUTRAL";
+  const energyState: EnergyState = energyFlowStateFor(energySystem);
   const greenTrack = raceControl === "GREEN" && car.pitStatus === "TRACK" && car.incidentStatus === "RUNNING";
   const closeInCorners = greenTrack && segment.kind !== "STRAIGHT" && car.gapToCarAhead > 0 && car.gapToCarAhead < 1.55;
   const dirtyAirLoss = closeInCorners ? Math.min(0.018, (1.55 - car.gapToCarAhead) * 0.0115) : 0;
   return { activeAeroMode, energyState, overtakeEligible, overtakeActive, boostActive, dirtyAirLoss };
 }
 
-function energyZoneLengthAt(segmentIndex: number): number {
-  const segments = SILVERSTONE_CIRCUIT.segments;
+function energyZoneLengthAt(segmentIndex: number, circuitId?: string): number {
+  const segments = circuitById(circuitId).segments;
   const origin = segments[segmentIndex];
   const isDeploymentSegment = (index: number) => Boolean(segments[index]?.activeAeroAllowed);
   if (!origin.activeAeroAllowed) return origin.length;
@@ -1743,19 +2121,20 @@ function energyZoneLengthAt(segmentIndex: number): number {
 }
 
 function energyContextFor(car: RaceCarState, raceControl: RaceControlStatus, localWater: number, airTemperatureC: number): EnergyManagementContext {
-  const segment = SILVERSTONE_CIRCUIT.segments[car.currentSegment];
+  const circuit = circuitById(car.circuitId);
+  const segment = circuit.segments[car.currentSegment];
   const migrated = migrateEnergySystemState(car.energySystem, car.batteryPercent, car.energyStoreTemperature);
   const tyreGrip = clamp((car.tyreLife / 100) * (1 - Math.abs(car.tyreTemperature - 100) * 0.0018), 0.52, 1);
-  const lapDistance = normalizeLapDistance(car.lapDistance);
+  const lapDistance = normalizeLapDistance(car.lapDistance, circuit.lengthMeters);
   const entitlementLap = migrated.overtakeEntitlementLap;
   const carriesOntoHamiltonStraight = entitlementLap !== null
     && car.currentLap === entitlementLap + 1
-    && lapDistance <= SILVERSTONE_OVERTAKE_ZONE_END_DISTANCE;
+    && lapDistance <= circuit.overtakeZone.endDistance;
   return {
     sessionType: "RACE",
     lapNumber: car.currentLap,
-    totalLaps: SILVERSTONE_CIRCUIT.totalLaps,
-    lapProgress: clamp(lapDistance / SILVERSTONE_CIRCUIT.lengthMeters, 0, 1),
+    totalLaps: circuit.totalLaps,
+    lapProgress: clamp(lapDistance / circuit.lengthMeters, 0, 1),
     currentSoc: migrated.stateOfCharge,
     targetLapEndSoc: migrated.targetSocAtLapEnd,
     predictedLapEndSoc: migrated.predictedSocAtLapEnd,
@@ -1763,7 +2142,7 @@ function energyContextFor(car: RaceCarState, raceControl: RaceControlStatus, loc
     gapAheadSeconds: car.racePosition === 1 ? null : car.gapToCarAhead,
     gapBehindSeconds: car.gapToCarBehind > 0 ? car.gapToCarBehind : null,
     currentSegmentType: segment.activeAeroAllowed ? "STRAIGHT" : segment.kind,
-    segmentLength: energyZoneLengthAt(car.currentSegment),
+    segmentLength: energyZoneLengthAt(car.currentSegment, circuit.id),
     segmentProgress: clamp(car.segmentProgress, 0, 1),
     vehicleSpeed: car.currentSpeed,
     previousVehicleSpeed: car.currentSpeed,
@@ -1775,7 +2154,7 @@ function energyContextFor(car: RaceCarState, raceControl: RaceControlStatus, loc
     virtualSafetyCarActive: raceControl === "VSC" || raceControl === "YELLOW" || raceControl === "RED_FLAG",
     pitLaneActive: car.pitStatus !== "TRACK",
     overtakeEntitled: entitlementLap === car.currentLap || carriesOntoHamiltonStraight,
-    overtakeActivationZone: lapDistance >= SILVERSTONE_OVERTAKE_ACTIVATION_DISTANCE || lapDistance <= SILVERSTONE_OVERTAKE_ZONE_END_DISTANCE,
+    overtakeActivationZone: lapDistance >= circuit.overtakeZone.activationDistance || lapDistance <= circuit.overtakeZone.endDistance,
     driverAttackIntent: car.paceMode === "ATTACK" ? 1 : car.battleStatus === "ATTACKING" ? 0.78 : 0.2,
     driverDefenceIntent: car.battleStatus === "DEFENDING" ? 1 : car.racingLineMode === "DEFEND" ? 0.72 : 0.16,
   };
@@ -1784,14 +2163,16 @@ function energyContextFor(car: RaceCarState, raceControl: RaceControlStatus, loc
 export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
   if (snapshot.status === "FINISHED") return snapshot;
 
+  const circuit = circuitById(snapshot.circuitId);
+  const { entryStart: pitEntryStart, limiterStart: pitLaneStart, exitEnd: pitExitEnd } = circuit.pitLane;
   const tick = snapshot.tick + 1;
   const elapsedTime = snapshot.elapsedTime + FIXED_STEP_SECONDS;
-  const raceDistance = SILVERSTONE_CIRCUIT.totalLaps * SILVERSTONE_CIRCUIT.lengthMeters;
-  const weather = tick % 10 === 0
+  const raceDistance = circuit.totalLaps * circuit.lengthMeters;
+  const weather = tick % WEATHER_UPDATE_INTERVAL_TICKS === 0
     ? updateSpatialWeather(snapshot.weather, elapsedTime, snapshot.seed, {
-      deltaSeconds: 1,
-      trackLengthMeters: SILVERSTONE_CIRCUIT.lengthMeters,
-      trafficIntensity: surfaceTrafficForCars(snapshot.cars),
+      deltaSeconds: WEATHER_UPDATE_DELTA_SECONDS,
+      trackLengthMeters: circuit.lengthMeters,
+      trafficIntensity: surfaceTrafficForCars(snapshot.cars, circuit.id),
     })
     : snapshot.weather;
   const incidentUpdate = updateIncidents(snapshot, weather, tick, elapsedTime);
@@ -1801,10 +2182,24 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
   const strategyRefreshTicks = weatherStrategyActive ? 100 : 300;
 
   const strategicCars = incidentUpdate.cars.map((car) => {
-    if (car.teamId === snapshot.playerTeamId || tick % strategyRefreshTicks !== 0 || car.scheduledPitCompound || car.pitStatus !== "TRACK" || car.currentLap >= SILVERSTONE_CIRCUIT.totalLaps) return car;
-    const localWater = effectiveWaterAtDistance(weather, car.lapDistance, SILVERSTONE_CIRCUIT.lengthMeters);
+    if (car.teamId === snapshot.playerTeamId || tick % strategyRefreshTicks !== 0 || car.scheduledPitCompound || car.pitStatus !== "TRACK" || car.currentLap >= circuit.totalLaps) return car;
+    const localWater = effectiveWaterAtDistance(weather, car.lapDistance, circuit.lengthMeters);
     const decision = buildAiStrategyDecision({ trackWetness: localWater, weather, raceControl: incidentUpdate.raceControl, pitLaneOpen: incidentUpdate.pitLaneOpen, cars: incidentUpdate.cars }, car);
-    const strategicCar = { ...car, strategyIntent: decision.intent, strategyConfidence: decision.confidence };
+    const strategicCar = {
+      ...car,
+      strategyIntent: decision.intent,
+      strategyConfidence: decision.confidence,
+      aiDecision: {
+        intent: decision.intent,
+        objective: decision.pitNow ? `Fit ${decision.compound}` : decision.intent.replace("_", " "),
+        targetCarId: car.battleCarId,
+        pitReason: decision.pitNow ? decision.reason : null,
+        plannedPitLap: decision.plannedPitLap,
+        reasons: [decision.reason],
+        confidence: decision.confidence,
+        decidedAt: elapsedTime,
+      },
+    };
     return decision.pitNow && decision.compound ? reserveTyreSet(strategicCar, decision.compound) : strategicCar;
   });
 
@@ -1817,14 +2212,21 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
     : []).map((decision) => [decision.carId, decision]));
   const tacticalCars = strategicCars.map((car) => {
     if (!updateAiTactics || !(car.energyAutoEnabled ?? car.teamId !== snapshot.playerTeamId) || car.finished || car.incidentStatus === "RETIRED" || car.pitStatus !== "TRACK") return car;
+    const fullAiControl = car.teamId !== snapshot.playerTeamId;
     const thermalAssessment = assessVehicleThermals(car);
     const racecraft = fieldRacecraft.get(car.carId);
     if (!racecraft) return car;
-    const localWater = effectiveWaterAtDistance(weather, car.lapDistance, SILVERSTONE_CIRCUIT.lengthMeters);
-    const energyDecision = chooseAiEnergyMode(
-      migrateEnergySystemState(car.energySystem, car.batteryPercent, car.energyStoreTemperature),
-      energyContextFor(car, incidentUpdate.raceControl, localWater, weather.airTemperature),
-    );
+    const localWater = effectiveWaterAtDistance(weather, car.lapDistance, circuit.lengthMeters);
+    const energyDecision = fullAiControl
+      ? chooseAiEnergyMode(
+        migrateEnergySystemState(car.energySystem, car.batteryPercent, car.energyStoreTemperature),
+        energyContextFor(car, incidentUpdate.raceControl, localWater, weather.airTemperature),
+      )
+      : {
+        mode: normalizeEnergyMode(car.energyMode),
+        utility: 100,
+        reason: `${normalizeEnergyMode(car.energyMode)} strategy · automatic segment deployment and recovery`,
+      };
     const energyMode: EnergyMode = energyDecision.mode;
     const coolingMode: CoolingMode = thermalAssessment.severity === "CRITICAL"
       ? "MAX_COOLING"
@@ -1833,13 +2235,33 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
       ...car,
       energyMode,
       energySystem: car.energySystem ? { ...car.energySystem, deploymentMode: energyDecision.mode, modeReason: energyDecision.reason } : car.energySystem,
-      coolingMode,
-      paceMode: racecraft.recommendedPaceMode,
+      coolingMode: fullAiControl ? coolingMode : car.coolingMode,
+      paceMode: fullAiControl ? racecraft.recommendedPaceMode : car.paceMode,
+      aiDecision: fullAiControl ? {
+        intent: racecraft.intent,
+        objective: racecraft.intent === "ATTACK" ? "Close and pass" : racecraft.intent === "DEFEND" ? "Protect position" : racecraft.intent === "HARVEST" ? "Recover energy" : "Hold race rhythm",
+        targetCarId: racecraft.targetCarId ?? racecraft.threatCarId,
+        pitReason: car.aiDecision?.pitReason ?? null,
+        plannedPitLap: car.aiDecision?.plannedPitLap ?? null,
+        reasons: [...racecraft.reasons, energyDecision.reason].slice(0, 4),
+        confidence: racecraft.confidence,
+        decidedAt: elapsedTime,
+      } : {
+        intent: `ENERGY_${energyMode}`,
+        objective: "Automatic battery deployment",
+        targetCarId: racecraft.targetCarId ?? racecraft.threatCarId,
+        pitReason: car.aiDecision?.pitReason ?? null,
+        plannedPitLap: car.aiDecision?.plannedPitLap ?? null,
+        reasons: [energyDecision.reason, `Driver pace remains ${car.paceMode}`],
+        confidence: Math.max(0.55, racecraft.confidence),
+        decidedAt: elapsedTime,
+      },
     };
   });
 
   const vscEvents: RaceEvent[] = [];
   const vscRadio: RadioMessage[] = [];
+  const driverMomentEvents: RaceEvent[] = [];
   const sportingEvents: RaceEvent[] = [];
   const sportingRadio: RadioMessage[] = [];
   const servedPenaltyIds = new Set<string>();
@@ -1872,11 +2294,11 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
     - snapshot.investigations.filter((investigation) => investigation.infringement === "PIT_SPEEDING").length
     - reservedPitSpeedingSlots);
   const plannedPitSpeeders = new Set(tacticalCars
-    .filter((car) => car.pitStatus === "PIT_ENTRY" && normalizeLapDistance(car.totalDistance) >= PIT_LANE_START)
+    .filter((car) => car.pitStatus === "PIT_ENTRY" && normalizeLapDistance(car.totalDistance, circuit.lengthMeters) >= pitLaneStart)
     .sort((left, right) => {
       const risk = (car: RaceCarState) => {
         const driverRisk = DRIVER_BY_ID.get(car.driverId)?.risk ?? 6;
-        const localWater = effectiveWaterAtDistance(weather, car.lapDistance, SILVERSTONE_CIRCUIT.lengthMeters);
+        const localWater = effectiveWaterAtDistance(weather, car.lapDistance, circuit.lengthMeters);
         return signedNoise(snapshot.seed, 74_000 + car.gridPosition, car.pitStops + 1) * 0.52
           + pitMistakeRiskBias(driverRisk)
           + localWater * 0.28
@@ -1943,7 +2365,7 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
     : null;
   const advancedCars = tacticalCars.map((car, index) => {
     if (car.finished) return car;
-    const lapDistanceBefore = normalizeLapDistance(car.totalDistance);
+    const lapDistanceBefore = normalizeLapDistance(car.totalDistance, circuit.lengthMeters);
     let pitStatus = car.pitStatus;
     let pitSpeedingEvidence = car.pitSpeedingEvidence ?? null;
     let pitLimiterFaultSeconds = car.pitLimiterFaultSeconds ?? 0;
@@ -1989,7 +2411,49 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
     let servePenaltyRequested = car.servePenaltyRequested ?? false;
     const pendingMandatoryPenalty = pendingMandatoryPenaltyByCar.get(car.carId);
     const pendingTimePenalties = pendingTimePenaltiesByCar.get(car.carId) ?? [];
-    const localWater = effectiveWaterAtDistance(weather, lapDistanceBefore, SILVERSTONE_CIRCUIT.lengthMeters);
+    const localWater = effectiveWaterAtDistance(weather, lapDistanceBefore, circuit.lengthMeters);
+    const localRain = rainIntensityAtCar(weather, lapDistanceBefore, circuit.id);
+    let driverMoment: DriverMoment = car.driverMoment ?? "NONE";
+    let driverMomentTimer = Math.max(0, (car.driverMomentTimer ?? 0) - FIXED_STEP_SECONDS);
+    let lastDriverMomentAt = car.lastDriverMomentAt ?? null;
+    if (driverMoment !== "NONE" && driverMomentTimer <= 0) driverMoment = "NONE";
+    const previousDriverState = snapshot.cars.find((candidate) => candidate.carId === car.carId);
+    const spunThisStep = car.incidentStatus === "SPUN" && previousDriverState?.incidentStatus !== "SPUN";
+    if (spunThisStep) {
+      driverMoment = "SPIN_RECOVERY";
+      driverMomentTimer = Math.max(driverMomentTimer, 3.2);
+      lastDriverMomentAt = elapsedTime;
+      const driver = DRIVER_BY_ID.get(car.driverId)?.shortName ?? car.driverId;
+      driverMomentEvents.push({
+        id: `${tick}-${car.carId}-spin-recovery`,
+        elapsedTime,
+        type: "INCIDENT",
+        message: `${driver} SPIN RECOVERY · car stopped briefly, clear gap required before rejoin`,
+        carId: car.carId,
+      });
+    }
+    const momentEligible = incidentUpdate.raceControl === "GREEN"
+      && pitStatus === "TRACK"
+      && car.incidentStatus === "RUNNING"
+      && car.currentLap > 1
+      && driverMoment === "NONE"
+      && elapsedTime - (lastDriverMomentAt ?? Number.NEGATIVE_INFINITY) >= 24;
+    if (momentEligible && tick % 10 === 0) {
+      const moment = dynamicDriverMomentFor({ car: { ...car, tyreCompound }, index, seed: snapshot.seed, tick, localWater, localRain });
+      if (moment) {
+        driverMoment = moment.moment;
+        driverMomentTimer = moment.durationSeconds;
+        lastDriverMomentAt = elapsedTime;
+        const driver = DRIVER_BY_ID.get(car.driverId)?.shortName ?? car.driverId;
+        driverMomentEvents.push({
+          id: `${tick}-${car.carId}-${moment.moment.toLowerCase()}`,
+          elapsedTime,
+          type: "INCIDENT",
+          message: `${driver} ${driverMomentLabel(moment.moment)} · S${car.currentSector} · water ${Math.round(localWater * 100)}% / rain ${Math.round(localRain * 100)}%`,
+          carId: car.carId,
+        });
+      }
+    }
     const energyContext = energyContextFor(car, incidentUpdate.raceControl, localWater, weather.airTemperature);
     let energySystem = updateEnergySystem({
       state: migrateEnergySystemState(car.energySystem, car.batteryPercent, car.energyStoreTemperature),
@@ -2026,7 +2490,7 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
      * car could commit with the box already behind it and arrive at the stop
      * without ever driving the lane.
      */
-    const inPitEntryWindow = lapDistanceBefore >= PIT_ENTRY_START && lapDistanceBefore < PIT_LANE_START;
+    const inPitEntryWindow = lapDistanceBefore >= pitEntryStart && lapDistanceBefore < pitLaneStart;
     if (pitStatus === "TRACK" && mandatoryPenaltyDue && car.totalDistance >= 0 && inPitEntryWindow) {
       pitStatus = "PIT_ENTRY";
       pitLaneTimer = 0;
@@ -2050,11 +2514,11 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
      * teleport to the pit exit instead of driving down the lane.
      */
     const enteredPitThisStep = car.pitStatus === "TRACK" && pitStatus === "PIT_ENTRY";
-    if (!enteredPitThisStep && pitStatus === "PIT_ENTRY" && lapDistanceBefore >= PIT_LANE_START) pitStatus = "PIT_LANE";
+    if (!enteredPitThisStep && pitStatus === "PIT_ENTRY" && lapDistanceBefore >= pitLaneStart) pitStatus = "PIT_LANE";
     const joinedLaneThisStep = car.pitStatus !== "PIT_LANE" && pitStatus === "PIT_LANE";
     // Each team stops at its own garage, so the box the car is driving to is the
     // one that belongs to it rather than a single shared point in the lane.
-    const teamBoxDistance = pitBoxDistanceForTeam(car.teamId);
+    const teamBoxDistance = pitBoxDistanceForTeam(car.teamId, circuit);
     if (!joinedLaneThisStep && pitStatus === "PIT_LANE" && lapDistanceBefore >= teamBoxDistance) {
       if (penaltyServiceType === "DRIVE_THROUGH") {
         pitStatus = "PIT_EXIT";
@@ -2122,20 +2586,30 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
         } else {
           pitStatus = "PIT_EXIT";
           const stopGoOnly = penaltyServiceType === "STOP_GO_10";
+          const dryFallback = stopGoOnly ? null : dryAiServiceFallback(
+            car,
+            scheduledPitCompound,
+            weather,
+            incidentUpdate.raceControl,
+            tacticalCars,
+            snapshot.playerTeamId,
+          );
+          const serviceCompound = dryFallback?.compound ?? scheduledPitCompound ?? tyreCompound;
+          const serviceTyreSetId = dryFallback?.tyreSetId ?? scheduledPitTyreSetId;
           lastPitStopTime = stopGoOnly ? lastPitStopTime : pitTyreServiceTargetSeconds;
           lastPitStopCompletedAt = elapsedTime;
           lastPenaltyHoldSeconds = penaltyHoldSeconds;
           if (penaltyServiceIds.length > 0) lastPenaltyServedAt = elapsedTime;
           pitTimer = 0;
           if (!stopGoOnly) pitStops += 1;
-          tyreCompound = stopGoOnly ? tyreCompound : scheduledPitCompound ?? tyreCompound;
-          if (!stopGoOnly && scheduledPitTyreSetId) {
+          tyreCompound = stopGoOnly ? tyreCompound : serviceCompound;
+          if (!stopGoOnly && serviceTyreSetId) {
             tyreSets = tyreSets.map((set) => set.id === activeTyreSetId
               ? { ...set, status: "USED" as const, condition: tyreLife, lapsUsed: tyreAgeLaps }
-              : set.id === scheduledPitTyreSetId
+              : set.id === serviceTyreSetId
                 ? { ...set, status: "FITTED" as const }
                 : set);
-            activeTyreSetId = scheduledPitTyreSetId;
+            activeTyreSetId = serviceTyreSetId;
           }
           if (!stopGoOnly) {
             usedTyreCompounds = [...usedTyreCompounds, tyreCompound];
@@ -2156,6 +2630,7 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
     const stoppedInBox = pitStatus === "PIT_STOP";
     const released = elapsedTime >= car.reactionTime;
     const incidentSpeedFactor = car.incidentStatus === "SPUN" ? 0.12 : car.incidentStatus === "DAMAGED" ? Math.max(0.82, 1 - car.damageLevel * 0.18) : 1;
+    const momentSpeedFactor = driverMomentSpeedFactor(driverMoment);
     const activeTeamOrder = snapshot.teamOrder ?? { type: "NONE" as const, issuedAt: 0, leadCarId: null, trailingCarId: null };
     const teamOrderLead = activeTeamOrder.leadCarId ? tacticalCars.find((candidate) => candidate.carId === activeTeamOrder.leadCarId) : null;
     const teamOrderTrail = activeTeamOrder.trailingCarId ? tacticalCars.find((candidate) => candidate.carId === activeTeamOrder.trailingCarId) : null;
@@ -2167,7 +2642,7 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
         : activeTeamOrder.type === "HOLD_POSITION" && teamOrderGapMeters <= 140 && car.carId === activeTeamOrder.trailingCarId
           ? 0.982
           : 1;
-    const unconstrainedTarget = targetSpeedKph({ ...tacticalCar, tyreCompound }, index, snapshot.seed, tick, localWater) * incidentSpeedFactor * teamOrderFactor;
+    const unconstrainedTarget = targetSpeedKph({ ...tacticalCar, tyreCompound }, index, snapshot.seed, tick, localWater) * incidentSpeedFactor * momentSpeedFactor * teamOrderFactor;
     let vscDeltaSeconds = car.vscDeltaSeconds;
     let vscViolationSeconds = car.vscViolationSeconds;
     let vscComplianceStatus = car.vscComplianceStatus;
@@ -2211,9 +2686,15 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
         }
       } else if (incidentUpdate.raceControl === "RED_FLAG") {
         const rollingRestart = incidentUpdate.redFlagRestartType === "ROLLING";
+        // Red Flag is a controlled procedure, not a zero-speed freeze. Cars
+        // must continue toward the pit-lane queue during suspension and a
+        // standing restart formation; the old zero target left every car's
+        // distance unchanged until the flag went green again.
         controlledTarget = incidentUpdate.redFlagPhase === "RESTART_FORMATION"
           ? rollingRestart ? 95 : 62
-          : incidentUpdate.redFlagPhase === "RESTART_COUNTDOWN" && rollingRestart ? 105 : 0;
+          : incidentUpdate.redFlagPhase === "RESTART_COUNTDOWN"
+            ? rollingRestart ? 105 : 82
+            : rollingRestart ? 88 : 72;
       }
       if (tick % 5 === 0) blueFlagActive = incidentUpdate.raceControl === "GREEN" && blueFlagRequiredFor(car, blueFlagReference);
       if (blueFlagActive) {
@@ -2299,7 +2780,7 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
         const driver = DRIVER_BY_ID.get(car.driverId)?.shortName ?? car.carId;
         const message = `${driver} VSC DELTA VIOLATION · ${vscDeltaSeconds.toFixed(3)}s`;
         const investigationMessage = `CAR ${DRIVER_BY_ID.get(car.driverId)?.number ?? "—"} (${driver}) VSC DELTA VIOLATION · UNDER INVESTIGATION`;
-        vscEvents.push({ id: `${tick}-${car.carId}-vsc`, elapsedTime, type: "RACE_CONTROL", message, carId: car.carId });
+        vscEvents.push({ id: `${tick}-${car.carId}-vsc`, elapsedTime, type: "RACE_CONTROL", message, carId: car.carId, sector: car.currentSector });
         vscRadio.push({ id: `${tick}-${car.carId}-vsc-radio`, elapsedTime, carId: null, source: "RACE CONTROL", message: investigationMessage, priority: "URGENT" });
       }
     } else {
@@ -2308,8 +2789,8 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
       vscComplianceStatus = "COMPLIANT";
     }
     const totalDistance = car.totalDistance + distanceDelta;
-    const lapDistanceAfter = normalizeLapDistance(totalDistance);
-    const crossedEnergyTimingLine = Math.floor(totalDistance / SILVERSTONE_CIRCUIT.lengthMeters) > Math.floor(car.totalDistance / SILVERSTONE_CIRCUIT.lengthMeters);
+    const lapDistanceAfter = normalizeLapDistance(totalDistance, circuit.lengthMeters);
+    const crossedEnergyTimingLine = Math.floor(totalDistance / circuit.lengthMeters) > Math.floor(car.totalDistance / circuit.lengthMeters);
     if (crossedEnergyTimingLine) crossedLineCarIds.add(car.carId);
     if (blueFlagActive) {
       blueFlagSeconds += FIXED_STEP_SECONDS;
@@ -2317,7 +2798,7 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
         blueFlagWarnings += 1;
         const driver = DRIVER_BY_ID.get(car.driverId);
         const message = `BLUE FLAGS · CAR ${driver?.number ?? "—"} (${driver?.shortName ?? car.carId}) MUST LET THE FASTER CAR PASS`;
-        sportingEvents.push({ id: `${tick}-${car.carId}-blue-${blueFlagWarnings}`, elapsedTime, type: "RACE_CONTROL", message, carId: car.carId });
+        sportingEvents.push({ id: `${tick}-${car.carId}-blue-${blueFlagWarnings}`, elapsedTime, type: "RACE_CONTROL", message, carId: car.carId, sector: car.currentSector });
         sportingRadio.push({ id: `${tick}-${car.carId}-blue-radio-${blueFlagWarnings}`, elapsedTime, carId: car.carId, source: "RACE CONTROL", message, priority: blueFlagWarnings >= 3 ? "URGENT" : "WARNING" });
       }
     } else {
@@ -2346,14 +2827,14 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
             ? "BLACK AND WHITE FLAG · TRACK LIMITS"
             : `TRACK LIMITS OFFENCE ${trackLimitsWarnings} · STEWARDS REVIEW`;
         const message = `CAR ${driver?.number ?? "—"} (${driver?.shortName ?? car.carId}) · ${label}`;
-        sportingEvents.push({ id: `${tick}-${car.carId}-limits-${trackLimitsWarnings}`, elapsedTime, type: "RACE_CONTROL", message, carId: car.carId });
+        sportingEvents.push({ id: `${tick}-${car.carId}-limits-${trackLimitsWarnings}`, elapsedTime, type: "RACE_CONTROL", message, carId: car.carId, sector: car.currentSector });
         sportingRadio.push({ id: `${tick}-${car.carId}-limits-radio-${trackLimitsWarnings}`, elapsedTime, carId: car.carId, source: "RACE CONTROL", message, priority: trackLimitsWarnings >= 4 ? "URGENT" : "WARNING" });
       }
     }
     if (crossedEnergyTimingLine) energySystem = completeEnergyLap(energySystem);
     const crossedOvertakeDetection = !crossedEnergyTimingLine
-      && lapDistanceBefore < SILVERSTONE_OVERTAKE_DETECTION_DISTANCE
-      && lapDistanceAfter >= SILVERSTONE_OVERTAKE_DETECTION_DISTANCE;
+      && lapDistanceBefore < circuit.overtakeZone.detectionDistance
+      && lapDistanceAfter >= circuit.overtakeZone.detectionDistance;
     if (crossedOvertakeDetection) {
       const detectedWithinOneSecond = incidentUpdate.raceControl === "GREEN"
         && pitStatus === "TRACK"
@@ -2365,7 +2846,7 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
         overtakeEntitlementLap: detectedWithinOneSecond ? car.currentLap + 1 : null,
       };
     }
-    if (pitStatus === "PIT_EXIT" && lapDistanceAfter >= PIT_EXIT_END && lapDistanceAfter < PIT_ENTRY_START) {
+    if (pitStatus === "PIT_EXIT" && lapDistanceAfter >= pitExitEnd && lapDistanceAfter < pitEntryStart) {
       lastPitLaneTime = pitLaneTimer;
       pitLaneTimer = 0;
       pitStatus = "TRACK";
@@ -2416,8 +2897,8 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
       },
     ));
     energyStoreTemperature = energySystem.batteryTemperatureC;
-    const segmentKind = SILVERSTONE_CIRCUIT.segments[segmentIndexAtDistance(lapDistanceAfter)].kind;
-    const cornerLoad = cornerThermalLoadAtDistance(lapDistanceAfter);
+    const segmentKind = circuit.segments[segmentIndexAtDistance(lapDistanceAfter, circuit)].kind;
+    const cornerLoad = cornerThermalLoadAtDistance(lapDistanceAfter, circuit.id);
     brakeTemperatures = advanceBrakeTemperatures(brakeTemperatures, {
       previousSpeedKph: car.currentSpeed,
       currentSpeedKph: currentSpeed,
@@ -2456,7 +2937,7 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
     thermalRiskPercent = thermalAssessment.reliabilityRiskPercent;
     const wetTyreDryPenalty = tyreCompound === "INTERMEDIATE" || tyreCompound === "WET" ? 1 + (1 - localWater) * 1.5 : 1;
     tyreLife = Math.max(0, tyreLife - distanceDelta * 0.00054 * PACE_WEAR[car.paceMode] * TYRE_WEAR[car.tyreMode] * COMPOUND_WEAR[tyreCompound] * wetTyreDryPenalty);
-    tyreAgeLaps += distanceDelta / SILVERSTONE_CIRCUIT.lengthMeters;
+    tyreAgeLaps += distanceDelta / circuit.lengthMeters;
     tyreSets = tyreSets.map((set) => set.id === activeTyreSetId ? { ...set, condition: tyreLife, lapsUsed: tyreAgeLaps } : set);
     const fuelRemainingKg = Math.max(0, car.fuelRemainingKg - distanceDelta * 0.00032 * PACE_FUEL[car.paceMode] * COOLING_FUEL[tacticalCar.coolingMode ?? "NORMAL"]);
     const finished = totalDistance >= raceDistance;
@@ -2535,6 +3016,9 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
       servePenaltyRequested,
       incidentStatus,
       incidentTimer,
+      driverMoment,
+      driverMomentTimer,
+      lastDriverMomentAt,
       damageLevel,
       vscDeltaSeconds,
       vscViolationSeconds,
@@ -2671,7 +3155,7 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
         && message.message.startsWith("WEATHER CROSSOVER")
         && elapsedTime - message.elapsedTime < 35);
       if (recentWeatherCall) continue;
-      const localWater = effectiveWaterAtDistance(weather, car.lapDistance, SILVERSTONE_CIRCUIT.lengthMeters);
+      const localWater = effectiveWaterAtDistance(weather, car.lapDistance, circuit.lengthMeters);
       const decision = buildAiStrategyDecision({
         trackWetness: localWater,
         weather,
@@ -2693,7 +3177,33 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
   const weatherTransitionRadio = tick % 10 === 0
     ? buildWeatherTransitionRadio(snapshot.weather, weather, cars, snapshot.radioMessages, tick, elapsedTime, snapshot.playerTeamId, snapshot.seed)
     : [];
-  const operationalRadio = buildOperationalRadio(cars, tick, elapsedTime, snapshot.playerTeamId, snapshot.seed, weather, snapshot.cars);
+  const controlTransition = incidentUpdate.raceControl !== snapshot.raceControl
+    || incidentUpdate.safetyCarPhase !== snapshot.safetyCarPhase
+    || incidentUpdate.redFlagPhase !== snapshot.redFlagPhase
+    || incidentUpdate.safetyCarLappedCarsMayOvertake !== snapshot.safetyCarLappedCarsMayOvertake
+    || incidentUpdate.yellowSector !== snapshot.yellowSector
+    || incidentUpdate.pitLaneOpen !== snapshot.pitLaneOpen;
+  const operationalRadio = buildOperationalRadio(
+    cars,
+    tick,
+    elapsedTime,
+    snapshot.playerTeamId,
+    snapshot.seed,
+    weather,
+    incidentUpdate.raceControl,
+    snapshot.cars,
+    {
+      controlTransition,
+      previousRaceControl: snapshot.raceControl,
+      safetyCarPhase: incidentUpdate.safetyCarPhase,
+      safetyCarInPitLane: incidentUpdate.safetyCarInPitLane,
+      safetyCarLappedCarsMayOvertake: incidentUpdate.safetyCarLappedCarsMayOvertake,
+      safetyCarFieldBunched: incidentUpdate.safetyCarFieldBunched,
+      safetyCarWaveBy: incidentUpdate.safetyCarWaveBy,
+      redFlagPhase: incidentUpdate.redFlagPhase,
+      yellowSector: incidentUpdate.yellowSector,
+    },
+  );
   const energyRadio = buildEnergyRadioMessages(snapshot.cars, cars, snapshot.playerTeamId, tick, elapsedTime, snapshot.radioMessages);
   let teamOrder = snapshot.teamOrder ?? { type: "NONE" as const, issuedAt: 0, leadCarId: null, trailingCarId: null };
   const teamOrderEvents: RaceEvent[] = [];
@@ -2764,7 +3274,7 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
     stewardStrictness: snapshot.stewardStrictness ?? "BALANCED",
     investigations: stewarding.investigations,
     penalties: stewarding.penalties,
-    events: [...stewarding.events, ...sportingEvents, ...teamOrderEvents, ...pitEvents, ...thermalEvents, ...battleEvents, ...vscEvents, ...incidentUpdate.events].slice(0, 24),
+    events: [...stewarding.events, ...sportingEvents, ...teamOrderEvents, ...pitEvents, ...thermalEvents, ...battleEvents, ...driverMomentEvents, ...vscEvents, ...incidentUpdate.events].slice(0, 24),
     radioMessages: [...stewarding.radioMessages, ...sportingRadio, ...teamOrderRadio, ...pitRadio, ...energyRadio, ...thermalRadio, ...weatherStrategyRadio, ...weatherTransitionRadio, ...battleRadio, ...operationalRadio, ...vscRadio, ...incidentUpdate.radioMessages].slice(0, 30),
     cars,
     checksum: checksumFor(tick, cars, weather, {
@@ -2901,7 +3411,6 @@ export function setCarPit(snapshot: RaceSnapshot, carId: string, compound: TyreC
   const cars = snapshot.cars.map((car) => car.carId === carId && car.pitStatus === "TRACK" ? reserveTyreSet(car, compound, tyreSetId) : car);
   const updated = cars.find((car) => car.carId === carId);
   const scheduled = updated?.scheduledPitCompound === compound;
-  const reserved = updated?.tyreSets.find((set) => set.id === updated.scheduledPitTyreSetId);
   return {
     ...snapshot,
     cars,
@@ -3023,6 +3532,11 @@ export function checksumFor(
 ): string {
   let hash = 2_166_136_261 ^ tick;
   for (const car of cars) {
+    const driverMomentCode = car.driverMoment === "LOW_GRIP" ? 1
+      : car.driverMoment === "LOCK_UP" ? 2
+        : car.driverMoment === "REAR_SNAP" ? 3
+          : car.driverMoment === "SPRAY" ? 4
+            : car.driverMoment === "SPIN_RECOVERY" ? 5 : 0;
     const tyreTemperatures = car.tyreTemperatures ?? uniformTyreTemperatures(car.tyreTemperature);
     const energySystem = migrateEnergySystemState(car.energySystem, car.batteryPercent, car.energyStoreTemperature);
     const opponentHistoryCode = Object.entries(car.overtakeOpponentTimes ?? {}).sort(([left], [right]) => left.localeCompare(right)).reduce(
@@ -3040,6 +3554,8 @@ export function checksumFor(
       ^ ((car.pitSpeedingEvidence?.sampleCount ?? 0) << 12)
       ^ Math.round((car.eventPerformanceFactor ?? 1) * 100_000)
       ^ Math.round((car.lastOvertakeAt ?? 0) * 10)
+      ^ (driverMomentCode << 20)
+      ^ Math.round((car.driverMomentTimer ?? 0) * 100)
       ^ Math.round(energySystem.currentDeployPowerKW * 10)
       ^ Math.round(energySystem.currentHarvestPowerKW * 10)
       ^ Math.round(energySystem.totalDeployedEnergyMJ * 1_000)

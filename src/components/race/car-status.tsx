@@ -122,11 +122,14 @@ export function CarStatusPanel() {
   const playerTeamId = snapshot?.playerTeamId ?? DEFAULT_PLAYER_TEAM_ID;
   const playerCarIds = playerCarIdsFor(playerTeamId);
   const playerCars = playerCarIds.map((id) => snapshot?.cars.find((car) => car.carId === id)).filter((car): car is RaceCarState => Boolean(car));
+  const activePlayerCarId = playerCars.some((car) => car.carId === selectedCarId) ? selectedCarId : playerCars[0]?.carId;
 
   return (
-    <aside className="status-column">
+    <aside aria-label="Player car telemetry" className="status-column">
       {playerCars.map((car) => (
-        <CarCard key={car.carId} car={car} selected={selectedCarId === car.carId} predictedPitPosition={snapshot ? estimatePitOutPosition(snapshot, car.carId) : car.racePosition} />
+        <div className={activePlayerCarId === car.carId ? "is-mobile-active" : ""} key={car.carId}>
+          <CarCard car={car} selected={selectedCarId === car.carId} predictedPitPosition={snapshot ? estimatePitOutPosition(snapshot, car.carId) : car.racePosition} />
+        </div>
       ))}
     </aside>
   );

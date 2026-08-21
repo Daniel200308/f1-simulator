@@ -166,3 +166,14 @@ export function interpolateTrackProgress(from: number, to: number, amount: numbe
   if (delta < -0.5) delta += 1;
   return normalizeTrackProgress(from + delta * clamp01(amount));
 }
+
+/**
+ * Convert a normalised track target into the next unwrapped lap target.
+ * Qualifying phases use local 0..1 coordinates, while the canvas keeps an
+ * unwrapped distance so a car can cross start/finish without snapping back.
+ */
+export function unwrapTrackDistance(currentDistance: number, targetDistance: number, trackLength: number): number {
+  if (!Number.isFinite(currentDistance) || !Number.isFinite(targetDistance) || trackLength <= 0) return targetDistance;
+  const forwardLaps = Math.max(0, Math.ceil((currentDistance - targetDistance - trackLength * 0.5) / trackLength));
+  return Math.max(currentDistance, targetDistance + forwardLaps * trackLength);
+}

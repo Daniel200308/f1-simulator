@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import Image from "next/image";
-import { Activity, ChevronRight, CircleUserRound, Fan, Flag, Gauge, Headphones, Settings2, Timer, Trophy, Waves, X } from "lucide-react";
+import { Activity, Check, ChevronRight, CircleUserRound, Fan, Flag, Gauge, Headphones, Settings2, Timer, Trophy, Waves, X } from "lucide-react";
 
 import { formatLapTime } from "@/components/race/format";
 import { TyreBadge } from "@/components/race/tyre-badge";
@@ -21,6 +21,7 @@ import {
   type WeekendSessionReport,
   type WeekendState,
 } from "@/simulation/weekend";
+import { circuitById } from "@/simulation/track";
 import { buildRaceStrategyPlans } from "@/simulation/race-strategy-plans";
 import { buildRaceStartingTyrePlan } from "@/simulation/starting-tyre-strategy";
 import { chooseRaceStartTyreSet, raceStartTyreInventory, raceStartTyreSetsFor, type RaceStartTyreSelection } from "@/simulation/tyre-allocation";
@@ -45,15 +46,25 @@ interface WeekendHubProps {
 function SessionRail({ state }: { state: WeekendState }) {
   return (
     <ol className={styles.sessionRail} aria-label="Race weekend progress">
-      {STANDARD_WEEKEND_RULES.map((rule) => {
-        const index = STANDARD_WEEKEND_RULES.findIndex((candidate) => candidate.id === rule.id);
+      {STANDARD_WEEKEND_RULES.map((rule, index) => {
         const complete = state.completedSessions.includes(rule.id as never);
         const active = rule.id === state.currentSession;
+        const status = complete ? "completed" : active ? "current" : "upcoming";
+        const SessionIcon = rule.group === "QUALIFYING" ? Timer : Flag;
         return (
-          <li className={`${complete ? styles.complete : ""} ${active ? styles.active : ""}`} key={rule.id}>
-            <span>{complete ? "✓" : index + 1}</span>
-            <div><b>{rule.id}</b><small>{rule.group}</small></div>
-            {rule.id !== STANDARD_WEEKEND_RULES.at(-1)?.id && <i />}
+          <li
+            aria-current={active ? "step" : undefined}
+            aria-label={`${rule.id} ${rule.group.toLowerCase()}, ${status}`}
+            aria-posinset={index + 1}
+            aria-setsize={STANDARD_WEEKEND_RULES.length}
+            className={`${complete ? styles.complete : ""} ${active ? styles.active : ""}`}
+            data-state={status}
+            key={rule.id}
+          >
+            <div className={styles.sessionContent}>
+              <SessionIcon aria-hidden="true" className={styles.sessionIcon} size={18} strokeWidth={2.1} />
+              <span className={styles.sessionCopy}><b>{rule.id}</b></span>
+            </div>
           </li>
         );
       })}
@@ -65,7 +76,7 @@ function SetupControl({ carId, setup, state, onChange, slot }: { carId: string; 
   const driver = DRIVER_BY_ID.get(carId);
   if (!driver) return null;
   const team = TEAM_BY_ID.get(driver.teamId);
-  const tone = team ? `#${(slot === 0 ? team.primaryColor : team.accentColor).toString(16).padStart(6, "0")}` : "#20d7e7";
+  const tone = team ? `#${(slot === 0 ? team.primaryColor : team.accentColor).toString(16).padStart(6, "0")}` : "#7b858f";
   const controls: readonly { key: keyof CarSetup; label: string; minimum: number; maximum: number; low: string; high: string; icon: typeof Gauge }[] = [
     { key: "frontWing", label: "FRONT WING", minimum: CAR_SETUP_MINIMUM, maximum: CAR_SETUP_MAXIMUM, low: "SPEED", high: "GRIP", icon: Gauge },
     { key: "rearWing", label: "REAR WING", minimum: CAR_SETUP_MINIMUM, maximum: CAR_SETUP_MAXIMUM, low: "LOW DRAG", high: "STABILITY", icon: Gauge },
@@ -223,6 +234,7 @@ function DriverStrategyRow({
   gridPosition,
   onStartingTyreChange,
   plans,
+  totalLaps,
   selection,
   tyreInventory,
 }: {
@@ -231,6 +243,7 @@ function DriverStrategyRow({
   gridPosition: number;
   onStartingTyreChange: (carId: string, selection: RaceStartTyreSelection) => void;
   plans: ReturnType<typeof buildRaceStrategyPlans>;
+  totalLaps: number;
   selection: RaceStartTyreSelection;
   tyreInventory: WeekendState["tyreInventory"];
 }) {
@@ -288,7 +301,7 @@ function DriverStrategyRow({
     <div className={styles.preRacePlanRows} aria-label={`${driver.shortName} race strategy plans`} role="group">{plans.map((strategyPlan) => <article data-recommended={strategyPlan.recommended} key={strategyPlan.id}>
       <span className={styles.preRacePlanIdentity}><b>PLAN {strategyPlan.id}</b><small>{strategyPlan.name}</small></span>
       <span className={styles.preRacePlanTrack}>{strategyPlan.stints.map((stint) => {
-        const width = ((stint.endLap - stint.startLap + 1) / 52) * 100;
+        const width = ((stint.endLap - stint.startLap + 1) / totalLaps) * 100;
         return <span className={styles.preRacePlanStint} data-compound={stint.compound} key={`${stint.startLap}-${stint.compound}`} style={{ "--stint-width": `${width}%` } as CSSProperties}><b>{TYRE_SHORT[stint.compound]}</b><small>L{stint.startLap}–{stint.endLap}</small>{stint.pitAtEnd ? <i>BOX L{stint.endLap}</i> : null}</span>;
       })}</span>
       <span className={styles.preRacePlanOutcome}><b>{strategyPlan.stopCount} STOP{strategyPlan.stopCount === 1 ? "" : "S"}</b><small>{strategyPlan.recommended ? "RECOMMENDED" : `+${strategyPlan.projectedDeltaSeconds.toFixed(1)}s`} · {strategyPlan.risk} RISK</small></span>
@@ -298,7 +311,8 @@ function DriverStrategyRow({
 
 function RacePreparation({ state, startingTyres, onStartingTyreChange }: Pick<WeekendHubProps, "state" | "startingTyres" | "onStartingTyreChange">) {
   const playerCarIds = playerCarIdsFor(state.playerTeamId);
-  const weather = createSpatialWeather(state.seed);
+  const circuit = circuitById(state.circuitId);
+  const weather = createSpatialWeather(state.seed, 0, { trackLengthMeters: circuit.lengthMeters });
   const playerOverrides = Object.fromEntries(playerCarIds.map((carId) => [carId, startingTyres[carId]?.compound]));
   const plan = buildRaceStartingTyrePlan({
     seed: state.seed,
@@ -328,7 +342,7 @@ function RacePreparation({ state, startingTyres, onStartingTyreChange }: Pick<We
       // the stint lengths directly.
       plans: buildRaceStrategyPlans({
         currentLap: 1,
-        totalLaps: 52,
+        totalLaps: circuit.totalLaps,
         tyreCompound: selection.compound,
         tyreLife: selection.condition,
         tyreAgeLaps: selection.lapsUsed,
@@ -397,6 +411,7 @@ function RacePreparation({ state, startingTyres, onStartingTyreChange }: Pick<We
             key={carId}
             onStartingTyreChange={onStartingTyreChange}
             plans={plans}
+            totalLaps={circuit.totalLaps}
             selection={selection}
             tyreInventory={state.tyreInventory}
           />
@@ -430,12 +445,50 @@ function QualifyingReportClassification({ result }: { result: WeekendSessionResu
 }
 
 export function SessionReport({ report, onClose, classification = null, actionLabel = "ACKNOWLEDGE REPORT", onAction }: { report: WeekendSessionReport; onClose: () => void; classification?: WeekendSessionResult | null; actionLabel?: string; onAction?: () => void }) {
+  const dialogRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const focusable = () => [...dialog.querySelectorAll<HTMLElement>("button:not(:disabled), [href], [tabindex]:not([tabindex='-1'])")];
+    focusable()[0]?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const controls = focusable();
+      const first = controls[0];
+      const last = controls.at(-1);
+      if (!first || !last) return;
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    dialog.addEventListener("keydown", onKeyDown);
+    return () => {
+      dialog.removeEventListener("keydown", onKeyDown);
+      previouslyFocused?.focus();
+    };
+  }, [onClose, report]);
+
   return (
     <div className={styles.reportBackdrop} role="presentation">
-      <section aria-labelledby="session-report-title" aria-modal="true" className={styles.sessionReport} role="dialog">
+      <section aria-labelledby="session-report-title" aria-modal="true" className={styles.sessionReport} ref={dialogRef} role="dialog">
         <header>
-          <div><span>SESSION COMPLETE · TEAM DEBRIEF</span><h2 id="session-report-title">{report.title}</h2><p>{report.summary}</p></div>
-          <button aria-label="Close session report" onClick={onClose} type="button"><X aria-hidden="true" size={21} /></button>
+          <div className={styles.sessionReportHeading}>
+            <span><i><Check aria-hidden="true" size={13} /></i>SESSION COMPLETE<em>TEAM DEBRIEF</em></span>
+            <h2 id="session-report-title">{report.title}</h2>
+            <p>{report.summary}</p>
+          </div>
+          <button className={styles.sessionReportClose} aria-label="Close session report" onClick={onClose} type="button"><X aria-hidden="true" size={21} /></button>
         </header>
         <div className={`${styles.reportBody} ${classification ? styles.reportBodyQualifying : ""}`}>
           {classification && <QualifyingReportClassification result={classification} />}
@@ -471,20 +524,21 @@ export function SessionReport({ report, onClose, classification = null, actionLa
 }
 
 export function WeekendHub({ state, startingTyres, onRunSession, onSetupChange, onStartingTyreChange, onStartRace, activeReport, onCloseReport }: WeekendHubProps) {
+  const circuit = circuitById(state.circuitId);
   const rule = currentWeekendRule(state);
   const playerCarIds = playerCarIdsFor(state.playerTeamId);
   const playerTeam = TEAM_BY_ID.get(state.playerTeamId);
   const isRace = state.currentSession === "RACE";
   const sessionResult = latestWeekendResult(state);
   const sessionTitle = isRace ? "RACE PREPARATION" : rule.group === "PRACTICE" ? "FREE PRACTICE" : "QUALIFYING";
-  const teamTone = playerTeam ? `#${playerTeam.primaryColor.toString(16).padStart(6, "0")}` : "#20d7e7";
+  const teamTone = playerTeam ? `#${playerTeam.primaryColor.toString(16).padStart(6, "0")}` : "#7b858f";
 
   return (
     <div className={styles.backdrop} data-weekend-session={state.currentSession}>
       <main className={`${styles.hub} ${isRace ? styles.hubRace : ""}`} style={{ "--team-tone": teamTone } as CSSProperties}>
         <header className={styles.header}>
           <div className={styles.sessionMasthead}>
-            <span>ROUND 09 · GREAT BRITAIN · SILVERSTONE</span>
+            <span>{circuit.country.toUpperCase()} · {circuit.shortName} · {(circuit.lengthMeters / 1_000).toFixed(3)} KM</span>
             <div><strong>{state.currentSession}</strong><i><b>{sessionTitle}</b><small>{playerTeam?.name.toUpperCase()} · SESSION COMMAND</small></i></div>
           </div>
           <SessionRail state={state} />
@@ -499,7 +553,7 @@ export function WeekendHub({ state, startingTyres, onRunSession, onSetupChange, 
           ) : (
             <>
               <section className={styles.garageCanvas}>
-                <header><Settings2 aria-hidden="true" size={19} /><div><b>GARAGE TELEMETRY</b><small>SILVERSTONE SETUP LAB · TWO-CAR COMPARISON</small></div><span>−50 · NEUTRAL 0 · +50 · STEP 1</span></header>
+                <header><Settings2 aria-hidden="true" size={19} /><div><b>GARAGE TELEMETRY</b><small>{circuit.shortName} SETUP LAB · TWO-CAR COMPARISON</small></div><span>−50 · NEUTRAL 0 · +50 · STEP 1</span></header>
                 <div className={styles.setupCars}>{playerCarIds.map((carId, index) => <SetupControl carId={carId} key={carId} onChange={(setup) => onSetupChange(carId, setup)} setup={state.setups[carId]} slot={index} state={state} />)}</div>
               </section>
 

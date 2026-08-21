@@ -10,12 +10,12 @@ import { tyreSetLabel, tyreSetNumber } from "@/components/race/format";
 import { DEFAULT_PLAYER_TEAM_ID, DRIVER_BY_ID, playerCarIdsFor, TEAM_BY_ID } from "@/fixtures/grid";
 import { useRaceStore } from "@/store/race-store";
 
-const PACE_OPTIONS: readonly { mode: PaceMode; label: string; hint: string; level: number }[] = [
-  { mode: "ATTACK", label: "Attack", hint: "Maximum pace", level: 5 },
-  { mode: "PUSH", label: "Push", hint: "Close the gap", level: 4 },
-  { mode: "STANDARD", label: "Standard", hint: "Race target", level: 3 },
-  { mode: "CONSERVE", label: "Conserve", hint: "Save fuel", level: 2 },
-  { mode: "COOL", label: "Cool", hint: "Reduce temps", level: 1 },
+const PACE_OPTIONS: readonly { mode: PaceMode; label: string; shortLabel: string; hint: string; level: number }[] = [
+  { mode: "ATTACK", label: "Attack", shortLabel: "ATK", hint: "Maximum pace", level: 5 },
+  { mode: "PUSH", label: "Push", shortLabel: "PUSH", hint: "Close the gap", level: 4 },
+  { mode: "STANDARD", label: "Standard", shortLabel: "STD", hint: "Race target", level: 3 },
+  { mode: "CONSERVE", label: "Conserve", shortLabel: "SAVE", hint: "Save fuel", level: 2 },
+  { mode: "COOL", label: "Cool", shortLabel: "COOL", hint: "Reduce temps", level: 1 },
 ];
 /*
  * Every car, player and AI, deploys on the straights and harvests through the
@@ -28,11 +28,11 @@ const ENERGY_OPTIONS: readonly { mode: EnergyMode; label: string; shortLabel: st
   { mode: "BALANCED", label: "Balanced", shortLabel: "BAL", hint: "Match deployment to recovery lap by lap", level: 3 },
   { mode: "CONSERVE", label: "Save", shortLabel: "SAVE", hint: "Deploy on the straights but keep a reserve in hand", level: 2 },
 ];
-const TYRE_OPTIONS: readonly { mode: TyreMode; label: string; hint: string; grip: number }[] = [
-  { mode: "GRIP", label: "Grip", hint: "Use tyre", grip: 4 },
-  { mode: "BALANCED", label: "Balanced", hint: "Target life", grip: 3 },
-  { mode: "SAVE", label: "Save", hint: "Extend stint", grip: 2 },
-  { mode: "TEMPERATURE", label: "Cool", hint: "Lower temp", grip: 1 },
+const TYRE_OPTIONS: readonly { mode: TyreMode; label: string; shortLabel: string; hint: string; grip: number }[] = [
+  { mode: "GRIP", label: "Grip", shortLabel: "GRIP", hint: "Use tyre", grip: 4 },
+  { mode: "BALANCED", label: "Balanced", shortLabel: "BAL", hint: "Target life", grip: 3 },
+  { mode: "SAVE", label: "Save", shortLabel: "SAVE", hint: "Extend stint", grip: 2 },
+  { mode: "TEMPERATURE", label: "Cool", shortLabel: "COOL", hint: "Lower temp", grip: 1 },
 ];
 const PIT_COMPOUNDS: readonly TyreCompound[] = ["SOFT", "MEDIUM", "HARD", "INTERMEDIATE", "WET"];
 
@@ -129,9 +129,11 @@ export function CommandDock({ car, controls, pitLaneOpen }: { car?: RaceCarState
         <small className={enabled ? "command-link-status is-live" : "command-link-status"}>{enabled ? `${driver?.shortName} · ${team?.shortName} LINKED` : "SELECT PLAYER CAR"}</small>
       </div>
 
-      <section className="visual-control visual-control--pace">
+      <section aria-label="Pace" className="visual-control visual-control--pace">
         <header><span>PACE</span><b>{car?.paceMode ?? "—"}</b></header>
-        <div>{PACE_OPTIONS.map((option) => <button aria-label={`Set pace ${option.mode}`} aria-pressed={car?.paceMode === option.mode} className="command-node" disabled={!enabled} key={option.mode} onClick={() => car && controls.setPace(car.carId, option.mode)} title={option.hint} type="button"><LevelGlyph kind="pace" level={option.level} /><strong>{option.label}</strong></button>)}</div>
+        <div className="pace-mode-rail">{PACE_OPTIONS.map((option) => (
+          <button aria-label={`Set pace ${option.label}`} aria-pressed={car?.paceMode === option.mode} className={`command-node pace-node pace-node--${option.mode.toLowerCase()}`} disabled={!enabled} key={option.mode} onClick={() => car && controls.setPace(car.carId, option.mode)} title={`${option.label} · ${option.hint}`} type="button"><LevelGlyph kind="pace" level={option.level} /><strong>{option.shortLabel}</strong></button>
+        ))}</div>
       </section>
 
       <section aria-label="Battery usage" className="visual-control visual-control--energy">
@@ -141,9 +143,11 @@ export function CommandDock({ car, controls, pitLaneOpen }: { car?: RaceCarState
         ))}</div>
       </section>
 
-      <section className="visual-control visual-control--tyre">
+      <section aria-label="Tyre management" className="visual-control visual-control--tyre">
         <header><span>TYRE MANAGEMENT</span><b>{car?.tyreMode ?? "—"}</b></header>
-        <div>{TYRE_OPTIONS.map((option) => <button aria-label={`Set tyre management ${option.mode}`} aria-pressed={car?.tyreMode === option.mode} className="command-node" disabled={!enabled} key={option.mode} onClick={() => car && controls.setTyreMode(car.carId, option.mode)} title={option.hint} type="button"><LevelGlyph kind="tyre" level={option.grip} /><strong>{option.label}</strong></button>)}</div>
+        <div className="tyre-mode-rail">{TYRE_OPTIONS.map((option) => (
+          <button aria-label={`Set tyre management ${option.label}`} aria-pressed={car?.tyreMode === option.mode} className={`command-node tyre-node tyre-node--${option.mode.toLowerCase()}`} disabled={!enabled} key={option.mode} onClick={() => car && controls.setTyreMode(car.carId, option.mode)} title={`${option.label} · ${option.hint}`} type="button"><LevelGlyph kind="tyre" level={option.grip} /><strong>{option.shortLabel}</strong></button>
+        ))}</div>
       </section>
 
       <section className="pit-tyre-control" ref={pitSectionRef}>

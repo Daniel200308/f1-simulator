@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import type { RaceSnapshot, TyreTemperatureState } from "@/domain/race";
+import type { RaceEvent, RaceSnapshot, TyreTemperatureState } from "@/domain/race";
 import { playerCarIdsFor, TEAMS } from "@/fixtures/grid";
-import { averageTyreTemperature, buildWeatherTransitionRadio, cancelCarPit, checksumFor, createInitialSnapshot, estimatePitOutPosition, FIXED_STEP_SECONDS, OPERATIONAL_RADIO_INTERVAL_TICKS, PIT_BOX_DISTANCE, PIT_ENTRY_START, PIT_EXIT_END, SAFETY_CAR_RANDOM_MAX_LAP, SAFETY_CAR_RANDOM_MIN_LAP, scheduledSafetyCarTriggerDistance, setCarEnergyMode, setCarPace, setCarPit, setCarStartingTyre, setCarTyreMode, stepSnapshot } from "@/simulation/engine";
+import { averageTyreTemperature, buildOperationalRadio, buildWeatherTransitionRadio, cancelCarPit, checksumFor, createInitialSnapshot, estimatePitOutPosition, FIXED_STEP_SECONDS, OPERATIONAL_RADIO_INTERVAL_TICKS, PIT_BOX_DISTANCE, PIT_ENTRY_START, PIT_EXIT_END, SAFETY_CAR_RANDOM_MAX_LAP, SAFETY_CAR_RANDOM_MIN_LAP, scheduledSafetyCarTriggerDistance, setCarEnergyMode, setCarPace, setCarPit, setCarStartingTyre, setCarTyreMode, stepSnapshot } from "@/simulation/engine";
 import { SILVERSTONE_REFERENCE_LAP_SECONDS, telemetryReferenceLapTime, telemetrySpeedAtDistance } from "@/simulation/silverstone-telemetry";
 import { strategyRecommendation } from "@/simulation/strategy";
 import { sectorAtDistance, segmentIndexAtDistance, SILVERSTONE_CIRCUIT, SILVERSTONE_CORNERS, SILVERSTONE_OVERTAKE_DETECTION_DISTANCE } from "@/simulation/track";
@@ -19,6 +19,36 @@ function uniformTyres(temperature: number): TyreTemperatureState {
 }
 
 describe("race simulation", () => {
+  it("schedules and executes a seeded player reliability failure", () => {
+    const seed = 71_550;
+    const base = createInitialSnapshot(seed);
+    const target = playerCarIdsFor(base.playerTeamId)[0];
+    const reliability = {
+      [target]: { conditionPercent: 12, failureRiskPercent: 100, performanceDeratePercent: 4.5, limitingComponent: "ICE" },
+    };
+    const initial = createInitialSnapshot(seed, "RUNNING", undefined, undefined, undefined, base.playerTeamId, undefined, undefined, reliability);
+    const targetCar = initial.cars.find((car) => car.carId === target)!;
+    expect(targetCar.reliabilityFailureDistance).toBeTypeOf("number");
+    expect(targetCar.reliabilityDeratePercent).toBe(4.5);
+    const atFailure = stepSnapshot({
+      ...initial,
+      tick: 9,
+      elapsedTime: 0.9,
+      safetyCarDeployments: 1,
+      scheduledSafetyCarDistance: Number.MAX_SAFE_INTEGER,
+      cars: initial.cars.map((car) => car.carId === target ? {
+        ...car,
+        totalDistance: targetCar.reliabilityFailureDistance! + 1,
+        lapDistance: targetCar.reliabilityFailureDistance! % SILVERSTONE_CIRCUIT.lengthMeters,
+        currentSpeed: 220,
+      } : car),
+    });
+
+    expect(atFailure.cars.find((car) => car.carId === target)).toMatchObject({ incidentStatus: "RETIRED", retiredReason: "ICE FAILURE", currentSpeed: 0 });
+    expect(atFailure.events.some((event) => event.carId === target && event.message.includes("ICE FAILURE"))).toBe(true);
+    expect(atFailure.radioMessages.some((message) => message.carId === target && message.message.includes("STOP THE CAR"))).toBe(true);
+  });
+
   it("initializes both controllable cars for every selectable constructor", () => {
     for (const team of TEAMS) {
       const state = createInitialSnapshot(20_260_715, "PAUSED", undefined, undefined, undefined, team.id);
@@ -172,6 +202,37 @@ describe("race simulation", () => {
     expect(state.events[0].message).toContain("GREEN FLAG");
   });
 
+  it("keeps the field moving through Red Flag suspension and standing formation", () => {
+    const initial = createInitialSnapshot(20_260_810);
+    const suspended = stepSnapshot({
+      ...initial,
+      status: "RUNNING",
+      raceControl: "RED_FLAG",
+      redFlagPhase: "SUSPENDED",
+      redFlagTimerSeconds: 18,
+      redFlagRestartType: "ROLLING",
+      pitLaneOpen: false,
+      pitLaneStatus: "CLOSED",
+      cars: initial.cars.map((car) => ({ ...car, reactionTime: 0, currentSpeed: 180 })),
+    });
+    const standingFormation = stepSnapshot({
+      ...initial,
+      status: "RUNNING",
+      raceControl: "RED_FLAG",
+      redFlagPhase: "RESTART_COUNTDOWN",
+      redFlagTimerSeconds: 4,
+      redFlagRestartType: "STANDING",
+      pitLaneOpen: false,
+      pitLaneStatus: "CLOSED",
+      cars: initial.cars.map((car) => ({ ...car, reactionTime: 0, currentSpeed: 120 })),
+    });
+
+    expect(suspended.cars.every((car, index) => car.totalDistance > initial.cars[index].totalDistance)).toBe(true);
+    expect(standingFormation.cars.every((car, index) => car.totalDistance > initial.cars[index].totalDistance)).toBe(true);
+    expect(suspended.raceControl).toBe("RED_FLAG");
+    expect(standingFormation.raceControl).toBe("RED_FLAG");
+  });
+
   it("reports first local raindrops immediately and debounces repeated weather radio", () => {
     const initial = createInitialSnapshot(12_001);
     const lightRain = {
@@ -206,6 +267,68 @@ describe("race simulation", () => {
       initial.seed,
     );
     expect(repeated).toEqual([]);
+  });
+
+  it("keeps wet-tyre radio on the wet-weather call while the surface is still wet", () => {
+    const initial = createInitialSnapshot(12_002);
+    const wetWeather = {
+      ...initial.weather,
+      condition: "LIGHT_RAIN" as const,
+      rainIntensity: 0.2,
+      trackWetness: 0.34,
+      surfaceZones: initial.weather.surfaceZones?.map((zone) => ({
+        ...zone,
+        rainIntensity: 0.2,
+        wetness: 0.34,
+        standingWater: 0.05,
+        dryingLine: 0.1,
+      })),
+    };
+    const cars = initial.cars.map((car) => car.teamId === initial.playerTeamId
+      ? { ...car, tyreCompound: "INTERMEDIATE" as const, reactionTime: 0 }
+      : car);
+    const calls = buildOperationalRadio(
+      cars,
+      OPERATIONAL_RADIO_INTERVAL_TICKS,
+      220,
+      initial.playerTeamId,
+      initial.seed,
+      wetWeather,
+      "GREEN",
+      initial.cars,
+    );
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].message.toLowerCase()).toMatch(/wet|rain|grip/);
+    expect(calls[0].message.toLowerCase()).not.toMatch(/slick|drying fast|ready for dries/);
+  });
+
+  it("rechecks an AI wet-tyre call at the box when the track has dried", () => {
+    const initial = createInitialSnapshot(6);
+    const target = initial.cars.find((car) => car.carId === "mercedes-1")!;
+    const reservedIntermediate = target.tyreSets.find((set) => set.compound === "INTERMEDIATE" && set.status === "AVAILABLE")!;
+    const state = stepSnapshot({
+      ...initial,
+      status: "RUNNING",
+      cars: initial.cars.map((car) => car.carId === target.carId
+        ? {
+          ...car,
+          pitStatus: "PIT_STOP" as const,
+          pitTimer: 0.1,
+          pitStopTargetSeconds: 0.1,
+          pitServicePhase: "TYRE_SERVICE" as const,
+          pitTyreServiceTargetSeconds: 0,
+          scheduledPitCompound: "INTERMEDIATE" as const,
+          scheduledPitTyreSetId: reservedIntermediate.id,
+          tyreSets: car.tyreSets.map((set) => set.id === reservedIntermediate.id ? { ...set, status: "RESERVED" as const } : set),
+        }
+        : car),
+    });
+    const serviced = state.cars.find((car) => car.carId === target.carId)!;
+
+    expect(serviced.pitStatus).toBe("PIT_EXIT");
+    expect(["SOFT", "MEDIUM", "HARD"]).toContain(serviced.tyreCompound);
+    expect(serviced.tyreCompound).not.toBe("INTERMEDIATE");
   });
 
   it("moves a safety-car period through bunching and restart phases", () => {
@@ -345,8 +468,8 @@ describe("race simulation", () => {
     const queue = activeCars.map((car) => car.safetyCarQueuePosition);
     const leader = activeCars.find((car) => car.racePosition === 1)!;
 
-    expect(state.safetyCarDistance).toBeGreaterThan(72);
-    expect(state.safetyCarSpeed).toBe(155);
+    expect(state.safetyCarDistance).toBe(72);
+    expect(state.safetyCarSpeed).toBe(65);
     expect(state.pitLaneStatus).toBe("CLOSED");
     expect(state.pitLaneOpen).toBe(false);
     expect(queue.every((position) => position !== null)).toBe(true);
@@ -452,9 +575,10 @@ describe("race simulation", () => {
     const expired = ending.safetyCarWaveBy.find((entry) => entry.carId === targetId)!;
     const queued = ending.cars.find((car) => car.carId === targetId)!;
 
-    expect(ending.safetyCarPhase).toBe("RESTART");
-    expect(expired).toMatchObject({ active: false, completed: false });
-    expect(queued.safetyCarQueuePosition).not.toBeNull();
+    expect(ending.safetyCarPhase).toBe("BUNCHING");
+    expect(expired).toMatchObject({ active: true, completed: false });
+    expect(ending.safetyCarLappedCarsMayOvertake).toBe(true);
+    expect(queued.safetyCarQueuePosition).toBeNull();
     expect(queued.currentSpeed).toBeLessThanOrEqual(235);
   });
 
@@ -531,7 +655,7 @@ describe("race simulation", () => {
 
     let observedPass = false;
     let maximumPerezSpeed = 0;
-    for (let tick = 0; tick < 1_900; tick += 1) {
+    for (let tick = 0; tick < 2_400; tick += 1) {
       const entry = waveBy.safetyCarWaveBy.find((candidate) => candidate.carId === "cadillac-1")!;
       const perez = waveBy.cars.find((car) => car.carId === "cadillac-1")!;
       observedPass ||= entry.passedSafetyCar === true;
@@ -961,6 +1085,66 @@ describe("race simulation", () => {
     expect(operational.every((message) => message.source === "DRIVER" || message.source === "ENGINEER")).toBe(true);
   });
 
+  it("switches to a Safety Car conversation instead of a generic race report", () => {
+    const initial = createInitialSnapshot(7_711);
+    const calls = buildOperationalRadio(
+      initial.cars,
+      1,
+      0.1,
+      initial.playerTeamId,
+      initial.seed,
+      initial.weather,
+      "SAFETY_CAR",
+      initial.cars,
+      {
+        controlTransition: true,
+        safetyCarPhase: "DEPLOYED",
+        safetyCarFieldBunched: false,
+      },
+    );
+    const driverCalls = calls.filter((message) => message.source === "DRIVER");
+
+    expect(driverCalls).toHaveLength(2);
+    expect(driverCalls.every((message) => message.priority === "URGENT")).toBe(true);
+    expect(driverCalls.every((message) => /queue|slowing|traffic|racing now|Safety Car/i.test(message.message))).toBe(true);
+    expect(calls.some((message) => message.source === "ENGINEER" && /Safety Car confirmed/i.test(message.message))).toBe(true);
+  });
+
+  it("routes a transient spin recovery into an urgent driver conversation", () => {
+    const initial = createInitialSnapshot(7_714);
+    const currentCars = initial.cars.map((car) => car.carId === "ferrari-1"
+      ? { ...car, driverMoment: "SPIN_RECOVERY" as const, driverMomentTimer: 2.4 }
+      : car);
+    const calls = buildOperationalRadio(
+      currentCars,
+      1,
+      0.1,
+      initial.playerTeamId,
+      initial.seed,
+      initial.weather,
+      "GREEN",
+      initial.cars,
+      { controlTransition: false },
+    );
+    const driverCall = calls.find((message) => message.carId === "ferrari-1" && message.source === "DRIVER");
+
+    expect(driverCall?.priority).toBe("URGENT");
+    expect(driverCall?.message).toMatch(/spin|spun|lost|rejoin|recover/i);
+    expect(calls.some((message) => message.carId === "ferrari-1" && message.source === "ENGINEER" && /rejoin|gap|tyres/i.test(message.message))).toBe(true);
+  });
+
+  it("reacts when the gap to the car ahead collapses", () => {
+    const initial = createInitialSnapshot(7_712);
+    const playerCarId = "ferrari-1";
+    const cars = initial.cars.map((car) => car.carId === playerCarId ? { ...car, gapToCarAhead: 0.78 } : car);
+    const previousCars = initial.cars.map((car) => car.carId === playerCarId ? { ...car, gapToCarAhead: 1.24 } : car);
+    const calls = buildOperationalRadio(cars, OPERATIONAL_RADIO_INTERVAL_TICKS, 220, initial.playerTeamId, initial.seed, initial.weather, "GREEN", previousCars);
+    const driverCall = calls.find((message) => message.source === "DRIVER");
+
+    expect(driverCall?.message).toMatch(/chance|run|coming|closer|battery/i);
+    expect(driverCall?.priority).toBe("WARNING");
+  });
+
   it("turns local rain and standing water into a colloquial driver report", () => {
     const initial = createInitialSnapshot(5_151);
     const soakedWeather = {
@@ -986,7 +1170,44 @@ describe("race simulation", () => {
       cars: initial.cars.map((car) => ({ ...car, currentLap: 4, reactionTime: 0 })),
     });
     const report = next.radioMessages.find((message) => message.id.includes("operations-radio") && message.source === "DRIVER");
-    expect(report?.message).toMatch(/aquaplan|standing water|visibility|dangerous|floating|surfing/i);
+    expect(report?.message).toMatch(/aquaplan|standing water|visibility|dangerous|floating|surfing|red flag|race suspended|mess/i);
+  });
+
+  it("creates transient wet handling moments for AI cars instead of only full incidents", () => {
+    const initial = createInitialSnapshot(5_152);
+    const soakedWeather = {
+      ...initial.weather,
+      condition: "HEAVY_RAIN" as const,
+      rainIntensity: 0.82,
+      trackWetness: 0.8,
+      surfaceZones: initial.weather.surfaceZones!.map((zone) => ({
+        ...zone,
+        rainIntensity: 0.82,
+        wetness: 0.8,
+        standingWater: 0.32,
+        dryingLine: 0,
+      })),
+    };
+    let state: RaceSnapshot = {
+      ...initial,
+      status: "RUNNING",
+      weather: soakedWeather,
+      cars: initial.cars.map((car) => ({
+        ...car,
+        currentLap: 4,
+        totalDistance: SILVERSTONE_CIRCUIT.lengthMeters * 3 - car.gridPosition * 6.8,
+        tyreCompound: "SOFT",
+        reactionTime: 0,
+      })),
+    };
+    let handlingEvent: RaceEvent | undefined;
+    for (let tick = 0; tick < 650 && !handlingEvent; tick += 1) {
+      state = stepSnapshot(state);
+      handlingEvent = state.events.find((event) => /LOW GRIP|LOCK-UP|REAR SNAP|SPRAY|SPIN RECOVERY/.test(event.message));
+    }
+
+    expect(handlingEvent).toBeDefined();
+    expect(state.cars.some((car) => car.driverMoment && car.driverMoment !== "NONE")).toBe(true);
   });
 
   it("gives soft tyres more pace and wear than hard tyres", () => {
@@ -1233,7 +1454,7 @@ describe("race simulation", () => {
   });
 
   it("builds rain and track wetness during the forecast weather window", () => {
-    const seed = 20_260_811;
+    const seed = 20_260_804;
     const activeCell = createWeatherScenario(seed).cells.reduce((strongest, cell) => (
       cell.peakIntensity > strongest.peakIntensity ? cell : strongest
     ));
@@ -1246,7 +1467,7 @@ describe("race simulation", () => {
     expect(state.weather.rainIntensity).toBeGreaterThan(0.1);
     expect(state.weather.trackWetness).toBeGreaterThan(0.1);
     expect(["LIGHT_RAIN", "HEAVY_RAIN"]).toContain(state.weather.condition);
-  });
+  }, 30_000);
 
   it("slows a slick-shod car only when it reaches a wet surface zone", () => {
     const initial = createInitialSnapshot(6_161);

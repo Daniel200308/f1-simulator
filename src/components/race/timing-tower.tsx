@@ -8,6 +8,7 @@ import { DRIVER_BY_ID, TEAM_BY_ID } from "@/fixtures/grid";
 import { TyreBadge } from "@/components/race/tyre-badge";
 import { useRaceStore } from "@/store/race-store";
 import { penaltyLabel } from "@/simulation/stewarding";
+import { circuitById } from "@/simulation/track";
 
 function gapLabel(position: number, gap: number): string {
   if (position === 1) return "LEADER";
@@ -22,6 +23,7 @@ export function TimingTower() {
   const timingGapRevision = useRaceStore((state) => state.timingGapRevision);
   const cars = snapshot ? [...snapshot.cars].sort((a, b) => a.racePosition - b.racePosition) : [];
   const currentLap = cars[0]?.currentLap ?? 1;
+  const totalLaps = circuitById(snapshot?.circuitId).totalLaps;
   const [sportingNoticeCarId, setSportingNoticeCarId] = useState<string | null>(null);
   const noticeCar = cars.find((car) => car.carId === sportingNoticeCarId);
   const noticeDriver = noticeCar ? DRIVER_BY_ID.get(noticeCar.driverId) : undefined;
@@ -40,9 +42,9 @@ export function TimingTower() {
         <span className="timing-masthead__lap">
           <small>LAP</small>
           <strong>{currentLap}</strong>
-          <em>/ 52</em>
+          <em>/ {totalLaps}</em>
         </span>
-        <i aria-hidden="true" style={{ "--race-progress": `${Math.min(100, (currentLap / 52) * 100)}%` } as CSSProperties} />
+        <i aria-hidden="true" style={{ "--race-progress": `${Math.min(100, (currentLap / totalLaps) * 100)}%` } as CSSProperties} />
       </header>
       <div className="timing-head"><span title="Position">P</span><span title="Driver">DRIVER</span><span title="Tyre compound">TYRE</span><span title="Tyre life">LIFE</span><span title="Gap to the car ahead">GAP</span><span aria-hidden="true" /></div>
       {activeSportingNotice && <section aria-live="polite" className={`sporting-explainer ${noticePenalty ? "is-penalty" : "is-investigation"}`}>

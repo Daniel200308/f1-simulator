@@ -5,7 +5,6 @@ import {
   AlertTriangle,
   ChevronRight,
   CircleGauge,
-  Clock3,
   Flag,
   Gauge,
   Scale,
@@ -25,6 +24,8 @@ export interface ReplayReportPanelProps {
   open: boolean;
   report: RaceReport;
   onClose: () => void;
+  onContinue?: () => void;
+  continueLabel?: string;
 }
 
 function formatClock(seconds: number): string {
@@ -48,6 +49,8 @@ export function ReplayReportPanel({
   open,
   report,
   onClose,
+  onContinue,
+  continueLabel = "Continue championship",
 }: ReplayReportPanelProps) {
   const panelRef = useRef<HTMLElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -106,7 +109,8 @@ export function ReplayReportPanel({
             <span>{report.completed ? "FIA POST-RACE" : "RACE OPERATIONS"}</span>
             <h2 id="race-review-title">{report.completed ? "Official classification" : "Race review"}</h2>
           </div>
-          <div aria-label="Review view" className={styles.viewSwitch} role="group"><span><Trophy aria-hidden="true" size={15} />Official report</span></div>
+          <div aria-label="Review view" className={styles.viewSwitch} role="group"><span><Trophy aria-hidden="true" size={15} />{report.completed ? "Official report" : "Live review"}</span></div>
+          {onContinue && <button className={styles.continueButton} onClick={onContinue} type="button">{continueLabel}<ChevronRight aria-hidden="true" size={16} /></button>}
           <button aria-label="Close race review" className={styles.closeButton} onClick={closePanel} ref={closeRef} type="button"><X aria-hidden="true" size={19} /></button>
         </header>
 
@@ -116,7 +120,7 @@ export function ReplayReportPanel({
               <div>
                 <span>{report.completed ? "RACE WINNER" : "CURRENT LEADER"}</span>
                 <strong>{winner?.driverName ?? "Classification pending"}</strong>
-                <small>{winner ? `${winner.teamName} · P${winner.position}${winner.onTrackPosition !== winner.position ? ` · P${winner.onTrackPosition} ON TRACK` : ""}${report.completed ? "" : " · PROVISIONAL"}` : "No classified cars"}</small>
+                <small>{winner ? `${winner.teamName} · P${winner.position}${winner.onTrackPosition !== winner.position ? ` · P${winner.onTrackPosition} ON TRACK` : ""}${report.completed ? "" : " · PROVISIONAL"} · ${formatClock(report.elapsedTimeSeconds)}` : "No classified cars"}</small>
               </div>
               <div className={styles.fastestLap}>
                 <Gauge aria-hidden="true" size={19} />
@@ -127,11 +131,42 @@ export function ReplayReportPanel({
             </section>
 
             <section aria-label="Race totals" className={styles.statRail}>
+              <div><Flag aria-hidden="true" size={16} /><span>FINISHERS</span><strong>{report.totals.finishers}/{report.totals.classifiedCars}</strong></div>
               <div><ChevronRight aria-hidden="true" size={16} /><span>OVERTAKES</span><strong>{report.totals.overtakes}</strong></div>
               <div><Wrench aria-hidden="true" size={16} /><span>PIT STOPS</span><strong>{report.totals.pitStops}</strong></div>
               <div><AlertTriangle aria-hidden="true" size={16} /><span>INCIDENTS</span><strong>{report.totals.incidents}</strong></div>
               <div><Scale aria-hidden="true" size={16} /><span>PENALTIES</span><strong>{report.totals.penalties}</strong></div>
-              <div><Clock3 aria-hidden="true" size={16} /><span>DURATION</span><strong>{formatClock(report.elapsedTimeSeconds)}</strong></div>
+            </section>
+
+            <section aria-label="Player team result" className={styles.playerSpotlight}>
+              <header><span>TEAM RESULT</span><small>{report.playerReports.length} CONTROLLED CARS · {report.completed ? "CLASSIFIED" : "LIVE PROVISIONAL"}</small></header>
+              <div className={styles.playerSpotlightGrid}>
+                {report.playerReports.map((player) => {
+                  const entry = report.classification.find((candidate) => candidate.carId === player.carId);
+                  const strategy = report.tyreStrategies.find((candidate) => candidate.carId === player.carId);
+                  const gainLabel = player.positionsGained > 0 ? `+${player.positionsGained}` : player.positionsGained === 0 ? "—" : `${player.positionsGained}`;
+                  return (
+                    <article data-status={player.incidentStatus} key={player.carId}>
+                      <div className={styles.playerSpotlightIdentity}>
+                        <span className={styles.driverSignal}>{player.finishPosition <= 3 ? <Trophy aria-hidden="true" size={17} /> : player.driverShortName}</span>
+                        <div><strong>{player.driverName}</strong><small>{entry?.teamName ?? "PLAYER CAR"} · GRID P{player.gridPosition}</small></div>
+                        <b>P{player.finishPosition}</b>
+                      </div>
+                      <div className={styles.playerSpotlightMetrics}>
+                        <span><small>GAIN</small><strong>{gainLabel}</strong></span>
+                        <span><small>OVT</small><strong>{player.overtakes}</strong></span>
+                        <span><small>STOPS</small><strong>{player.pitStops}</strong></span>
+                        <span><small>THERMAL</small><strong className={player.criticalThermalWarningCount > 0 ? styles.warning : undefined}>{player.thermalWarnings.length}</strong></span>
+                      </div>
+                      <div className={styles.playerSpotlightStrategy}>
+                        <span>STRATEGY</span>
+                        <div>{(strategy?.compounds ?? player.tyreStrategy).map((compound, index) => <i data-compound={compound} key={`${player.carId}-${compound}-${index}`}>{compound.slice(0, 1)}</i>)}</div>
+                        <b>{strategy?.stintCount ?? player.tyreStrategy.length} STINT{(strategy?.stintCount ?? player.tyreStrategy.length) === 1 ? "" : "S"}</b>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
             </section>
 
             <div className={styles.reportGrid}>
@@ -140,7 +175,7 @@ export function ReplayReportPanel({
                 <div className={styles.tableHead}><span>P</span><span>DRIVER</span><span>GAP / STATUS</span><span>STRATEGY</span><span>PEN</span></div>
                 <div className={styles.classificationList}>
                   {report.classification.map((entry) => (
-                    <div className={styles.classificationRow} data-penalized={entry.penaltySeconds > 0} data-status={entry.status} key={entry.carId}>
+                    <div className={styles.classificationRow} data-penalized={entry.penaltySeconds > 0} data-player={report.playerReports.some((player) => player.carId === entry.carId)} data-status={entry.status} key={entry.carId}>
                       <strong>{String(entry.position).padStart(2, "0")}</strong>
                       <span><b>{entry.driverShortName}</b><small>{entry.teamName}{entry.onTrackPosition !== entry.position ? ` · P${entry.onTrackPosition} ON TRACK` : ""}</small></span>
                       <time>{classificationGap(entry.position, entry.status, entry.gapToWinnerSeconds, entry.retiredReason)}</time>

@@ -12,8 +12,8 @@ interface ThermalBand {
 
 function tyreThermalBand(temperature: number, compound: TyreCompound): ThermalBand {
   const [minimum, maximum] = TYRE_TEMPERATURE_WINDOWS[compound];
-  if (temperature < minimum - 8) return { label: "COLD", color: "#398cff" };
-  if (temperature < minimum) return { label: "WARMING", color: "#20d7e7" };
+  if (temperature < minimum - 8) return { label: "COLD", color: "#526271" };
+  if (temperature < minimum) return { label: "WARMING", color: "#7b858f" };
   if (temperature <= maximum) return { label: "OPTIMAL", color: "#4bde95" };
   if (tyreThermalSeverity(temperature, compound) !== "CRITICAL") return { label: "HOT", color: "#ff5269" };
   return { label: "CRITICAL", color: "#ff5269" };
@@ -21,9 +21,9 @@ function tyreThermalBand(temperature: number, compound: TyreCompound): ThermalBa
 
 function systemThermalBand(temperature: number, thresholds: readonly [number, number, number]): ThermalBand {
   const [coldBelow, hotAbove, criticalAbove] = thresholds;
-  if (temperature < coldBelow) return { label: "COLD", color: "#398cff" };
+  if (temperature < coldBelow) return { label: "COLD", color: "#526271" };
   if (temperature <= hotAbove) return { label: "OPTIMAL", color: "#4bde95" };
-  if (temperature <= criticalAbove) return { label: "HOT", color: "#f4d35e" };
+  if (temperature <= criticalAbove) return { label: "HOT", color: "#f2b84b" };
   return { label: "CRITICAL", color: "#ff5269" };
 }
 

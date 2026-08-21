@@ -33,8 +33,8 @@ describe("qualifying circuit sector labels", () => {
 
     for (const label of qualifyingSectorLabelLayouts()) {
       const tagOverlapsCircuit = circuitPoints.some((point) => (
-        Math.abs(point.x - label.x) <= 0.065
-        && Math.abs(point.y - label.y) <= 0.026
+        Math.abs(point.x - label.x) <= 0.085
+        && Math.abs(point.y - label.y) <= 0.019
       ));
       expect(tagOverlapsCircuit, `${label.id} tag overlaps the racing or pit line`).toBe(false);
 

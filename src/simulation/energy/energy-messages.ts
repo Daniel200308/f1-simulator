@@ -1,7 +1,7 @@
 import type { RaceCarState, RadioMessage } from "@/domain/race";
 import { DRIVER_BY_ID } from "@/fixtures/grid";
 import { migrateEnergySystemState } from "@/simulation/energy/energy-system";
-import { SILVERSTONE_CIRCUIT } from "@/simulation/track";
+import { circuitById } from "@/simulation/track";
 
 function message(car: RaceCarState, tick: number, elapsedTime: number, suffix: string, text: string, priority: RadioMessage["priority"]): RadioMessage {
   const driver = DRIVER_BY_ID.get(car.driverId)?.shortName ?? car.driverId;
@@ -31,6 +31,7 @@ export function buildEnergyRadioMessages(
     if (!previousCar) continue;
     const before = migrateEnergySystemState(previousCar.energySystem, previousCar.batteryPercent, previousCar.energyStoreTemperature);
     const after = migrateEnergySystemState(car.energySystem, car.batteryPercent, car.energyStoreTemperature);
+    const circuit = circuitById(car.circuitId);
     const recentlyCalled = (fragment: string, cooldownSeconds: number) => existingMessages.some((candidate) => candidate.carId === car.carId
       && candidate.source === "ENGINEER"
       && candidate.message.toLowerCase().includes(fragment)
@@ -43,7 +44,7 @@ export function buildEnergyRadioMessages(
       calls.push(message(car, tick, elapsedTime, "temperature", `battery ${after.thermalBand.toLowerCase()} at ${Math.round(after.batteryTemperatureC)} degrees. Electrical power will derate.`, after.thermalBand === "CRITICAL" ? "URGENT" : "WARNING"));
     } else if (after.overtakeEligible && !before.overtakeEligible && !recentlyCalled("overtake energy available", 150)) {
       calls.push(message(car, tick, elapsedTime, "overtake-ready", `overtake energy available. ${Math.round(after.stateOfCharge * 100)} percent state of charge.`, "NORMAL"));
-    } else if (car.currentLap >= SILVERSTONE_CIRCUIT.totalLaps && previousCar.currentLap < SILVERSTONE_CIRCUIT.totalLaps) {
+    } else if (car.currentLap >= circuit.totalLaps && previousCar.currentLap < circuit.totalLaps) {
       calls.push(message(car, tick, elapsedTime, "final-lap", "final lap. Use the remaining electrical energy; no lap-end reserve required.", "WARNING"));
     } else if (after.stateOfCharge < after.targetSocAtLapEnd - 0.12 && tick % 900 === 0 && !recentlyCalled("below target soc", 150)) {
       calls.push(message(car, tick, elapsedTime, "below-target", `we are below target SOC: ${Math.round(after.stateOfCharge * 100)} percent versus ${Math.round(after.targetSocAtLapEnd * 100)}.`, "WARNING"));

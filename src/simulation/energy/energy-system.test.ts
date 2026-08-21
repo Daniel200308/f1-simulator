@@ -5,7 +5,7 @@ import { ENERGY_SYSTEM_CONFIG } from "@/simulation/energy/energy-config";
 import { deserializeRaceSnapshot, serializeRaceSnapshot } from "@/simulation/energy/energy-persistence";
 import { buildTrackEnergyPlan, predictEnergySoc } from "@/simulation/energy/energy-prediction";
 import { chooseAiEnergyMode } from "@/simulation/energy/energy-strategy";
-import { completeEnergyLap, createEnergySystemState, updateEnergySystem } from "@/simulation/energy/energy-system";
+import { completeEnergyLap, createEnergySystemState, energyFlowStateFor, updateEnergySystem } from "@/simulation/energy/energy-system";
 import { createInitialSnapshot } from "@/simulation/engine";
 import { SILVERSTONE_CIRCUIT } from "@/simulation/track";
 
@@ -51,6 +51,16 @@ function advance(state: EnergySystemState, seconds: number, step: number, mode: 
 }
 
 describe("2026 electrical energy system", () => {
+  it("classifies the same physical battery flow for player and AI markers", () => {
+    const base = createEnergySystemState(0.7);
+    expect(energyFlowStateFor({ ...base, currentDeployPowerKW: 92, currentHarvestPowerKW: 8 })).toBe("DEPLOYING");
+    expect(energyFlowStateFor({ ...base, currentDeployPowerKW: 6, currentHarvestPowerKW: 118 })).toBe("HARVESTING");
+    expect(energyFlowStateFor({ ...base, currentDeployPowerKW: 0, overtakeActive: true })).toBe("OVERTAKE");
+    expect(energyFlowStateFor({ ...base, currentDeployPowerKW: 0, boostActive: true })).toBe("DEFENDING");
+    expect(energyFlowStateFor({ ...base, clippingActive: true, currentDeployPowerKW: 60 })).toBe("CLIPPING");
+    expect(energyFlowStateFor(base)).toBe("NEUTRAL");
+  });
+
   it("decreases SOC under deployment and increases it under braking recovery", () => {
     const deployed = advance(createEnergySystemState(0.8), 2, 0.1, "ATTACK");
     const harvested = advance(createEnergySystemState(0.4), 2, 0.1, "HARVEST", { currentSegmentType: "SLOW", segmentLength: 180, vehicleSpeed: 135 });

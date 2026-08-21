@@ -11,7 +11,7 @@ import {
   type LiveStrategyContext,
   type TrafficLevel,
 } from "@/simulation/live-strategy";
-import { SILVERSTONE_CIRCUIT } from "@/simulation/track";
+import { circuitById } from "@/simulation/track";
 
 export type StrategyScenarioKind = "BOX_NOW" | "STAY_OUT" | "UNDERCUT" | "OVERCUT";
 export type StrategyRiskLevel = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
@@ -446,7 +446,7 @@ export function calculateStrategyIntelligence(
   const liveStrategy = calculateLiveStrategy(context, carId);
   const car = context.cars.find((candidate) => candidate.carId === carId);
   if (!car) throw new RangeError(`Unknown carId: ${carId}.`);
-  const totalLaps = context.totalLaps ?? SILVERSTONE_CIRCUIT.totalLaps;
+  const totalLaps = context.totalLaps ?? circuitById(context.circuitId).totalLaps;
   const remainingLaps = car.finished ? 0 : Math.max(0, totalLaps - car.currentLap + 1);
   const drafts = buildDrafts(context, car, liveStrategy, remainingLaps);
   const ranked = [...drafts]

@@ -13,7 +13,7 @@
   grid-template-rows: auto minmax(0, 1fr) auto;
   overflow: hidden;
   border-bottom: 1px solid rgba(145, 177, 188, .16);
-  background: radial-gradient(circle at 50% 46%, rgba(32, 215, 231, .075), transparent 46%), #040d12;
+  background: radial-gradient(circle at 50% 46%, rgba(123, 133, 143, .075), transparent 46%), #040d12;
   container-type: inline-size;
   container-name: circuit-panel;
 }
@@ -36,7 +36,7 @@
   display: flex;
   align-items: center;
   gap: 9px;
-  color: #20d7e7;
+  color: #7b858f;
 }
 
 .title > span { min-width: 0; display: grid; gap: 3px; }
@@ -47,23 +47,23 @@
 .metrics > span { display: flex; align-items: baseline; gap: 5px; transition: color .18s ease, text-shadow .18s ease; }
 .metrics small { color: #6d828a; font: 850 var(--c-font-micro)/1.15 var(--font-mono); letter-spacing: .05em; }
 .metrics strong { color: #dce8ea; font: 950 14px/1.1 var(--font-mono); font-variant-numeric: tabular-nums; }
-.metrics > span[data-live="true"] strong { color: #ff5269; text-shadow: 0 0 9px rgba(255,82,105,.58); }
+.metrics > span[data-live="true"] strong { color: #ff5269; text-shadow: 0 0 9px rgba(255, 82, 105,.58); }
 
 .visual { position: relative; min-width: 0; min-height: 0; overflow: hidden; background: #030a0f; }
 .visual::before { position: absolute; inset: 0; z-index: 0; background-image: linear-gradient(rgba(108,148,160,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(108,148,160,.035) 1px, transparent 1px); background-size: 34px 34px; content: ""; mask-image: radial-gradient(circle at center, #000 18%, transparent 84%); }
 .visual::after { position: absolute; inset: 0; z-index: 2; pointer-events: none; background: radial-gradient(circle at 50% 50%, transparent 52%, rgba(0,0,0,.36) 100%); content: ""; }
 .canvas { position: absolute; inset: 0; z-index: 3; width: 100%; height: 100%; display: block; pointer-events: none; }
-.circuitBackdrop { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; overflow: visible; filter: drop-shadow(0 0 12px rgba(86,223,232,.1)); }
+.circuitBackdrop { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; overflow: visible; }
 .trackHalo,
 .trackLine,
 .sectorPath,
 .pitLine { fill: none; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
-.trackHalo { stroke: rgba(86, 223, 232, .11); stroke-width: 9; }
-.trackLine { stroke: #203741; stroke-width: 5.6; }
-.sectorPath { stroke-width: 3.1; filter: drop-shadow(0 0 2px currentColor); }
-.sectorPath[data-sector="S1"] { stroke: #56dfe8; }
-.sectorPath[data-sector="S2"] { stroke: #718fff; }
-.sectorPath[data-sector="S3"] { stroke: #c07cfa; }
+.trackHalo { stroke: rgba(112, 151, 163, .11); stroke-width: 7.2; }
+.trackLine { stroke: #1d343d; stroke-width: 4.6; }
+.sectorPath { --sector-tone: #43d8ff; stroke: var(--sector-tone); stroke-width: 2.3; opacity: .9; filter: drop-shadow(0 0 3px color-mix(in srgb, var(--sector-tone) 34%, transparent)); }
+.sectorPath[data-sector="S1"] { --sector-tone: #43d8ff; }
+.sectorPath[data-sector="S2"] { --sector-tone: #7b8fe0; }
+.sectorPath[data-sector="S3"] { --sector-tone: #c07cfa; }
 .pitLine { stroke: rgba(233, 241, 243, .74); stroke-width: 1.9; stroke-dasharray: 6 3; }
 .pitBox { fill: #040d12; stroke: #f0f6f7; stroke-width: 1.5px; vector-effect: non-scaling-stroke; }
 .sectorBoundary,
@@ -73,20 +73,18 @@
 .sectorLabels text,
 .circuitLabels text { dominant-baseline: middle; paint-order: stroke; stroke: rgba(3, 11, 16, .96); text-anchor: middle; }
 .sectorLabels { pointer-events: none; }
-.sectorLabelLeader { fill: none; opacity: .72; stroke-width: 1px; stroke-dasharray: 2 2; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
-.sectorLabelAnchor { fill: #040d12; stroke-width: 1.2px; vector-effect: non-scaling-stroke; }
-.sectorLabel rect { fill: rgba(3, 10, 15, .92); stroke-width: 1px; vector-effect: non-scaling-stroke; filter: drop-shadow(0 3px 5px rgba(0,0,0,.42)); }
-.sectorLabel text { fill: #f2f7f8; stroke-width: .004px; font: 950 .0155px/1 var(--font-mono); letter-spacing: .045em; }
-.sectorLabel[data-sector="S1"] rect,
-.sectorLabel[data-sector="S1"] .sectorLabelLeader,
-.sectorLabel[data-sector="S1"] .sectorLabelAnchor { stroke: #56dfe8; }
-.sectorLabel[data-sector="S2"] rect,
-.sectorLabel[data-sector="S2"] .sectorLabelLeader,
-.sectorLabel[data-sector="S2"] .sectorLabelAnchor { stroke: #718fff; }
-.sectorLabel[data-sector="S3"] rect,
-.sectorLabel[data-sector="S3"] .sectorLabelLeader,
-.sectorLabel[data-sector="S3"] .sectorLabelAnchor { stroke: #c07cfa; }
-.circuitLabels text { fill: #91a5ac; stroke-width: .006px; font: 900 .013px/1 var(--font-mono); letter-spacing: .06em; }
+.sectorLabel { --sector-tone: #54bcc5; }
+.sectorLabelLeader { fill: none; opacity: .52; stroke: color-mix(in srgb, var(--sector-tone) 72%, transparent); stroke-width: 1px; stroke-dasharray: 2 2; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.sectorLabelAnchor { fill: #071116; stroke: var(--sector-tone); stroke-width: 1.15px; vector-effect: non-scaling-stroke; }
+.sectorLabel rect { fill: color-mix(in srgb, var(--sector-tone) 8%, rgba(5,18,25,.84)); stroke: color-mix(in srgb, var(--sector-tone) 62%, rgba(145,177,188,.22)); stroke-width: 1px; vector-effect: non-scaling-stroke; filter: drop-shadow(0 4px 8px rgba(0,0,0,.42)); }
+.sectorLabel text { fill: color-mix(in srgb, var(--sector-tone) 62%, #f2f7f8); stroke-width: .004px; font: 950 .0135px/1 var(--font-mono); letter-spacing: .08em; }
+.sectorLabel[data-sector="S1"] { --sector-tone: #54bcc5; }
+.sectorLabel[data-sector="S2"] { --sector-tone: #7b8fe0; }
+.sectorLabel[data-sector="S3"] { --sector-tone: #b787f3; }
+.circuitLabels text { dominant-baseline: middle; fill: #b9c9ce; stroke-width: .006px; font: 950 .0105px/1 var(--font-mono); letter-spacing: .08em; }
+.pitLabel rect { fill: rgba(6, 20, 27, .78); stroke: rgba(145, 177, 188, .5); stroke-width: 1px; vector-effect: non-scaling-stroke; filter: drop-shadow(0 3px 5px rgba(0,0,0,.44)); }
+.pitLabel text { fill: #dce9ec; }
+.pitLabelLeader { fill: none; stroke: rgba(155, 181, 188, .68); stroke-width: 1px; stroke-dasharray: 2 2; stroke-linecap: round; vector-effect: non-scaling-stroke; }
 /* Own band under the circuit, so neither readout sits over the track. */
 .circuitFooter {
   min-width: 0;
@@ -103,7 +101,7 @@
 .sectorRibbon > span { min-width: 0; display: grid; grid-template-columns: auto auto auto; align-items: baseline; gap: var(--c-space-xs); padding: var(--c-space-xs) var(--c-space-sm); border-left: 2px solid #45565d; border-radius: 999px; background: rgba(145,177,188,.035); }
 .sectorRibbon > span:nth-child(1) { border-left-color: #56dfe8; }
 .sectorRibbon > span:nth-child(2) { border-left-color: #718fff; }
-.sectorRibbon > span:nth-child(3) { border-left-color: #c07cfa; }
+.sectorRibbon > span:nth-child(3) { border-left-color: #b787f3; }
 .sectorRibbon small { color: #879aa1; font: 900 var(--c-font-micro)/1 var(--font-mono); }
 .sectorRibbon strong { min-width: 0; overflow: hidden; color: #dce8ea; font: 950 clamp(13px, .82vw, 15px)/1.1 var(--font-mono); font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
 .sectorRibbon em { color: #8b9da3; font: 900 var(--c-font-micro)/1 var(--font-mono); font-style: normal; }
@@ -113,13 +111,13 @@
 .stateLegend > span { display: flex; align-items: center; gap: 4px; }
 .stateLegend i { width: 9px; height: 9px; flex: 0 0 9px; border: 1px solid rgba(2,8,12,.94); border-radius: 50%; background: #80939a; }
 .stateLegend i[data-phase="PUSH_LAP"] { background: #ff5269; box-shadow: 0 0 7px rgba(255, 82, 105, .72); animation: legend-pulse 1s ease-in-out infinite; }
-.stateLegend i[data-phase="OUT_LAP"] { background: #20d7e7; }
+.stateLegend i[data-phase="OUT_LAP"] { background: #7b858f; }
 .stateLegend i[data-phase="IN_LAP"] { background: #82969d; }
 .stateLegend i[data-phase="PIT_ENTRY"] { border-radius: 2px; background: #d7e2e5; }
-.stateLegend i[data-phase="YIELDING"] { border: 1px solid #f2b84b; background: transparent; box-shadow: 0 0 6px rgba(242, 184, 75, .55); }
-.stateLegend i[data-phase="ABORTED_LAP"] { position: relative; border: 1px solid #ff5269; background: transparent; box-shadow: 0 0 7px rgba(255,82,105,.42); }
+.stateLegend i[data-phase="YIELDING"] { border: 1px solid #f4d35e; background: transparent; box-shadow: 0 0 6px rgba(242, 184, 75, .55); }
+.stateLegend i[data-phase="ABORTED_LAP"] { position: relative; border: 1px solid #ff5269; background: transparent; box-shadow: 0 0 7px rgba(255, 82, 105,.42); }
 .stateLegend i[data-phase="ABORTED_LAP"]::after { position: absolute; width: 1px; height: 9px; background: #ff5269; content: ""; transform: translate(2px, -2px) rotate(45deg); }
-.stateLegend i[data-player="true"] { width: 11px; height: 11px; flex-basis: 11px; border: 2px solid #20d7e7; background: #061116; box-shadow: 0 0 7px rgba(32, 215, 231, .48); }
+.stateLegend i[data-player="true"] { width: 11px; height: 11px; flex-basis: 11px; border: 2px solid #7b858f; background: #061116; box-shadow: 0 0 7px rgba(123, 133, 143, .48); }
 .panel[data-paused="true"] .stateLegend i[data-phase="PUSH_LAP"] { animation-play-state: paused; }
 @keyframes legend-pulse { 50% { opacity: .35; transform: scale(.72); } }
 
@@ -141,3 +139,18 @@
 @media (prefers-reduced-motion: reduce) {
   .stateLegend i[data-phase="PUSH_LAP"] { animation: none; }
 }
+
+/* Aubergine / black / lavender circuit material, keeping sector and racing-state colours intact. */
+.panel { border-bottom-color: var(--surface-line); background: radial-gradient(circle at 50% 46%, var(--surface-glow), transparent 46%), var(--surface-deep); }
+.header { border-bottom-color: var(--surface-line); background: linear-gradient(90deg, #000000, var(--surface-deep)); }
+.visual { background: var(--surface-void); }
+.visual::before { background-image: linear-gradient(rgba(211,209,233,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(211,209,233,.035) 1px, transparent 1px); }
+.trackHalo { stroke: color-mix(in srgb, var(--surface-vivid) 34%, transparent); }
+.trackLine { stroke: color-mix(in srgb, var(--surface-vivid) 76%, #000); }
+.pitBox,
+.sectorLabelAnchor { fill: var(--surface-deep); }
+.sectorLabel rect { fill: color-mix(in srgb, var(--sector-tone) 8%, var(--surface-deep)); }
+.pitLabel rect { fill: color-mix(in srgb, var(--surface-raised) 74%, #000); stroke: var(--surface-line-strong); }
+.circuitFooter { border-top-color: var(--surface-line); background: linear-gradient(180deg, var(--surface-deep), #000000); }
+.sectorRibbon > span { background: color-mix(in srgb, var(--surface-raised) 58%, transparent); }
+.stateLegend i[data-player="true"] { background: var(--surface-deep); }

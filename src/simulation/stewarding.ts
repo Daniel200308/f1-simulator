@@ -380,7 +380,7 @@ function createPenalty(investigation: RaceInvestigation, car: RaceCarState, elap
 
 function raceControlMessage(id: string, tick: number, elapsedTime: number, car: RaceCarState, message: string, priority: RadioMessage["priority"]): { event: RaceEvent; radio: RadioMessage } {
   return {
-    event: { id: `${tick}-${id}`, elapsedTime, type: message.includes("PENALTY") || message.includes("DISQUALIFIED") ? "PENALTY" : "RACE_CONTROL", message, carId: car.carId },
+    event: { id: `${tick}-${id}`, elapsedTime, type: message.includes("PENALTY") || message.includes("DISQUALIFIED") ? "PENALTY" : "RACE_CONTROL", message, carId: car.carId, sector: car.currentSector },
     radio: { id: `${tick}-${id}-radio`, elapsedTime, carId: car.carId, source: "RACE CONTROL", message, priority },
   };
 }

@@ -6,7 +6,7 @@
   place-items: center;
   padding: 12px;
   background:
-    radial-gradient(circle at 50% 30%, rgba(32, 215, 231, .1), transparent 42%),
+    radial-gradient(circle at 50% 30%, rgba(123, 133, 143, .1), transparent 42%),
     rgba(2, 6, 9, .84);
   backdrop-filter: blur(13px) saturate(.75);
 }
@@ -129,7 +129,7 @@
   cursor: pointer;
   box-shadow: 0 0 18px rgba(75, 222, 149, .13);
 }
-.primaryAction:hover { background: #86f3ba; }
+.primaryAction:hover { background: #4bde95; }
 
 .planBoard { min-width: 0; padding: 10px 14px 11px; border-bottom: 1px solid rgba(148,177,190,.16); background: rgba(3,9,13,.62); }
 .planBoard > header { min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 8px; }
@@ -149,11 +149,11 @@
 .planIdentity small { margin-top: 3px; color: #92a6ad; font-size: 8px; }
 .planTrack { min-width: 0; height: 31px; display: flex; align-items: stretch; gap: 3px; padding: 2px 0; }
 .planStint { --stint-color: #f2f4f5; flex: 0 0 var(--stint-width); min-width: 31px; position: relative; display: grid; grid-template-columns: auto minmax(0,1fr); align-items: center; gap: 5px; padding: 0 6px; border-top: 3px solid var(--stint-color); background: color-mix(in srgb,var(--stint-color) 10%,#071116); color: var(--stint-color); }
-.planStint[data-compound="SOFT"] { --stint-color: #ff334f; }
-.planStint[data-compound="MEDIUM"] { --stint-color: #f4d335; }
+.planStint[data-compound="SOFT"] { --stint-color: #ff5269; }
+.planStint[data-compound="MEDIUM"] { --stint-color: #f4d35e; }
 .planStint[data-compound="HARD"] { --stint-color: #f4f6f7; }
-.planStint[data-compound="INTERMEDIATE"] { --stint-color: #36dc79; }
-.planStint[data-compound="WET"] { --stint-color: #398cff; }
+.planStint[data-compound="INTERMEDIATE"] { --stint-color: #4bde95; }
+.planStint[data-compound="WET"] { --stint-color: #526271; }
 .planStint b { font: 950 12px var(--font-mono); }
 .planStint small { overflow: hidden; color: #c6d2d6; font: 8px var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
 .planStint i { position: absolute; z-index: 2; top: -2px; right: -8px; padding: 1px 3px; color: #061015; background: var(--stint-color); font: 950 6px var(--font-mono); font-style: normal; white-space: nowrap; }
@@ -196,7 +196,7 @@
 .alternativeCost small { color: #7d9099; font: 800 9px/1 var(--font-mono); letter-spacing: .06em; }
 .alternativeCost strong { min-width: 0; overflow: hidden; color: #4bde95; font: 950 14px/1 var(--font-mono); font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
 /* Anything slower or further back than the recommended call reads as a cost. */
-.alternativeCost[data-worse="true"] strong { color: #ff8e57; }
+.alternativeCost[data-worse="true"] strong { color: #ff8b54; }
 .alternativeRisks { min-width: 0; display: grid; gap: 3px; }
 .alternativeRisks b { --risk: #4bde95; min-width: 0; overflow: hidden; padding: 2px 5px; color: var(--risk); border-left: 2px solid var(--risk); background: color-mix(in srgb, var(--risk) 8%, transparent); font: 800 9px/1.25 var(--font-mono); letter-spacing: .04em; text-overflow: ellipsis; white-space: nowrap; }
 .alternativeRisks b[data-level="medium"] { --risk: #f4d35e; }
@@ -292,9 +292,9 @@
   width: 100%;
   min-height: 35px;
   padding: 0 7px;
-  border: 1px solid rgba(32, 215, 231, .38);
+  border: 1px solid rgba(123, 133, 143, .38);
   color: var(--accent);
-  background: rgba(32, 215, 231, .07);
+  background: rgba(123, 133, 143, .07);
   font: 900 11px var(--font-mono);
   letter-spacing: .065em;
   cursor: pointer;
@@ -359,3 +359,17 @@
     to { opacity: 1; transform: translateY(0) scale(1); }
   }
 }
+
+/* Aubergine / black / lavender surface treatment for strategy analysis. */
+.backdrop { background: radial-gradient(circle at 50% 30%, var(--surface-glow), transparent 42%), rgba(0,0,0,.86); }
+.dialog { border-color: var(--surface-line-strong); background: linear-gradient(155deg, color-mix(in srgb, var(--surface-raised) 84%, #000), var(--surface-deep)); box-shadow: 0 34px 110px var(--surface-shadow), inset 0 2px 0 color-mix(in srgb, var(--team-color) 44%, transparent); }
+.dialogHeader,
+.planBoard { background: color-mix(in srgb, var(--surface-deep) 88%, #000); }
+.brandIcon,
+.planRow,
+.planStint { background: color-mix(in srgb, var(--team-color, var(--stint-color, var(--surface-vivid))) 8%, var(--surface-deep)); }
+.closeButton,
+.scenarioCard,
+.timeBlock > div { background: color-mix(in srgb, var(--surface-raised) 58%, #000); }
+.scenarioIcon { background: color-mix(in srgb, var(--surface-vivid) 38%, var(--surface-deep)); }
+.dialogFooter { background: var(--surface-deep); }

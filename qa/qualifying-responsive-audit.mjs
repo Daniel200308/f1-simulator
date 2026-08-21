@@ -33,7 +33,7 @@ async function enterQ1(page) {
   await page.locator("main[data-qualifying-session='Q1']").waitFor();
 }
 
-async function audit(page, label) {
+async function audit(page) {
   return page.evaluate(() => {
     const round = (value) => Math.round(value * 10) / 10;
     const buttons = [...document.querySelectorAll("main button")].filter((button) => {
@@ -105,7 +105,7 @@ try {
   for (const viewport of VIEWPORTS) {
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
     await page.waitForTimeout(420);
-    report.viewports[viewport.label] = await audit(page, viewport.label);
+    report.viewports[viewport.label] = await audit(page);
     await page.screenshot({ path: resolve(`qa/responsive/qualifying-${stage}-${viewport.label}.png`), fullPage: viewport.width < 1101 });
   }
   report.consoleErrors = consoleErrors;

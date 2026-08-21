@@ -32,6 +32,15 @@ describe("track temperature", () => {
     expect(raining).toBeLessThan(wetAfterRain);
   });
 
+  it("responds to forecast cloud cover before rain reaches the surface", () => {
+    const clear = trackTemperatureFor(900, 0, 0, 0);
+    const laterClear = trackTemperatureFor(1_800, 0, 0, 0);
+    const clouded = trackTemperatureFor(1_800, 0, 0, 0.85);
+
+    expect(laterClear).not.toBeCloseTo(clear, 2);
+    expect(clouded).toBeLessThan(laterClear);
+  });
+
   it("never reports an implausible surface temperature", () => {
     for (const elapsed of [0, 600, 1_800, 7_200]) {
       for (const rain of [0, 0.5, 1]) {
