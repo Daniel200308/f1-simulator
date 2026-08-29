@@ -1,0 +1,88 @@
+.backdrop { position: fixed; inset: 0; z-index: 120; display: grid; place-items: center; padding: 20px; background: radial-gradient(circle at 22% 18%, color-mix(in srgb, var(--selected-team, #ff5269) 10%, transparent), transparent 32%), #03080c; }
+.selector { --selected-team: #ff5269; --selected-team-muted: var(--selected-team); width: min(1480px, 100%); height: min(940px, calc(100dvh - 40px)); max-height: calc(100dvh - 40px); display: grid; grid-template-rows: auto minmax(0,1fr); overflow: hidden; border: 1px solid rgba(148,177,190,.25); background: linear-gradient(145deg, rgba(11,24,31,.99), rgba(3,8,12,.99)); box-shadow: 0 34px 110px rgba(0,0,0,.68), inset 0 3px 0 var(--selected-team-muted); }
+/* Centred title block: the eyebrow, headline and event title
+   stack on one axis so the panel opens on a single clear focal point. */
+.header { display: grid; justify-items: center; gap: 0; padding: clamp(16px, 2.6vh, 24px) 26px clamp(16px, 2.4vh, 22px); border-bottom: 1px solid rgba(148,177,190,.16); text-align: center; pointer-events: none; }
+.brandTitle { color: #f4f7f8; font: 900 clamp(15px, 1.25vw, 21px)/1 var(--font-display); letter-spacing: .14em; text-transform: uppercase; }
+.briefBody > span { color: var(--selected-team-muted); font: 900 clamp(11px, 1.6vh, 13px) var(--font-mono); letter-spacing: .3em; }
+/* The event is the page's focal point; the team prompt remains a quiet action cue. */
+.eventTitle { display: grid; justify-items: center; gap: 4px; margin-top: clamp(10px, 1.6vh, 15px); font-family: var(--font-display); text-transform: uppercase; }
+.eventTitle strong { color: #f4f7f8; font-size: clamp(34px, min(4vw, 6.8vh), 62px); font-weight: 900; line-height: 1.04; letter-spacing: .01em; }
+.eventTitle span { color: var(--selected-team-muted); font-size: clamp(18px, min(1.8vw, 3vh), 28px); font-weight: 900; line-height: 1.05; letter-spacing: .18em; text-indent: .18em; }
+.teamPrompt { margin: clamp(15px, 2.2vh, 22px) 0 0; color: #aebbc0; font-family: "Arial Pitwall", Arial, sans-serif; font-size: clamp(13px, min(1.05vw, 1.8vh), 18px); font-weight: 900; line-height: 1.12; letter-spacing: .12em; text-transform: uppercase; }
+.workspace { min-width: 0; min-height: 0; display: grid; grid-template-columns: minmax(0,1fr) 420px; }
+.teamGrid { min-width: 0; min-height: 0; display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); grid-auto-rows: minmax(0, 1fr); align-content: stretch; gap: clamp(8px, 1.4vh, 13px); padding: clamp(14px, 2.2vh, 24px); overflow: hidden auto; }
+/* Each card centres its own content so the grid reads as a set of even tiles. */
+.teamGrid button { --team: #f4f7f8; --team-muted: var(--team); position: relative; min-width: 0; min-height: clamp(78px, 12vh, 116px); display: grid; align-content: center; justify-items: center; gap: 4px; padding: clamp(11px, 1.8vh, 17px) 15px clamp(13px, 2vh, 19px); overflow: hidden; border: 1px solid rgba(148,177,190,.16); color: #eaf1f3; background: linear-gradient(145deg, rgba(15,29,36,.88), rgba(5,12,16,.96)); cursor: pointer; touch-action: manipulation; text-align: center; transition: transform .16s ease, border-color .16s ease, background .16s ease; -webkit-tap-highlight-color: transparent; }
+.teamGrid button:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--team-muted) 64%, #30434c); }
+.teamGrid button.selected { border-color: var(--team-muted); background: linear-gradient(145deg, color-mix(in srgb, var(--team-muted) 12%, #0b171d), rgba(5,12,16,.98)); box-shadow: inset 0 0 28px color-mix(in srgb, var(--team-muted) 8%, transparent), 0 12px 28px rgba(0,0,0,.24); }
+.teamGrid button > span { color: var(--team-muted); font: 950 clamp(12px, 1.6vh, 15px) var(--font-mono); letter-spacing: .14em; opacity: .82; }
+.teamGrid button strong, .teamGrid button small { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.teamGrid button strong { font-family: var(--font-display); font-size: clamp(17px, min(1.4vw, 2.4vh), 23px); font-weight: 900; line-height: 1.08; letter-spacing: .01em; }
+.teamGrid button small { margin-top: 2px; color: #8ba0a8; font: 700 clamp(11px, 1.5vh, 13px) var(--font-mono); letter-spacing: .12em; }
+.teamGrid button.selected > span, .teamGrid button.selected small { color: var(--team-muted); opacity: 1; }
+.teamGrid button i { position: absolute; right: 0; bottom: 0; left: 0; height: 3px; background: var(--team-muted); opacity: .45; }
+.teamGrid button.selected i { opacity: 1; box-shadow: 0 0 13px var(--team-muted); }
+/* The brief mirrors the header's centred axis and must never overflow, so the
+   confirm button is pinned and the middle content absorbs the spare height. */
+.teamBrief { min-height: 0; display: grid; grid-template-rows: minmax(0,1fr) auto; align-items: start; padding: clamp(18px, 2.8vh, 26px) 24px clamp(18px, 2.6vh, 24px); overflow: hidden; border-left: 1px solid rgba(148,177,190,.16); background: linear-gradient(145deg, color-mix(in srgb, var(--selected-team-muted) 7%, rgba(9,19,24,.96)), rgba(4,10,14,.99)); text-align: center; }
+.briefBody { min-height: 0; display: flex; flex-direction: column; align-items: center; overflow: hidden auto; scrollbar-width: thin; }
+.briefBody h2 { margin: clamp(6px, 1.2vh, 9px) 0 clamp(5px, 1vh, 7px); padding-bottom: 2px; font-size: clamp(26px, min(2.3vw, 4.4vh), 38px); line-height: 1.14; letter-spacing: -.04em; }
+.briefBody > p { margin: 0; color: #9db1b9; font-size: clamp(12px, 1.7vh, 14px); line-height: 1.45; }
+.performance { width: 100%; margin: clamp(10px, 2vh, 20px) 0 clamp(8px, 1.6vh, 16px); padding: clamp(9px, 1.4vh, 13px) 0; border-block: 1px solid rgba(148,177,190,.12); }
+.performance > span, .performance > strong { font-family: var(--font-mono); }
+.performance > span { color: #8ba0a8; font-size: 12px; font-weight: 700; letter-spacing: .14em; }
+.performance > strong { float: right; color: var(--selected-team-muted); font-size: 18px; }
+.performance > i { display: block; height: 5px; margin-top: 13px; background: #182a31; }
+.performance > i b { display: block; height: 100%; background: var(--selected-team-muted); box-shadow: 0 0 10px var(--selected-team-muted); }
+.driverPair { width: 100%; display: grid; gap: clamp(7px, 1.2vh, 11px); }
+.driverPair article { display: grid; justify-items: center; gap: 2px; padding: clamp(9px, 1.5vh, 13px) 12px clamp(10px, 1.6vh, 14px); border-top: 2px solid var(--selected-team-muted); background: rgba(255,255,255,.03); }
+.driverPair article > span { color: var(--selected-team-muted); font: 950 15px var(--font-mono); letter-spacing: .08em; }
+.driverPair strong, .driverPair small { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.driverPair strong { font-size: clamp(17px, min(1.5vw, 2.6vh), 22px); line-height: 1.16; letter-spacing: -.02em; }
+.driverPair small { margin-top: 2px; color: #8399a1; font: 700 11px var(--font-mono); letter-spacing: .14em; }
+.scope { display: flex; align-items: center; justify-content: center; gap: 10px; margin: clamp(10px, 1.8vh, 16px) 0; color: var(--selected-team-muted); text-align: left; }
+/* On short viewports the constructor, performance and drivers are what matter;
+   this supporting line is dropped rather than allowed to crowd the button. */
+@media (max-height: 820px) {
+  .scope { display: none; }
+}
+.scope b, .scope small { display: block; font-family: var(--font-mono); }
+.scope b { font-size: 12px; letter-spacing: .12em; }
+.scope small { margin-top: 4px; color: #8399a1; font-size: 11px; }
+.confirm { width: 100%; min-height: clamp(50px, 6.4vh, 58px); display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: clamp(14px, 2.2vh, 20px); border: 1px solid var(--selected-team-muted); color: #fff; background: var(--selected-team-muted); cursor: pointer; touch-action: manipulation; font: 950 16px var(--font-mono); letter-spacing: .16em; box-shadow: 0 0 25px color-mix(in srgb, var(--selected-team-muted) 22%, transparent); -webkit-tap-highlight-color: transparent; }
+.confirm:hover { filter: brightness(1.12); }
+
+@media (max-width: 1050px) {
+  .backdrop { place-items: start center; padding: 10px; overflow-x: hidden; overflow-y: auto; }
+  .selector { width: 100%; height: auto; min-height: calc(100dvh - 20px); grid-template-rows: auto auto; overflow: visible; }
+  .workspace { grid-template-columns: 1fr; overflow: visible; }
+  .teamGrid { grid-template-columns: repeat(2,minmax(0,1fr)); align-content: start; overflow: visible; }
+  .teamBrief { min-height: 500px; border-top: 1px solid rgba(148,177,190,.16); border-left: 0; }
+}
+
+@media (max-width: 600px) {
+  .backdrop { padding: 0; }
+  .selector { min-height: 100dvh; border-inline: 0; }
+  .header { padding: 20px 14px 18px; }
+  .brandTitle { font-size: 15px; letter-spacing: .12em; }
+  .eventTitle { margin-top: 12px; }
+  .eventTitle strong { font-size: 34px; }
+  .eventTitle span { font-size: 18px; }
+  .teamPrompt { margin-top: 15px; font-size: 15px; letter-spacing: .1em; }
+  .teamGrid { grid-template-columns: 1fr; gap: 8px; padding: 14px; }
+  .teamGrid button { min-height: 92px; padding: 13px; }
+  .teamGrid button strong { font-size: 18px; letter-spacing: 0; }
+  .teamBrief { min-height: 470px; padding: 22px 18px; }
+  .briefBody h2 { font-size: 30px; }
+  .performance { margin-block: 18px 14px; }
+  .confirm { margin-top: 24px; min-height: 56px; font-size: 15px; }
+}
+
+/* Aubergine / black / lavender surface treatment for team selection. */
+.backdrop { background: radial-gradient(circle at 22% 18%, var(--surface-glow), transparent 32%), var(--surface-void); }
+.selector { border-color: var(--surface-line-strong); background: linear-gradient(145deg, var(--surface-raised), var(--surface-deep)); box-shadow: 0 34px 110px var(--surface-shadow), inset 0 3px 0 var(--selected-team-muted); }
+.teamGrid button { border-color: var(--surface-line); background: linear-gradient(145deg, color-mix(in srgb, var(--surface-raised) 84%, #000), var(--surface-deep)); }
+.teamGrid button.selected { background: linear-gradient(145deg, color-mix(in srgb, var(--team-muted) 12%, var(--surface-raised)), var(--surface-deep)); }
+.teamBrief { background: linear-gradient(145deg, color-mix(in srgb, var(--selected-team-muted) 7%, var(--surface-raised)), var(--surface-deep)); }
+.performance > i { background: color-mix(in srgb, var(--surface-vivid) 44%, #000); }

@@ -1,0 +1,116 @@
+[
+  {
+    "name": "1600x900",
+    "workspace": {
+      "viewport": {
+        "width": 1600,
+        "height": 900
+      },
+      "document": {
+        "width": 1600,
+        "height": 900
+      },
+      "console": {
+        "left": 260,
+        "top": 767,
+        "right": 1236,
+        "bottom": 878
+      },
+      "teamButtons": [
+        {
+          "text": "FREE",
+          "width": 38.328125,
+          "height": 22,
+          "right": 298.328125
+        },
+        {
+          "text": "HOLD",
+          "width": 38.328125,
+          "height": 22,
+          "right": 339.65625
+        },
+        {
+          "text": "SWAP",
+          "width": 38.328125,
+          "height": 22,
+          "right": 380.984375
+        }
+      ]
+    },
+    "report": {
+      "title": "Race review",
+      "panel": {
+        "left": 270,
+        "top": 84.5,
+        "right": 1330,
+        "bottom": 815.5,
+        "width": 1060,
+        "height": 731
+      },
+      "rows": 22,
+      "firstRow": {
+        "width": 683.796875,
+        "height": 37
+      },
+      "columns": "PDRIVERGAP / STATUSSTRATEGYPEN",
+      "stewards": "FIA STEWARDS0 DECISIONSNo sporting penalties issued."
+    }
+  },
+  {
+    "name": "1280x720",
+    "workspace": {
+      "viewport": {
+        "width": 1280,
+        "height": 720
+      },
+      "document": {
+        "width": 1280,
+        "height": 720
+      },
+      "console": {
+        "left": 260,
+        "top": 549,
+        "right": 932,
+        "bottom": 704
+      },
+      "teamButtons": [
+        {
+          "text": "FREE",
+          "width": 46.328125,
+          "height": 22,
+          "right": 306.328125
+        },
+        {
+          "text": "HOLD",
+          "width": 46.328125,
+          "height": 22,
+          "right": 355.65625
+        },
+        {
+          "text": "SWAP",
+          "width": 46.328125,
+          "height": 22,
+          "right": 404.984375
+        }
+      ]
+    },
+    "report": {
+      "title": "Race review",
+      "panel": {
+        "left": 110,
+        "top": 16,
+        "right": 1170,
+        "bottom": 704,
+        "width": 1060,
+        "height": 688
+      },
+      "rows": 22,
+      "firstRow": {
+        "width": 683.796875,
+        "height": 37
+      },
+      "columns": "PDRIVERGAP / STATUSSTRATEGYPEN",
+      "stewards": "FIA STEWARDS0 DECISIONSNo sporting penalties issued."
+    }
+  }
+]

@@ -1,17 +1,26 @@
-import type { PaceMode, RaceSnapshot, SimulationSpeed, TyreCompound, TyreMode } from "@/domain/race";
+import type { CoolingMode, EnergyMode, PaceMode, RaceReliabilityInput, RaceSnapshot, SimulationSpeed, TeamOrderType, TyreCompound, TyreMode, WeekendTyreInventory, WeekendTyreUsage } from "@/domain/race";
 
 export type WorkerCommand =
-  | { type: "INIT"; seed: number }
+  | { type: "INIT"; seed: number; circuitId?: string; playerTeamId?: string; gridOrder?: readonly string[]; weekendTyreUsage?: WeekendTyreUsage; weekendTyreInventory?: WeekendTyreInventory; setupPerformanceByCar?: Readonly<Record<string, number>>; reliabilityByCar?: Readonly<Record<string, RaceReliabilityInput>> }
+  | { type: "LOAD_SNAPSHOT"; snapshot: RaceSnapshot; speed?: SimulationSpeed; paused?: boolean }
   | { type: "PLAY" }
   | { type: "PAUSE" }
+  | { type: "SET_AUTO_PAUSE"; enabled: boolean }
   | { type: "SET_SPEED"; speed: SimulationSpeed }
   | { type: "SET_PACE"; carId: string; mode: PaceMode }
+  | { type: "SET_TEAM_ORDER"; order: TeamOrderType }
   | { type: "SET_TYRE_MODE"; carId: string; mode: TyreMode }
-  | { type: "BOX"; carId: string; compound: TyreCompound }
+  | { type: "SET_ENERGY_MODE"; carId: string; mode: EnergyMode }
+  | { type: "DEBUG_ENERGY"; carId: string; action: EnergyDebugAction }
+  | { type: "SET_COOLING_MODE"; carId: string; mode: CoolingMode }
+  | { type: "BOX"; carId: string; compound: TyreCompound; tyreSetId?: string }
+  | { type: "SERVE_PENALTY"; carId: string }
   | { type: "CANCEL_PIT"; carId: string }
-  | { type: "SET_START_TYRE"; carId: string; compound: TyreCompound }
-  | { type: "RESET"; seed: number };
+  | { type: "SET_START_TYRE"; carId: string; compound: TyreCompound; tyreSetId?: string }
+  | { type: "RESET"; seed: number; circuitId?: string; playerTeamId?: string; gridOrder?: readonly string[]; weekendTyreUsage?: WeekendTyreUsage; weekendTyreInventory?: WeekendTyreInventory; setupPerformanceByCar?: Readonly<Record<string, number>>; reliabilityByCar?: Readonly<Record<string, RaceReliabilityInput>> };
+
+export type EnergyDebugAction = "SOC_FULL" | "SOC_LOW" | "HEAT" | "CLIPPING" | "BOOST" | "OVERTAKE" | "TOGGLE_AI";
 
 export type WorkerEvent =
-  | { type: "SNAPSHOT"; snapshot: RaceSnapshot; speed: SimulationSpeed; paused: boolean }
+  | { type: "SNAPSHOT"; snapshot: RaceSnapshot; speed: SimulationSpeed; paused: boolean; autoPauseEnabled: boolean; autoPauseReason: string | null }
   | { type: "ERROR"; message: string };

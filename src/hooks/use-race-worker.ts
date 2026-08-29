@@ -2,9 +2,11 @@
 
 import { useCallback, useEffect, useRef } from "react";
 
-import type { PaceMode, SimulationSpeed, TyreCompound, TyreMode } from "@/domain/race";
+import type { CoolingMode, EnergyMode, PaceMode, RaceReliabilityInput, RaceSnapshot, SimulationSpeed, TeamOrderType, TyreCompound, TyreMode, WeekendTyreInventory, WeekendTyreUsage } from "@/domain/race";
+import { DEFAULT_PLAYER_TEAM_ID } from "@/fixtures/grid";
 import { DEFAULT_SEED } from "@/simulation/engine";
 import type { WorkerCommand, WorkerEvent } from "@/simulation/protocol";
+import type { EnergyDebugAction } from "@/simulation/protocol";
 import { useRaceStore } from "@/store/race-store";
 
 export function useRaceWorker() {
@@ -15,13 +17,19 @@ export function useRaceWorker() {
     workerRef.current = worker;
     worker.onmessage = (message: MessageEvent<WorkerEvent>) => {
       if (message.data.type === "SNAPSHOT") {
-        useRaceStore.getState().setSnapshot(message.data.snapshot, message.data.speed, message.data.paused);
+        useRaceStore.getState().setSnapshot(
+          message.data.snapshot,
+          message.data.speed,
+          message.data.paused,
+          message.data.autoPauseEnabled,
+          message.data.autoPauseReason,
+        );
       } else {
         useRaceStore.getState().setError(message.data.message);
       }
     };
     worker.onerror = (event) => useRaceStore.getState().setError(event.message || "Simulation worker crashed");
-    worker.postMessage({ type: "INIT", seed: DEFAULT_SEED } satisfies WorkerCommand);
+    worker.postMessage({ type: "INIT", seed: DEFAULT_SEED, playerTeamId: DEFAULT_PLAYER_TEAM_ID } satisfies WorkerCommand);
     return () => {
       worker.terminate();
       workerRef.current = null;
@@ -33,12 +41,19 @@ export function useRaceWorker() {
   return {
     play: () => send({ type: "PLAY" }),
     pause: () => send({ type: "PAUSE" }),
+    setAutoPause: (enabled: boolean) => send({ type: "SET_AUTO_PAUSE", enabled }),
     setSpeed: (speed: SimulationSpeed) => send({ type: "SET_SPEED", speed }),
     setPace: (carId: string, mode: PaceMode) => send({ type: "SET_PACE", carId, mode }),
+    setTeamOrder: (order: TeamOrderType) => send({ type: "SET_TEAM_ORDER", order }),
     setTyreMode: (carId: string, mode: TyreMode) => send({ type: "SET_TYRE_MODE", carId, mode }),
-    box: (carId: string, compound: TyreCompound) => send({ type: "BOX", carId, compound }),
+    setEnergyMode: (carId: string, mode: EnergyMode) => send({ type: "SET_ENERGY_MODE", carId, mode }),
+    debugEnergy: (carId: string, action: EnergyDebugAction) => send({ type: "DEBUG_ENERGY", carId, action }),
+    setCoolingMode: (carId: string, mode: CoolingMode) => send({ type: "SET_COOLING_MODE", carId, mode }),
+    box: (carId: string, compound: TyreCompound, tyreSetId?: string) => send({ type: "BOX", carId, compound, tyreSetId }),
+    servePenalty: (carId: string) => send({ type: "SERVE_PENALTY", carId }),
     stayOut: (carId: string) => send({ type: "CANCEL_PIT", carId }),
-    setStartingTyre: (carId: string, compound: TyreCompound) => send({ type: "SET_START_TYRE", carId, compound }),
-    reset: (seed = DEFAULT_SEED) => send({ type: "RESET", seed }),
+    setStartingTyre: (carId: string, compound: TyreCompound, tyreSetId?: string) => send({ type: "SET_START_TYRE", carId, compound, tyreSetId }),
+    loadSnapshot: (snapshot: RaceSnapshot, speed: SimulationSpeed = 1, paused = true) => send({ type: "LOAD_SNAPSHOT", snapshot, speed, paused }),
+    reset: (seed = DEFAULT_SEED, gridOrder?: readonly string[], weekendTyreUsage?: WeekendTyreUsage, setupPerformanceByCar?: Readonly<Record<string, number>>, playerTeamId = DEFAULT_PLAYER_TEAM_ID, weekendTyreInventory?: WeekendTyreInventory, circuitId?: string, reliabilityByCar?: Readonly<Record<string, RaceReliabilityInput>>) => send({ type: "RESET", seed, circuitId, playerTeamId, gridOrder, weekendTyreUsage, weekendTyreInventory, setupPerformanceByCar, reliabilityByCar }),
   };
 }

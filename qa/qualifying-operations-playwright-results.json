@@ -1,0 +1,690 @@
+{
+  "passed": [
+    "qualifying reuses the race Pixi map",
+    "qualifying reuses the race pit lane and all 18 corners",
+    "qualifying remains dry",
+    "Release Car is disabled before the session starts",
+    "Abort Lap is disabled outside a flying lap",
+    "release forecast shows the flying-lap ETA",
+    "release forecast shows chequered-flag feasibility",
+    "1600x900 ready has no document overflow",
+    "1600x900 ready primary regions fit the viewport",
+    "1600x900 ready operations controls are not clipped",
+    "1600x900 ready command surface is not scale-compressed",
+    "1600x900 ready shows all 22 leaderboard rows",
+    "1600x900 ready leaderboard text is not clipped",
+    "1600x900 ready uses compact race-like TYRE / TIME / GAP spacing",
+    "1600x900 ready keeps the large topbar timer",
+    "Fast Preparation can be selected",
+    "Maximum flying-lap attack can be selected",
+    "1x qualifying speed works",
+    "2x qualifying speed works",
+    "4x qualifying speed works",
+    "8x qualifying speed works",
+    "16x qualifying speed works",
+    "Wait for Gap releases the first player car into an out lap",
+    "1x out-lap movement is continuous instead of updating once per second",
+    "1x marker motion has no visible step jump",
+    "Release Now independently releases the second player car",
+    "out-lap marker moves continuously between simulation updates",
+    "out-lap and pit-exit transitions have no marker jump",
+    "track-route samples stay on the race centerline",
+    "flying-lap marker movement remains continuous",
+    "flying-lap marker does not jump backward or teleport",
+    "flying lap follows the exact race line",
+    "Abort Lap becomes available on a flying lap",
+    "cool-down lap recovers battery energy",
+    "aborting a flying lap changes the live status to COOL DOWN",
+    "1600x900 live has no document overflow",
+    "1600x900 live primary regions fit the viewport",
+    "1600x900 live operations controls are not clipped",
+    "1600x900 live command surface is not scale-compressed",
+    "1600x900 live shows all 22 leaderboard rows",
+    "1600x900 live leaderboard text is not clipped",
+    "1600x900 live uses compact race-like TYRE / TIME / GAP spacing",
+    "1600x900 live keeps the large topbar timer",
+    "1280x720 ready has no document overflow",
+    "1280x720 ready primary regions fit the viewport",
+    "1280x720 ready operations controls are not clipped",
+    "1280x720 ready command surface is not scale-compressed",
+    "1280x720 ready shows all 22 leaderboard rows",
+    "1280x720 ready leaderboard text is not clipped",
+    "1280x720 ready uses compact race-like TYRE / TIME / GAP spacing",
+    "1280x720 ready keeps the large topbar timer"
+  ],
+  "viewports": {
+    "1600x900 ready": {
+      "innerWidth": 1600,
+      "innerHeight": 900,
+      "scrollWidth": 1600,
+      "scrollHeight": 900,
+      "regions": [
+        {
+          "className": "topbar topbar--telemetry qualifying-race-view-module__ic2ufG__topbar",
+          "left": 0,
+          "top": 0,
+          "right": 1600,
+          "bottom": 80
+        },
+        {
+          "className": "race-grid qualifying-race-view-module__ic2ufG__grid",
+          "left": 0,
+          "top": 80,
+          "right": 1600,
+          "bottom": 900
+        },
+        {
+          "className": "panel timing-panel qualifying-race-view-module__ic2ufG__tower",
+          "left": 8,
+          "top": 88,
+          "right": 312,
+          "bottom": 892
+        },
+        {
+          "className": "map-column",
+          "left": 320,
+          "top": 88,
+          "right": 1248,
+          "bottom": 892
+        },
+        {
+          "className": "status-column qualifying-race-view-module__ic2ufG__statusColumn",
+          "left": 1256,
+          "top": 88,
+          "right": 1592,
+          "bottom": 892
+        },
+        {
+          "className": "command-strip",
+          "left": 321,
+          "top": 765,
+          "right": 1247,
+          "bottom": 891
+        }
+      ],
+      "commandStrip": {
+        "left": 321,
+        "top": 765,
+        "right": 1247,
+        "bottom": 891
+      },
+      "commandButtons": [
+        {
+          "name": "LEC#16 · GARAGE",
+          "left": 332,
+          "top": 795,
+          "right": 451,
+          "bottom": 829
+        },
+        {
+          "name": "HAM#44 · GARAGE",
+          "left": 332,
+          "top": 835,
+          "right": 451,
+          "bottom": 869
+        },
+        {
+          "name": "RELEASE NOW",
+          "left": 477,
+          "top": 828,
+          "right": 571.5,
+          "bottom": 855
+        },
+        {
+          "name": "WAIT FOR GAP",
+          "left": 575.5,
+          "top": 828,
+          "right": 670,
+          "bottom": 855
+        },
+        {
+          "name": "Slow",
+          "left": 692,
+          "top": 810,
+          "right": 747,
+          "bottom": 865
+        },
+        {
+          "name": "Balanced",
+          "left": 751,
+          "top": 808,
+          "right": 806,
+          "bottom": 863
+        },
+        {
+          "name": "Fast Prep",
+          "left": 810,
+          "top": 810,
+          "right": 865,
+          "bottom": 865
+        },
+        {
+          "name": "Safe",
+          "left": 889,
+          "top": 820.5,
+          "right": 942.25,
+          "bottom": 854.5
+        },
+        {
+          "name": "Normal",
+          "left": 946.25,
+          "top": 818.5,
+          "right": 999.5,
+          "bottom": 852.5
+        },
+        {
+          "name": "Attack",
+          "left": 1003.5,
+          "top": 820.5,
+          "right": 1056.75,
+          "bottom": 854.5
+        },
+        {
+          "name": "Maximum",
+          "left": 1060.75,
+          "top": 820.5,
+          "right": 1114,
+          "bottom": 854.5
+        },
+        {
+          "name": "ABORT LAPCOOL DOWN",
+          "left": 1153,
+          "top": 812,
+          "right": 1219,
+          "bottom": 878
+        }
+      ],
+      "commandTransform": "none",
+      "rowArea": {
+        "scrollHeight": 649,
+        "clientHeight": 649
+      },
+      "lastRow": {
+        "left": 9,
+        "top": 853.5,
+        "right": 311,
+        "bottom": 883
+      },
+      "towerBounds": {
+        "left": 8,
+        "top": 88,
+        "right": 312,
+        "bottom": 892
+      },
+      "timerFontSize": 32,
+      "columnGap": 3,
+      "columns": [
+        26,
+        98,
+        27,
+        67,
+        54
+      ],
+      "clippedTimingCells": []
+    },
+    "1600x900 live": {
+      "innerWidth": 1600,
+      "innerHeight": 900,
+      "scrollWidth": 1600,
+      "scrollHeight": 900,
+      "regions": [
+        {
+          "className": "topbar topbar--telemetry qualifying-race-view-module__ic2ufG__topbar",
+          "left": 0,
+          "top": 0,
+          "right": 1600,
+          "bottom": 80
+        },
+        {
+          "className": "race-grid qualifying-race-view-module__ic2ufG__grid",
+          "left": 0,
+          "top": 80,
+          "right": 1600,
+          "bottom": 900
+        },
+        {
+          "className": "panel timing-panel qualifying-race-view-module__ic2ufG__tower",
+          "left": 8,
+          "top": 88,
+          "right": 312,
+          "bottom": 892
+        },
+        {
+          "className": "map-column",
+          "left": 320,
+          "top": 88,
+          "right": 1248,
+          "bottom": 892
+        },
+        {
+          "className": "status-column qualifying-race-view-module__ic2ufG__statusColumn",
+          "left": 1256,
+          "top": 88,
+          "right": 1592,
+          "bottom": 892
+        },
+        {
+          "className": "command-strip",
+          "left": 321,
+          "top": 765,
+          "right": 1247,
+          "bottom": 891
+        }
+      ],
+      "commandStrip": {
+        "left": 321,
+        "top": 765,
+        "right": 1247,
+        "bottom": 891
+      },
+      "commandButtons": [
+        {
+          "name": "LEC#16 · COOL DOWN",
+          "left": 332,
+          "top": 795,
+          "right": 451,
+          "bottom": 829
+        },
+        {
+          "name": "HAM#44 · FLYING LAP",
+          "left": 332,
+          "top": 835,
+          "right": 451,
+          "bottom": 869
+        },
+        {
+          "name": "RELEASE NOW",
+          "left": 477,
+          "top": 828,
+          "right": 571.5,
+          "bottom": 855
+        },
+        {
+          "name": "WAIT FOR GAP",
+          "left": 575.5,
+          "top": 828,
+          "right": 670,
+          "bottom": 855
+        },
+        {
+          "name": "Slow",
+          "left": 692,
+          "top": 810,
+          "right": 747,
+          "bottom": 865
+        },
+        {
+          "name": "Balanced",
+          "left": 751,
+          "top": 810,
+          "right": 806,
+          "bottom": 865
+        },
+        {
+          "name": "Fast Prep",
+          "left": 810,
+          "top": 808,
+          "right": 865,
+          "bottom": 863
+        },
+        {
+          "name": "Safe",
+          "left": 889,
+          "top": 820.5,
+          "right": 942.25,
+          "bottom": 854.5
+        },
+        {
+          "name": "Normal",
+          "left": 946.25,
+          "top": 820.5,
+          "right": 999.5,
+          "bottom": 854.5
+        },
+        {
+          "name": "Attack",
+          "left": 1003.5,
+          "top": 820.5,
+          "right": 1056.75,
+          "bottom": 854.5
+        },
+        {
+          "name": "Maximum",
+          "left": 1060.75,
+          "top": 818.5,
+          "right": 1114,
+          "bottom": 852.5
+        },
+        {
+          "name": "ABORT LAPCOOL DOWN",
+          "left": 1153,
+          "top": 812,
+          "right": 1219,
+          "bottom": 878
+        }
+      ],
+      "commandTransform": "none",
+      "rowArea": {
+        "scrollHeight": 649,
+        "clientHeight": 649
+      },
+      "lastRow": {
+        "left": 9,
+        "top": 853.5,
+        "right": 311,
+        "bottom": 883
+      },
+      "towerBounds": {
+        "left": 8,
+        "top": 88,
+        "right": 312,
+        "bottom": 892
+      },
+      "timerFontSize": 32,
+      "columnGap": 3,
+      "columns": [
+        26,
+        98,
+        27,
+        67,
+        54
+      ],
+      "clippedTimingCells": []
+    },
+    "1280x720 ready": {
+      "innerWidth": 1280,
+      "innerHeight": 720,
+      "scrollWidth": 1280,
+      "scrollHeight": 720,
+      "regions": [
+        {
+          "className": "topbar topbar--telemetry qualifying-race-view-module__ic2ufG__topbar",
+          "left": 0,
+          "top": 0,
+          "right": 1280,
+          "bottom": 80
+        },
+        {
+          "className": "race-grid qualifying-race-view-module__ic2ufG__grid",
+          "left": 0,
+          "top": 80,
+          "right": 1280,
+          "bottom": 720
+        },
+        {
+          "className": "panel timing-panel qualifying-race-view-module__ic2ufG__tower",
+          "left": 8,
+          "top": 88,
+          "right": 300,
+          "bottom": 712
+        },
+        {
+          "className": "map-column",
+          "left": 308,
+          "top": 88,
+          "right": 944,
+          "bottom": 712
+        },
+        {
+          "className": "status-column qualifying-race-view-module__ic2ufG__statusColumn",
+          "left": 952,
+          "top": 88,
+          "right": 1272,
+          "bottom": 712
+        },
+        {
+          "className": "command-strip",
+          "left": 309,
+          "top": 541,
+          "right": 943,
+          "bottom": 711
+        }
+      ],
+      "commandStrip": {
+        "left": 309,
+        "top": 541,
+        "right": 943,
+        "bottom": 711
+      },
+      "commandButtons": [
+        {
+          "name": "LEC#16 · GARAGE",
+          "left": 320,
+          "top": 571,
+          "right": 454,
+          "bottom": 605
+        },
+        {
+          "name": "HAM#44 · GARAGE",
+          "left": 320,
+          "top": 611,
+          "right": 454,
+          "bottom": 645
+        },
+        {
+          "name": "RELEASE NOW",
+          "left": 480,
+          "top": 593,
+          "right": 582.75,
+          "bottom": 617
+        },
+        {
+          "name": "WAIT FOR GAP",
+          "left": 586.75,
+          "top": 593,
+          "right": 689.5,
+          "bottom": 617
+        },
+        {
+          "name": "Slow",
+          "left": 720.078125,
+          "top": 570.5,
+          "right": 770.078125,
+          "bottom": 620.5
+        },
+        {
+          "name": "Balanced",
+          "left": 791.25,
+          "top": 568.5,
+          "right": 841.25,
+          "bottom": 618.5
+        },
+        {
+          "name": "Fast Prep",
+          "left": 862.40625,
+          "top": 570.5,
+          "right": 912.40625,
+          "bottom": 620.5
+        },
+        {
+          "name": "Safe",
+          "left": 478,
+          "top": 658.5,
+          "right": 527.625,
+          "bottom": 692.5
+        },
+        {
+          "name": "Normal",
+          "left": 531.625,
+          "top": 656.5,
+          "right": 581.25,
+          "bottom": 690.5
+        },
+        {
+          "name": "Attack",
+          "left": 585.25,
+          "top": 658.5,
+          "right": 634.875,
+          "bottom": 692.5
+        },
+        {
+          "name": "Maximum",
+          "left": 638.875,
+          "top": 658.5,
+          "right": 688.5,
+          "bottom": 692.5
+        },
+        {
+          "name": "ABORT LAPCOOL DOWN",
+          "left": 876,
+          "top": 639.5,
+          "right": 930,
+          "bottom": 693.5
+        }
+      ],
+      "commandTransform": "none",
+      "rowArea": {
+        "scrollHeight": 506,
+        "clientHeight": 506
+      },
+      "lastRow": {
+        "left": 9,
+        "top": 688,
+        "right": 299,
+        "bottom": 711
+      },
+      "towerBounds": {
+        "left": 8,
+        "top": 88,
+        "right": 300,
+        "bottom": 712
+      },
+      "timerFontSize": 28,
+      "columnGap": 3,
+      "columns": [
+        25,
+        89,
+        27,
+        65,
+        54
+      ],
+      "clippedTimingCells": []
+    }
+  },
+  "motion": {
+    "normalSpeed": {
+      "samples": 79,
+      "movingFrames": 78,
+      "maxCoordinateDelta": 0.8621484790916474,
+      "maxDeltaTransition": {
+        "before": {
+          "at": 219.19999998807907,
+          "x": 407.04,
+          "y": 433.56,
+          "step": 0.8367,
+          "phase": "OUT_LAP",
+          "route": "PIT",
+          "progress": 0.0126,
+          "distance": 5860.87,
+          "centerlineError": null
+        },
+        "after": {
+          "at": 236.80000001192093,
+          "x": 406.36,
+          "y": 433.03,
+          "step": 0.8599,
+          "phase": "OUT_LAP",
+          "route": "PIT",
+          "progress": 0.0129,
+          "distance": 5863.33,
+          "centerlineError": null
+        }
+      },
+      "maxRendererStep": 0.8599,
+      "phases": [
+        "OUT_LAP"
+      ],
+      "routes": [
+        "PIT"
+      ],
+      "maxCenterlineError": 0
+    },
+    "outLap": {
+      "samples": 253,
+      "movingFrames": 252,
+      "maxCoordinateDelta": 11.634092143351818,
+      "maxDeltaTransition": {
+        "before": {
+          "at": 2953.900000035763,
+          "x": 131.23,
+          "y": 155.91,
+          "step": 11.4479,
+          "phase": "OUT_LAP",
+          "route": "TRACK",
+          "progress": 0.6221,
+          "distance": 3405.3,
+          "centerlineError": 0
+        },
+        "after": {
+          "at": 2970.7000000476837,
+          "x": 142.83,
+          "y": 155.02,
+          "step": 11.6356,
+          "phase": "OUT_LAP",
+          "route": "TRACK",
+          "progress": 0.6253,
+          "distance": 3431.55,
+          "centerlineError": 0
+        }
+      },
+      "maxRendererStep": 11.6356,
+      "phases": [
+        "OUT_LAP"
+      ],
+      "routes": [
+        "PIT",
+        "TRACK"
+      ],
+      "maxCenterlineError": 0
+    },
+    "flyingLap": {
+      "samples": 97,
+      "movingFrames": 96,
+      "maxCoordinateDelta": 10.050676594140288,
+      "maxDeltaTransition": {
+        "before": {
+          "at": 979.6000000238419,
+          "x": 264.03,
+          "y": 181.21,
+          "step": 7.783,
+          "phase": "PUSH_LAP",
+          "route": "TRACK",
+          "progress": 0.1922,
+          "distance": 7021.65,
+          "centerlineError": 0
+        },
+        "after": {
+          "at": 989.6000000238419,
+          "x": 254.28,
+          "y": 183.65,
+          "step": 10.0503,
+          "phase": "PUSH_LAP",
+          "route": "TRACK",
+          "progress": 0.2,
+          "distance": 7046.06,
+          "centerlineError": 0
+        }
+      },
+      "maxRendererStep": 10.0503,
+      "phases": [
+        "PUSH_LAP"
+      ],
+      "routes": [
+        "TRACK"
+      ],
+      "maxCenterlineError": 0
+    }
+  },
+  "phases": [
+    "OUT LAP",
+    "FLYING LAP",
+    "COOL DOWN"
+  ],
+  "map": {
+    "renderer": "PIXI_RACE_MAP",
+    "pitLane": "RACE_SHARED",
+    "corners": 18,
+    "canvasCount": 1,
+    "wetSurfaceCount": 0
+  }
+}

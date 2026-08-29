@@ -1,0 +1,281 @@
+[
+  {
+    "name": "1600x900",
+    "layout": {
+      "viewport": {
+        "width": 1600,
+        "height": 900
+      },
+      "document": {
+        "width": 1600,
+        "height": 900
+      },
+      "rects": {
+        ".race-grid": {
+          "x": 0,
+          "y": 80,
+          "width": 1600,
+          "height": 796,
+          "right": 1600,
+          "bottom": 876
+        },
+        ".timing-panel": {
+          "x": 8,
+          "y": 88,
+          "width": 232,
+          "height": 780,
+          "right": 240,
+          "bottom": 868
+        },
+        ".map-column": {
+          "x": 248,
+          "y": 88,
+          "width": 1000,
+          "height": 780,
+          "right": 1248,
+          "bottom": 868
+        },
+        ".track-map": {
+          "x": 249,
+          "y": 147,
+          "width": 998,
+          "height": 594,
+          "right": 1247,
+          "bottom": 741
+        },
+        ".status-column": {
+          "x": 1256,
+          "y": 88,
+          "width": 336,
+          "height": 780,
+          "right": 1592,
+          "bottom": 868
+        },
+        ".command-console": {
+          "x": 227,
+          "y": 749,
+          "width": 976,
+          "height": 111,
+          "right": 1203,
+          "bottom": 860
+        }
+      },
+      "telemetry": [
+        {
+          "x": 1269,
+          "y": 401,
+          "width": 310,
+          "height": 62,
+          "right": 1579,
+          "bottom": 463,
+          "flow": "deploy",
+          "label": "2026 electrical energy. 51 percent state of charge, 2.06 megajoules, 206 kilowatts deployed, 6 kilowatts recovered, 43.2 degrees, deploy. Forecast 50 percent in one lap, 48 percent in three laps, 45 percent in five laps. Recharge predicted in 5 laps."
+        },
+        {
+          "x": 1269,
+          "y": 795,
+          "width": 310,
+          "height": 62,
+          "right": 1579,
+          "bottom": 857,
+          "flow": "deploy",
+          "label": "2026 electrical energy. 59 percent state of charge, 2.37 megajoules, 214 kilowatts deployed, 6 kilowatts recovered, 43.1 degrees, deploy. Forecast 58 percent in one lap, 56 percent in three laps, 53 percent in five laps. No recharge predicted in five laps."
+        }
+      ],
+      "carHealthGridCount": 0,
+      "legacyLapPercentText": false,
+      "energyButtonCount": 6,
+      "trackPlanSegmentCount": 24
+    },
+    "consoleErrors": [],
+    "pageErrors": [],
+    "httpErrors": []
+  },
+  {
+    "name": "1280x720",
+    "layout": {
+      "viewport": {
+        "width": 1280,
+        "height": 720
+      },
+      "document": {
+        "width": 1280,
+        "height": 720
+      },
+      "rects": {
+        ".race-grid": {
+          "x": 0,
+          "y": 80,
+          "width": 1280,
+          "height": 616,
+          "right": 1280,
+          "bottom": 696
+        },
+        ".timing-panel": {
+          "x": 8,
+          "y": 88,
+          "width": 232,
+          "height": 600,
+          "right": 240,
+          "bottom": 688
+        },
+        ".map-column": {
+          "x": 248,
+          "y": 88,
+          "width": 696,
+          "height": 600,
+          "right": 944,
+          "bottom": 688
+        },
+        ".track-map": {
+          "x": 249,
+          "y": 147,
+          "width": 694,
+          "height": 370,
+          "right": 943,
+          "bottom": 517
+        },
+        ".status-column": {
+          "x": 952,
+          "y": 88,
+          "width": 320,
+          "height": 600,
+          "right": 1272,
+          "bottom": 688
+        },
+        ".command-console": {
+          "x": 260,
+          "y": 525,
+          "width": 672,
+          "height": 155,
+          "right": 932,
+          "bottom": 680
+        }
+      },
+      "telemetry": [
+        {
+          "x": 965,
+          "y": 316,
+          "width": 294,
+          "height": 59,
+          "right": 1259,
+          "bottom": 375,
+          "flow": "deploy",
+          "label": "2026 electrical energy. 64 percent state of charge, 2.54 megajoules, 214 kilowatts deployed, 6 kilowatts recovered, 43.0 degrees, deploy. Forecast 62 percent in one lap, 60 percent in three laps, 58 percent in five laps. No recharge predicted in five laps."
+        },
+        {
+          "x": 965,
+          "y": 620,
+          "width": 294,
+          "height": 59,
+          "right": 1259,
+          "bottom": 679,
+          "flow": "deploy",
+          "label": "2026 electrical energy. 72 percent state of charge, 2.87 megajoules, 214 kilowatts deployed, 6 kilowatts recovered, 43.0 degrees, deploy. Forecast 70 percent in one lap, 68 percent in three laps, 66 percent in five laps. No recharge predicted in five laps."
+        }
+      ],
+      "carHealthGridCount": 0,
+      "legacyLapPercentText": false,
+      "energyButtonCount": 6,
+      "trackPlanSegmentCount": 24
+    },
+    "consoleErrors": [],
+    "pageErrors": [],
+    "httpErrors": []
+  },
+  {
+    "name": "native",
+    "layout": {
+      "viewport": {
+        "width": 1470,
+        "height": 783
+      },
+      "document": {
+        "width": 1470,
+        "height": 783
+      },
+      "rects": {
+        ".race-grid": {
+          "x": 0,
+          "y": 80,
+          "width": 1470,
+          "height": 679,
+          "right": 1470,
+          "bottom": 759
+        },
+        ".timing-panel": {
+          "x": 8,
+          "y": 88,
+          "width": 232,
+          "height": 663,
+          "right": 240,
+          "bottom": 751
+        },
+        ".map-column": {
+          "x": 248,
+          "y": 88,
+          "width": 886,
+          "height": 663,
+          "right": 1134,
+          "bottom": 751
+        },
+        ".track-map": {
+          "x": 249,
+          "y": 147,
+          "width": 884,
+          "height": 433,
+          "right": 1133,
+          "bottom": 580
+        },
+        ".status-column": {
+          "x": 1142,
+          "y": 88,
+          "width": 320,
+          "height": 663,
+          "right": 1462,
+          "bottom": 751
+        },
+        ".command-console": {
+          "x": 260,
+          "y": 588,
+          "width": 862,
+          "height": 155,
+          "right": 1122,
+          "bottom": 743
+        }
+      },
+      "telemetry": [
+        {
+          "x": 1155,
+          "y": 342.5,
+          "width": 294,
+          "height": 62,
+          "right": 1449,
+          "bottom": 404.5,
+          "flow": "deploy",
+          "label": "2026 electrical energy. 64 percent state of charge, 2.54 megajoules, 214 kilowatts deployed, 6 kilowatts recovered, 43.0 degrees, deploy. Forecast 62 percent in one lap, 60 percent in three laps, 58 percent in five laps. No recharge predicted in five laps."
+        },
+        {
+          "x": 1155,
+          "y": 678,
+          "width": 294,
+          "height": 62,
+          "right": 1449,
+          "bottom": 740,
+          "flow": "deploy",
+          "label": "2026 electrical energy. 72 percent state of charge, 2.87 megajoules, 214 kilowatts deployed, 6 kilowatts recovered, 43.0 degrees, deploy. Forecast 70 percent in one lap, 68 percent in three laps, 66 percent in five laps. No recharge predicted in five laps."
+        }
+      ],
+      "carHealthGridCount": 0,
+      "legacyLapPercentText": false,
+      "energyButtonCount": 6,
+      "trackPlanSegmentCount": 24
+    },
+    "consoleErrors": [],
+    "pageErrors": [],
+    "httpErrors": []
+  },
+  {
+    "debugClipping": true
+  }
+]

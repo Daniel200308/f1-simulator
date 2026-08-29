@@ -1,0 +1,181 @@
+{
+  "passed": [
+    "Q1 starts with all 22 classified entrants",
+    "both player-driver tabs are available in Q1",
+    "second player driver exposes exactly five combined tyre choices",
+    "second player driver can select one exact physical tyre set",
+    "control selection /set out lap pace Gentle/i exposes an active state",
+    "control selection /set out lap pace Balanced/i exposes an active state",
+    "control selection /set out lap pace Aggressive Warm-up/i exposes an active state",
+    "control selection /set flying lap attack Safe/i exposes an active state",
+    "control selection /set flying lap attack Push/i exposes an active state",
+    "control selection /set flying lap attack Attack/i exposes an active state",
+    "control selection /set flying lap attack Maximum/i exposes an active state",
+    "control selection /set fuel plan 1 Flying Lap/i exposes an active state",
+    "control selection /set fuel plan 2 Flying Laps$/i exposes an active state",
+    "control selection /set fuel plan 2 Laps \\+ Margin/i exposes an active state",
+    "qualifying removes manual energy-mode controls",
+    "qualifying removes the battery strategy status block",
+    "first player driver exposes exactly five combined tyre choices",
+    "first player driver can see the selected compound's physical tyre sets",
+    "every available combined tyre choice exposes its compound name and exact physical-set metadata",
+    "reselecting Soft cycles to another exact physical tyre set",
+    "physical tyre selection keeps exactly one combined button active",
+    "physical sets display remaining life directly",
+    "circuit shows the session-best sector ribbon",
+    "30-second exploratory run reaches a dense live-traffic state",
+    "live sector feedback updates during the exploratory run",
+    "pause exposes a clear active transport state",
+    "Q1 1440x900 has no document overflow",
+    "Q1 1440x900 keeps every qualifying region in view",
+    "Q1 1440x900 has no clipped control or circuit labels",
+    "Q1 topbar uses the full chequered label",
+    "Q1 topbar renders a chequerboard flag pattern",
+    "Q1 topbar keeps the chequered flag blinking",
+    "Q1 topbar keeps both chequered control lines fully visible",
+    "Q1 report marks exactly six timed AI-simulated drivers as eliminated",
+    "Q1 report labels all sixteen advancing drivers explicitly",
+    "Q1 report labels all six eliminated drivers explicitly",
+    "Q1 report draws one cut boundary above the first eliminated driver",
+    "Q1 result shows both player-driver reactions",
+    "Q1 result removes engineer reports",
+    "Q1 driver reactions wrap without clipping or ellipsis",
+    "Q1 classification timing remains at least 12px",
+    "Q1 classification uses the majority of result width",
+    "Q2 entry list contains only the 16 Q1 qualifiers",
+    "Q1 eliminated codes are absent from the active Q2 field",
+    "a fully eliminated player team retains a visible non-interactive status rail",
+    "the eliminated team rail clearly explains that no controls remain",
+    "Q2 resets all session-specific lap records",
+    "Q2 resets session-best sector data",
+    "Q2 1920x1080 has no document overflow",
+    "Q2 1920x1080 keeps every qualifying region in view",
+    "Q2 1920x1080 has no clipped control or circuit labels",
+    "Q2 report marks exactly six drivers as eliminated",
+    "Q2 report labels the ten Q3 qualifiers explicitly",
+    "Q2 report preserves six eliminated states",
+    "Q2 result shows both player-driver reactions",
+    "Q2 result removes engineer reports",
+    "Q2 driver reactions wrap without clipping or ellipsis",
+    "Q2 classification timing remains at least 12px",
+    "Q2 classification uses the majority of result width",
+    "Q3 entry list contains only the 10 Q2 qualifiers",
+    "Q3 starts with clean segment-specific timing data",
+    "browser reports no runtime errors"
+  ],
+  "sessions": {
+    "Q1": {
+      "entrants": 22,
+      "eliminated": [
+        "LIN",
+        "BEA",
+        "BOT",
+        "LAW",
+        "ALO",
+        "STR"
+      ],
+      "q2Entrants": 16,
+      "report": {
+        "driverReports": 2,
+        "engineerReports": 0,
+        "clippedReports": [],
+        "timeFontSize": 12,
+        "classificationWidthRatio": 0.6735243055555555
+      },
+      "chequered": {
+        "label": "CHEQUERED",
+        "backgroundImage": "linear-gradient(rgba(3, 8, 11, 0.28), rgba(3, 8, 11, 0.52)), conic-gradient(from 90deg, rgb(244, 247, 248) 25%, rgb(7, 11, 14) 0deg, rgb(7, 11, 14) 50%, rgb(244, 247, 248) 0deg, rgb(244, 247, 248) 75%, rgb(7, 11, 14) 0deg)",
+        "animationName": "chequered-panel-flash",
+        "title": "CHEQUERED FLAG",
+        "detail": "FLYING LAPS ALREADY STARTED MAY BE COMPLETED",
+        "titleClipped": false,
+        "detailClipped": false
+      }
+    },
+    "Q2": {
+      "entrants": 16,
+      "eliminated": [
+        "SAI",
+        "HAD",
+        "GAS",
+        "COL",
+        "PER",
+        "OCO"
+      ],
+      "q3Entrants": 10,
+      "report": {
+        "driverReports": 2,
+        "engineerReports": 0,
+        "clippedReports": [],
+        "timeFontSize": 12,
+        "classificationWidthRatio": 0.6735243055555555
+      }
+    }
+  },
+  "viewports": {
+    "Q1 1440x900": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900,
+      "tower": {
+        "left": 10,
+        "top": 90,
+        "right": 310,
+        "bottom": 890,
+        "width": 300,
+        "height": 800
+      },
+      "map": {
+        "left": 321,
+        "top": 91,
+        "right": 987,
+        "bottom": 889,
+        "width": 666,
+        "height": 798
+      },
+      "rail": {
+        "left": 998,
+        "top": 90,
+        "right": 1430,
+        "bottom": 890,
+        "width": 432,
+        "height": 800
+      },
+      "clipped": []
+    },
+    "Q2 1920x1080": {
+      "width": 1920,
+      "height": 1080,
+      "scrollWidth": 1920,
+      "scrollHeight": 1080,
+      "tower": {
+        "left": 10,
+        "top": 90,
+        "right": 332,
+        "bottom": 1070,
+        "width": 322,
+        "height": 980
+      },
+      "map": {
+        "left": 343,
+        "top": 91,
+        "right": 1469,
+        "bottom": 1069,
+        "width": 1126,
+        "height": 978
+      },
+      "rail": {
+        "left": 1480,
+        "top": 90,
+        "right": 1910,
+        "bottom": 1070,
+        "width": 430,
+        "height": 980
+      },
+      "clipped": []
+    }
+  },
+  "consoleErrors": [],
+  "failure": null
+}

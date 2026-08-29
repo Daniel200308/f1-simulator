@@ -1,0 +1,75 @@
+import { TEAMS } from "@/fixtures/grid";
+import type { CircuitDefinition } from "@/domain/race";
+import { normalizeLapDistance, SILVERSTONE_CIRCUIT } from "@/simulation/track";
+
+// Silverstone's F1 pit lane branches after Club and rejoins on Hamilton Straight
+// before Abbey. Keeping the modelled lane inside this short final-corner/straight
+// window avoids a route that incorrectly extends back through Vale/Stowe.
+export const PIT_ENTRY_START = SILVERSTONE_CIRCUIT.pitLane.entryStart;
+export const PIT_LANE_START = SILVERSTONE_CIRCUIT.pitLane.limiterStart;
+/** Nominal mid-lane box distance, kept for the lane's overall geometry. */
+export const PIT_BOX_DISTANCE = SILVERSTONE_CIRCUIT.pitLane.boxDistance;
+export const PIT_EXIT_END = SILVERSTONE_CIRCUIT.pitLane.exitEnd;
+
+/**
+ * The pit route is one continuous corridor: it starts at the entry line late on
+ * a lap, runs past the garages, and rejoins the track after the timing line on
+ * the following lap. Because it straddles the lap boundary it carries its own
+ * coordinate, zero at the entry line and growing towards the exit.
+ */
+export const PIT_ROUTE_LENGTH_METERS = SILVERSTONE_CIRCUIT.lengthMeters - PIT_ENTRY_START + PIT_EXIT_END;
+const PIT_ROUTE_BOX_METERS = PIT_BOX_DISTANCE - PIT_ENTRY_START;
+/**
+ * Garage frontage the eleven boxes are spread across, in metres of lane. The
+ * whole run sits between the limiter line and the nominal box distance so no
+ * garage falls outside the working part of the lane.
+ */
+function clamp(value: number, minimum: number, maximum: number): number {
+  return Math.max(minimum, Math.min(maximum, value));
+}
+
+/**
+ * Converts a lap distance into the pit corridor coordinate. Distances at or
+ * after the entry line are this lap's approach; the small distances just after
+ * the timing line are the exit road of a stop that began on the previous lap.
+ */
+export function pitRouteDistanceFor(lapDistance: number, circuit: CircuitDefinition = SILVERSTONE_CIRCUIT): number {
+  const { entryStart, exitEnd } = circuit.pitLane;
+  const normalized = normalizeLapDistance(lapDistance, circuit.lengthMeters);
+  const routeLength = circuit.lengthMeters - entryStart + exitEnd;
+  return clamp(normalized >= entryStart
+    ? normalized - entryStart
+    : normalized + (circuit.lengthMeters - entryStart), 0, routeLength);
+}
+
+/** Normalised 0-1 position along the pit corridor. */
+export function pitRouteProgressFor(lapDistance: number, circuit: CircuitDefinition = SILVERSTONE_CIRCUIT): number {
+  const routeLength = circuit.lengthMeters - circuit.pitLane.entryStart + circuit.pitLane.exitEnd;
+  return clamp(pitRouteDistanceFor(lapDistance, circuit) / routeLength, 0, 1);
+}
+
+/**
+ * Each team owns one garage, so a stop has to happen at that team's box rather
+ * than at a single shared point in the lane. Box 1 sits nearest the pit exit,
+ * which is how the real lane is numbered.
+ */
+export const PIT_BOX_ORDER: readonly string[] = TEAMS.map((team) => team.id);
+
+export function pitBoxDistanceForTeam(teamId: string, circuit: CircuitDefinition = SILVERSTONE_CIRCUIT): number {
+  const { boxDistance, boxFrontageMeters } = circuit.pitLane;
+  const index = PIT_BOX_ORDER.indexOf(teamId);
+  if (index === -1) return boxDistance;
+  const boxCount = PIT_BOX_ORDER.length;
+  if (boxCount <= 1) return boxDistance;
+  const step = boxFrontageMeters / (boxCount - 1);
+  // The first garage is furthest down the lane, closest to the pit exit.
+  return boxDistance - boxFrontageMeters + step * index;
+}
+
+export function pitBoxRouteProgressForTeam(teamId: string, circuit: CircuitDefinition = SILVERSTONE_CIRCUIT): number {
+  const routeLength = circuit.lengthMeters - circuit.pitLane.entryStart + circuit.pitLane.exitEnd;
+  return clamp((pitBoxDistanceForTeam(teamId, circuit) - circuit.pitLane.entryStart) / routeLength, 0, 1);
+}
+
+/** Corridor progress of the nominal mid-lane box, used by session-level views. */
+export const PIT_BOX_ROUTE_PROGRESS = clamp(PIT_ROUTE_BOX_METERS / PIT_ROUTE_LENGTH_METERS, 0, 1);

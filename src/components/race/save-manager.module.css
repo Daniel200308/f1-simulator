@@ -1,0 +1,30 @@
+.backdrop { position: fixed; inset: 0; z-index: 250; display: grid; place-items: center; padding: 16px; background: rgba(1,5,8,.84); }
+.panel { width: min(530px,calc(100vw - 24px)); overflow: hidden; border: 1px solid rgba(73,127,140,.4); border-radius: 16px; color: #eaf4f6; background: #071015; box-shadow: 0 28px 90px rgba(0,0,0,.58); }
+.panel > header { min-height: 68px; display: grid; grid-template-columns: 40px 1fr 36px; align-items: center; gap: 11px; padding: 0 16px; border-bottom: 1px solid rgba(115,157,169,.16); }
+.panel > header > span { width: 38px; height: 38px; display: grid; place-items: center; border-radius: 11px; color: #031014; background: #7b858f; }
+.panel h2, .panel small { display: block; margin: 0; }
+.panel h2 { margin-top: 3px; font-size: 20px; }
+.panel header small { color: #7b858f; font: 800 8px var(--font-mono); letter-spacing: .1em; }
+.panel header button { width: 34px; height: 34px; display: grid; place-items: center; border: 1px solid rgba(115,157,169,.2); border-radius: 10px; color: #8fa5ac; background: #09151a; cursor: pointer; }
+.panel > p { margin: 0; padding: 15px 16px 8px; color: #8299a1; font: 10px/1.55 var(--font-mono); }
+.status { display: flex; align-items: center; gap: 10px; margin: 7px 16px 12px; padding: 11px 12px; border-radius: 11px; background: #0a171c; }
+.status > i { width: 8px; height: 8px; border-radius: 50%; background: #667a80; }
+.status > i[data-ready="true"] { background: #56dc96; box-shadow: 0 3px 12px rgba(86,220,150,.35); }
+.status strong, .status small { font-family: var(--font-mono); }
+.status strong { font-size: 9px; }.status small { margin-top: 3px; color: #6f858d; font-size: 8px; }
+.error { margin: 0 16px 10px; padding: 9px 11px; border-radius: 9px; color: #ffb8c1; background: rgba(255, 82, 105,.1); font: 9px/1.4 var(--font-mono); }
+.actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 0 16px 16px; }
+.actions button { min-height: 62px; display: grid; grid-template-columns: 25px 1fr; align-items: center; gap: 8px; padding: 10px 12px; border: 1px solid rgba(115,157,169,.18); border-radius: 12px; color: #9ab0b7; background: #09151a; cursor: pointer; text-align: left; }
+.actions button:hover:not(:disabled) { color: #e8f5f7; border-color: rgba(123, 133, 143,.42); background: #0b1c22; }
+.actions button:disabled { cursor: not-allowed; opacity: .38; }
+.actions strong, .actions small { display: block; font-family: var(--font-mono); }.actions strong { color: inherit; font-size: 10px; }.actions small { margin-top: 4px; color: #617982; font-size: 7px; }
+button:focus-visible { outline: 2px solid #7b858f; outline-offset: 2px; }
+@media (max-width: 520px) { .actions { grid-template-columns: 1fr; } }
+
+/* Midnight violet surface treatment for save management. */
+.backdrop { background: rgba(0,0,0,.86); }
+.panel { border-color: var(--surface-line-strong); background: linear-gradient(145deg, var(--surface-raised), var(--surface-deep)); box-shadow: 0 28px 90px var(--surface-shadow); }
+.panel header button,
+.status,
+.actions button { background: var(--surface-deep); }
+.actions button:hover:not(:disabled) { background: var(--surface-raised); }

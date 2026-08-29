@@ -1,0 +1,93 @@
+{
+  "passed": [
+    "NEXT TYRE still shows five compound buttons",
+    "Stay-out control is unchanged",
+    "Set list is closed until a compound is pressed",
+    "Pressing MEDIUM reveals its remaining sets",
+    "Every set shows its set number",
+    "Every set shows remaining life",
+    "Every set shows laps used",
+    "Sets are distinct",
+    "The set list is not clipped",
+    "The set list closes once a set is chosen",
+    "The chosen compound reads as the scheduled stop",
+    "The car is seen driving into the pit lane",
+    "The car stops in its box for the tyre change",
+    "The car drives back out of the pit lane",
+    "The pit marker travels along the lane instead of spawning at the exit",
+    "Life stays a whole percentage after a stop",
+    "Laps used render as whole laps",
+    "The set fitted to the car is no longer offered",
+    "No console errors"
+  ],
+  "consoleErrors": [],
+  "pitSamples": {
+    "stages": [
+      "PIT_ENTRY",
+      "PIT_LANE",
+      "PIT_STOP",
+      "TYRE_COMPLETE"
+    ],
+    "sampleCount": 16,
+    "markerSpreadPx": 20.39
+  },
+  "setPicker": {
+    "headerCount": "3 SETS LEFT",
+    "sets": [
+      {
+        "setId": "ferrari-1-medium-2",
+        "label": "#02",
+        "life": "100%",
+        "usage": "NEW",
+        "lifeBarWidth": "100%"
+      },
+      {
+        "setId": "ferrari-1-medium-3",
+        "label": "#03",
+        "life": "100%",
+        "usage": "NEW",
+        "lifeBarWidth": "100%"
+      },
+      {
+        "setId": "ferrari-1-medium-4",
+        "label": "#04",
+        "life": "100%",
+        "usage": "NEW",
+        "lifeBarWidth": "100%"
+      }
+    ]
+  },
+  "chosenSet": {
+    "chosen": {
+      "setId": "ferrari-1-medium-4",
+      "label": "#04",
+      "life": "100%",
+      "usage": "NEW",
+      "lifeBarWidth": "100%"
+    },
+    "radio": [
+      "Copy. Boxing this lap.",
+      "Box this lap. Fit MEDIUM."
+    ]
+  },
+  "afterStop": [
+    {
+      "setId": "ferrari-1-medium-2",
+      "freshness": "NEW",
+      "life": "100%",
+      "usage": "NEW"
+    },
+    {
+      "setId": "ferrari-1-medium-3",
+      "freshness": "NEW",
+      "life": "100%",
+      "usage": "NEW"
+    },
+    {
+      "setId": "ferrari-1-medium-1",
+      "freshness": "USED",
+      "life": "97%",
+      "usage": "1L USED"
+    }
+  ]
+}

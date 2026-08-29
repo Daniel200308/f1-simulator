@@ -1,0 +1,121 @@
+[
+  {
+    "name": "1600x900",
+    "layout": {
+      "viewportName": "1600x900",
+      "viewport": {
+        "width": 1600,
+        "height": 900
+      },
+      "document": {
+        "width": 1600,
+        "height": 900
+      },
+      "map": {
+        "left": 249,
+        "top": 147,
+        "right": 1247,
+        "bottom": 741,
+        "width": 998,
+        "height": 594
+      },
+      "detection": "5534.6",
+      "activation": "5615.3",
+      "canvasLabel": "Silverstone Circuit live track map. Overtake detection line after Turn 17 and activation line before Turn 18.",
+      "legend": "PLAYERACTIVE AEROOVERTAKE DET.PIT LANE",
+      "legacyEnergyTitle": false,
+      "cardHeaders": [
+        {
+          "children": [
+            "P5",
+            "Charles Leclerc",
+            "DUEL",
+            "#16"
+          ],
+          "positionFont": 22,
+          "numberFont": 13,
+          "name": "Charles Leclerc",
+          "nameClipped": false
+        },
+        {
+          "children": [
+            "P7",
+            "Lewis Hamilton",
+            "DUEL",
+            "#44"
+          ],
+          "positionFont": 22,
+          "numberFont": 13,
+          "name": "Lewis Hamilton",
+          "nameClipped": false
+        }
+      ]
+    },
+    "energy": {
+      "flows": [
+        "deploy",
+        "harvest",
+        "clipping"
+      ],
+      "socMinimum": 30,
+      "socMaximum": 69,
+      "samples": 116
+    },
+    "errors": []
+  },
+  {
+    "name": "1280x720",
+    "layout": {
+      "viewportName": "1280x720",
+      "viewport": {
+        "width": 1280,
+        "height": 720
+      },
+      "document": {
+        "width": 1280,
+        "height": 720
+      },
+      "map": {
+        "left": 249,
+        "top": 147,
+        "right": 943,
+        "bottom": 517,
+        "width": 694,
+        "height": 370
+      },
+      "detection": "5534.6",
+      "activation": "5615.3",
+      "canvasLabel": "Silverstone Circuit live track map. Overtake detection line after Turn 17 and activation line before Turn 18.",
+      "legend": "PLAYERACTIVE AEROOVERTAKE DET.PIT LANE",
+      "legacyEnergyTitle": false,
+      "cardHeaders": [
+        {
+          "children": [
+            "P5",
+            "Charles Leclerc",
+            "DUEL",
+            "#16"
+          ],
+          "positionFont": 22,
+          "numberFont": 13,
+          "name": "Charles Leclerc",
+          "nameClipped": false
+        },
+        {
+          "children": [
+            "P7",
+            "Lewis Hamilton",
+            "DUEL",
+            "#44"
+          ],
+          "positionFont": 22,
+          "numberFont": 13,
+          "name": "Lewis Hamilton",
+          "nameClipped": false
+        }
+      ]
+    },
+    "energy": null,
+    "errors": []
+  }
+]

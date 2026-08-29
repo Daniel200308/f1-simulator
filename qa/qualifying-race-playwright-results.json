@@ -1,0 +1,614 @@
+{
+  "passed": [
+    "qualifying directly reuses the race Pixi map renderer",
+    "the shared race map renders all 18 Silverstone corners",
+    "the shared race pit entry, lane, boxes, and exit renderer is active",
+    "qualifying has no rain or wet-surface panel",
+    "the enlarged qualifying leaderboard is visible",
+    "Q1 opens with the full 18-minute timer",
+    "qualifying controls use the race command-console surface",
+    "1600x900 ready has no document overflow",
+    "1600x900 ready primary race regions fit the viewport",
+    "1600x900 ready race-style command buttons are not clipped",
+    "1600x900 ready shows all 22 leaderboard rows without cutting the last row",
+    "1600x900 ready session timer is a large topbar readout",
+    "1600x900 ready leaderboard timing text is enlarged",
+    "1600x900 ready leaderboard text is not clipped",
+    "1x qualifying speed matches the race transport control",
+    "2x qualifying speed matches the race transport control",
+    "4x qualifying speed matches the race transport control",
+    "8x qualifying speed matches the race transport control",
+    "16x qualifying speed matches the race transport control",
+    "the player car visibly leaves through the shared pit lane",
+    "push-lap markers stay exactly on the shared race centerline",
+    "best lap updates after the push lap",
+    "1600x900 live has no document overflow",
+    "1600x900 live primary race regions fit the viewport",
+    "1600x900 live race-style command buttons are not clipped",
+    "1600x900 live shows all 22 leaderboard rows without cutting the last row",
+    "1600x900 live session timer is a large topbar readout",
+    "1600x900 live leaderboard timing text is enlarged",
+    "1600x900 live leaderboard text is not clipped",
+    "1280x720 ready has no document overflow",
+    "1280x720 ready primary race regions fit the viewport",
+    "1280x720 ready race-style command buttons are not clipped",
+    "1280x720 ready shows all 22 leaderboard rows without cutting the last row",
+    "1280x720 ready session timer is a large topbar readout",
+    "1280x720 ready leaderboard timing text is enlarged",
+    "1280x720 ready leaderboard text is not clipped",
+    "1280x720 keeps the full race map canvas visible"
+  ],
+  "viewports": {
+    "1600x900 ready": {
+      "innerWidth": 1600,
+      "innerHeight": 900,
+      "scrollWidth": 1600,
+      "scrollHeight": 900,
+      "regions": [
+        {
+          "className": "topbar topbar--telemetry qualifying-race-view-module__ic2ufG__topbar",
+          "left": 0,
+          "top": 0,
+          "right": 1600,
+          "bottom": 80
+        },
+        {
+          "className": "race-grid qualifying-race-view-module__ic2ufG__grid",
+          "left": 0,
+          "top": 80,
+          "right": 1600,
+          "bottom": 900
+        },
+        {
+          "className": "panel timing-panel qualifying-race-view-module__ic2ufG__tower",
+          "left": 8,
+          "top": 88,
+          "right": 336,
+          "bottom": 892
+        },
+        {
+          "className": "map-column",
+          "left": 344,
+          "top": 88,
+          "right": 1248,
+          "bottom": 892
+        },
+        {
+          "className": "status-column qualifying-race-view-module__ic2ufG__statusColumn",
+          "left": 1256,
+          "top": 88,
+          "right": 1592,
+          "bottom": 892
+        },
+        {
+          "className": "command-strip",
+          "left": 345,
+          "top": 765,
+          "right": 1247,
+          "bottom": 891
+        }
+      ],
+      "commandStrip": {
+        "left": 345,
+        "top": 765,
+        "right": 1247,
+        "bottom": 891
+      },
+      "commandButtons": [
+        {
+          "name": "LEC#16 · GARAGE",
+          "left": 356,
+          "top": 795,
+          "right": 457,
+          "bottom": 829
+        },
+        {
+          "name": "HAM#44 · GARAGE",
+          "left": 356,
+          "top": 835,
+          "right": 457,
+          "bottom": 869
+        },
+        {
+          "name": "Build",
+          "left": 484,
+          "top": 811.328125,
+          "right": 536.328125,
+          "bottom": 863.65625
+        },
+        {
+          "name": "Balanced",
+          "left": 540.328125,
+          "top": 809.328125,
+          "right": 592.671875,
+          "bottom": 861.671875
+        },
+        {
+          "name": "Attack",
+          "left": 596.671875,
+          "top": 811.328125,
+          "right": 649,
+          "bottom": 863.65625
+        },
+        {
+          "name": "CHG",
+          "left": 676,
+          "top": 820.5,
+          "right": 705.1875,
+          "bottom": 854.5
+        },
+        {
+          "name": "BAL",
+          "left": 710.1875,
+          "top": 820.5,
+          "right": 739.390625,
+          "bottom": 854.5
+        },
+        {
+          "name": "QLY",
+          "left": 744.390625,
+          "top": 818.5,
+          "right": 773.59375,
+          "bottom": 852.5
+        },
+        {
+          "name": "OUT",
+          "left": 868,
+          "top": 811.328125,
+          "right": 920.328125,
+          "bottom": 863.65625
+        },
+        {
+          "name": "PUSH",
+          "left": 924.328125,
+          "top": 811.328125,
+          "right": 976.671875,
+          "bottom": 863.671875
+        },
+        {
+          "name": "IN",
+          "left": 980.671875,
+          "top": 811.328125,
+          "right": 1033,
+          "bottom": 863.65625
+        },
+        {
+          "name": "S",
+          "left": 1060.0250244140625,
+          "top": 819.9000244140625,
+          "right": 1095.2249755859375,
+          "bottom": 855.0999755859375
+        },
+        {
+          "name": "M",
+          "left": 1099.875,
+          "top": 821.5,
+          "right": 1131.875,
+          "bottom": 853.5
+        },
+        {
+          "name": "H",
+          "left": 1138.125,
+          "top": 821.5,
+          "right": 1170.125,
+          "bottom": 853.5
+        },
+        {
+          "name": "START SESSION",
+          "left": 1176.375,
+          "top": 813.5,
+          "right": 1224.375,
+          "bottom": 861.5
+        }
+      ],
+      "rowArea": {
+        "scrollHeight": 649,
+        "clientHeight": 649
+      },
+      "lastRow": {
+        "left": 9,
+        "top": 853.5,
+        "right": 335,
+        "bottom": 883
+      },
+      "towerBounds": {
+        "left": 8,
+        "top": 88,
+        "right": 336,
+        "bottom": 892
+      },
+      "timerFontSize": 32,
+      "timingTypography": {
+        "driver": 13,
+        "best": 11,
+        "gap": 12
+      },
+      "clippedTimingCells": []
+    },
+    "1600x900 live": {
+      "innerWidth": 1600,
+      "innerHeight": 900,
+      "scrollWidth": 1600,
+      "scrollHeight": 900,
+      "regions": [
+        {
+          "className": "topbar topbar--telemetry qualifying-race-view-module__ic2ufG__topbar",
+          "left": 0,
+          "top": 0,
+          "right": 1600,
+          "bottom": 80
+        },
+        {
+          "className": "race-grid qualifying-race-view-module__ic2ufG__grid",
+          "left": 0,
+          "top": 80,
+          "right": 1600,
+          "bottom": 900
+        },
+        {
+          "className": "panel timing-panel qualifying-race-view-module__ic2ufG__tower",
+          "left": 8,
+          "top": 88,
+          "right": 336,
+          "bottom": 892
+        },
+        {
+          "className": "map-column",
+          "left": 344,
+          "top": 88,
+          "right": 1248,
+          "bottom": 892
+        },
+        {
+          "className": "status-column qualifying-race-view-module__ic2ufG__statusColumn",
+          "left": 1256,
+          "top": 88,
+          "right": 1592,
+          "bottom": 892
+        },
+        {
+          "className": "command-strip",
+          "left": 345,
+          "top": 765,
+          "right": 1247,
+          "bottom": 891
+        }
+      ],
+      "commandStrip": {
+        "left": 345,
+        "top": 765,
+        "right": 1247,
+        "bottom": 891
+      },
+      "commandButtons": [
+        {
+          "name": "LEC#16 · IN LAP",
+          "left": 356,
+          "top": 795,
+          "right": 457,
+          "bottom": 829
+        },
+        {
+          "name": "HAM#44 · GARAGE",
+          "left": 356,
+          "top": 835,
+          "right": 457,
+          "bottom": 869
+        },
+        {
+          "name": "Build",
+          "left": 484,
+          "top": 811.328125,
+          "right": 536.328125,
+          "bottom": 863.65625
+        },
+        {
+          "name": "Balanced",
+          "left": 540.328125,
+          "top": 811.328125,
+          "right": 592.671875,
+          "bottom": 863.671875
+        },
+        {
+          "name": "Attack",
+          "left": 596.671875,
+          "top": 809.328125,
+          "right": 649,
+          "bottom": 861.65625
+        },
+        {
+          "name": "CHG",
+          "left": 676,
+          "top": 820.5,
+          "right": 705.1875,
+          "bottom": 854.5
+        },
+        {
+          "name": "BAL",
+          "left": 710.1875,
+          "top": 820.5,
+          "right": 739.390625,
+          "bottom": 854.5
+        },
+        {
+          "name": "QLY",
+          "left": 744.390625,
+          "top": 818.5,
+          "right": 773.59375,
+          "bottom": 852.5
+        },
+        {
+          "name": "OUT",
+          "left": 868,
+          "top": 811.328125,
+          "right": 920.328125,
+          "bottom": 863.65625
+        },
+        {
+          "name": "PUSH",
+          "left": 924.328125,
+          "top": 809.5588989257812,
+          "right": 976.671875,
+          "bottom": 861.9026489257812
+        },
+        {
+          "name": "IN",
+          "left": 980.671875,
+          "top": 811.0973510742188,
+          "right": 1033,
+          "bottom": 863.4254760742188
+        },
+        {
+          "name": "S",
+          "left": 1061.625,
+          "top": 821.5,
+          "right": 1093.625,
+          "bottom": 853.5
+        },
+        {
+          "name": "M",
+          "left": 1098.2750244140625,
+          "top": 819.9000244140625,
+          "right": 1133.4749755859375,
+          "bottom": 855.0999755859375
+        },
+        {
+          "name": "H",
+          "left": 1138.125,
+          "top": 821.5,
+          "right": 1170.125,
+          "bottom": 853.5
+        },
+        {
+          "name": "BOX",
+          "left": 1176.375,
+          "top": 813.5,
+          "right": 1224.375,
+          "bottom": 861.5
+        }
+      ],
+      "rowArea": {
+        "scrollHeight": 649,
+        "clientHeight": 649
+      },
+      "lastRow": {
+        "left": 9,
+        "top": 853.5,
+        "right": 335,
+        "bottom": 883
+      },
+      "towerBounds": {
+        "left": 8,
+        "top": 88,
+        "right": 336,
+        "bottom": 892
+      },
+      "timerFontSize": 32,
+      "timingTypography": {
+        "driver": 13,
+        "best": 11,
+        "gap": 12
+      },
+      "clippedTimingCells": []
+    },
+    "1280x720 ready": {
+      "innerWidth": 1280,
+      "innerHeight": 720,
+      "scrollWidth": 1280,
+      "scrollHeight": 720,
+      "regions": [
+        {
+          "className": "topbar topbar--telemetry qualifying-race-view-module__ic2ufG__topbar",
+          "left": 0,
+          "top": 0,
+          "right": 1280,
+          "bottom": 80
+        },
+        {
+          "className": "race-grid qualifying-race-view-module__ic2ufG__grid",
+          "left": 0,
+          "top": 80,
+          "right": 1280,
+          "bottom": 720
+        },
+        {
+          "className": "panel timing-panel qualifying-race-view-module__ic2ufG__tower",
+          "left": 8,
+          "top": 88,
+          "right": 300,
+          "bottom": 712
+        },
+        {
+          "className": "map-column",
+          "left": 308,
+          "top": 88,
+          "right": 944,
+          "bottom": 712
+        },
+        {
+          "className": "status-column qualifying-race-view-module__ic2ufG__statusColumn",
+          "left": 952,
+          "top": 88,
+          "right": 1272,
+          "bottom": 712
+        },
+        {
+          "className": "command-strip",
+          "left": 309,
+          "top": 541,
+          "right": 943,
+          "bottom": 711
+        }
+      ],
+      "commandStrip": {
+        "left": 309,
+        "top": 541,
+        "right": 943,
+        "bottom": 711
+      },
+      "commandButtons": [
+        {
+          "name": "LEC#16 · GARAGE",
+          "left": 320,
+          "top": 571,
+          "right": 465,
+          "bottom": 605
+        },
+        {
+          "name": "HAM#44 · GARAGE",
+          "left": 320,
+          "top": 611,
+          "right": 465,
+          "bottom": 645
+        },
+        {
+          "name": "Build",
+          "left": 502.15625,
+          "top": 569.5,
+          "right": 552.15625,
+          "bottom": 619.5
+        },
+        {
+          "name": "Balanced",
+          "left": 576.484375,
+          "top": 567.5,
+          "right": 626.484375,
+          "bottom": 617.5
+        },
+        {
+          "name": "Attack",
+          "left": 650.828125,
+          "top": 569.5,
+          "right": 700.828125,
+          "bottom": 619.5
+        },
+        {
+          "name": "CHG",
+          "left": 738,
+          "top": 577.5,
+          "right": 770.796875,
+          "bottom": 611.5
+        },
+        {
+          "name": "BAL",
+          "left": 775.796875,
+          "top": 577.5,
+          "right": 808.59375,
+          "bottom": 611.5
+        },
+        {
+          "name": "QLY",
+          "left": 813.59375,
+          "top": 575.5,
+          "right": 846.390625,
+          "bottom": 609.5
+        },
+        {
+          "name": "OUT",
+          "left": 502.15625,
+          "top": 651.5,
+          "right": 552.15625,
+          "bottom": 701.5
+        },
+        {
+          "name": "PUSH",
+          "left": 576.484375,
+          "top": 651.5,
+          "right": 626.484375,
+          "bottom": 701.5
+        },
+        {
+          "name": "IN",
+          "left": 650.828125,
+          "top": 651.5,
+          "right": 700.828125,
+          "bottom": 701.5
+        },
+        {
+          "name": "S",
+          "left": 740.2750244140625,
+          "top": 658.9000244140625,
+          "right": 775.4749755859375,
+          "bottom": 694.0999755859375
+        },
+        {
+          "name": "M",
+          "left": 784.625,
+          "top": 660.5,
+          "right": 816.625,
+          "bottom": 692.5
+        },
+        {
+          "name": "H",
+          "left": 827.375,
+          "top": 660.5,
+          "right": 859.375,
+          "bottom": 692.5
+        },
+        {
+          "name": "START SESSION",
+          "left": 870.125,
+          "top": 652.5,
+          "right": 918.125,
+          "bottom": 700.5
+        }
+      ],
+      "rowArea": {
+        "scrollHeight": 506,
+        "clientHeight": 506
+      },
+      "lastRow": {
+        "left": 9,
+        "top": 688,
+        "right": 299,
+        "bottom": 711
+      },
+      "towerBounds": {
+        "left": 8,
+        "top": 88,
+        "right": 300,
+        "bottom": 712
+      },
+      "timerFontSize": 28,
+      "timingTypography": {
+        "driver": 13,
+        "best": 11,
+        "gap": 12
+      },
+      "clippedTimingCells": []
+    }
+  },
+  "phases": [
+    "OUT_LAP",
+    "PUSH_LAP",
+    "IN_LAP"
+  ],
+  "map": {
+    "renderer": "PIXI_RACE_MAP",
+    "pitLane": "RACE_SHARED",
+    "corners": 18,
+    "canvasCount": 1,
+    "svgCount": 0,
+    "wetSurfaceCount": 0
+  }
+}

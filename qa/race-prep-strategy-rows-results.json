@@ -1,0 +1,42 @@
+{
+  "passed": [
+    "race preparation removes the STRATEGY view toggle",
+    "both player drivers show their own plan rows",
+    "driver 1 lists PLAN A, B and C",
+    "driver 2 lists PLAN A, B and C",
+    "each driver selects from its own allocation",
+    "each driver has its own compound tabs",
+    "all five compounds are reachable",
+    "the selected compound's sets are listed",
+    "every set button reports its remaining life",
+    "every allocated set is reachable through the compound tabs",
+    "scrubbed qualifying sets show reduced life after Q3",
+    "a scrubbed set can be chosen as the race start tyre",
+    "tyre life drives the PLAN A/B/C proposals",
+    "1920x1080 has no horizontal scroll",
+    "1920x1080 keeps every control label inside its button",
+    "1440x900 has no horizontal scroll",
+    "1440x900 keeps every control label inside its button",
+    "1280x720 has no horizontal scroll",
+    "1280x720 keeps every control label inside its button",
+    "browser reports no runtime errors"
+  ],
+  "consoleErrors": [],
+  "viewports": {
+    "1920x1080": {
+      "horizontalScroll": false,
+      "overflowing": [],
+      "tooShortButtons": 0
+    },
+    "1440x900": {
+      "horizontalScroll": false,
+      "overflowing": [],
+      "tooShortButtons": 0
+    },
+    "1280x720": {
+      "horizontalScroll": false,
+      "overflowing": [],
+      "tooShortButtons": 8
+    }
+  }
+}

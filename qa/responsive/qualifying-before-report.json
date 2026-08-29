@@ -1,0 +1,1841 @@
+{
+  "stage": "before",
+  "target": "http://127.0.0.1:3111",
+  "viewports": {
+    "desktop-1920x1080": {
+      "viewport": {
+        "width": 1920,
+        "height": 1080
+      },
+      "docScroll": {
+        "width": 1920,
+        "height": 1080
+      },
+      "horizontalScroll": false,
+      "buttonCount": 35,
+      "tooSmallCount": 18,
+      "tooSmall": [
+        {
+          "label": "Pause qualifying",
+          "w": 39,
+          "h": 39
+        },
+        {
+          "label": "Set simulation speed to 1 times",
+          "w": 27,
+          "h": 27
+        },
+        {
+          "label": "Set simulation speed to 2 times",
+          "w": 27,
+          "h": 27
+        },
+        {
+          "label": "Set simulation speed to 4 times",
+          "w": 27,
+          "h": 27
+        },
+        {
+          "label": "Set simulation speed to 8 times",
+          "w": 27,
+          "h": 27
+        },
+        {
+          "label": "Set simulation speed to 16 times",
+          "w": 27,
+          "h": 27
+        },
+        {
+          "label": "SKIP Q1",
+          "w": 102.6,
+          "h": 39
+        },
+        {
+          "label": "Return to team selection",
+          "w": 31,
+          "h": 31
+        },
+        {
+          "label": "LEC set fuel plan 1 Flying Lap",
+          "w": 60.3,
+          "h": 41
+        },
+        {
+          "label": "LEC set fuel plan 2 Flying Laps",
+          "w": 60.3,
+          "h": 41
+        },
+        {
+          "label": "LEC set fuel plan 2 Laps + Margin",
+          "w": 60.3,
+          "h": 41
+        },
+        {
+          "label": "LEC set out lap pace Gentle",
+          "w": 60.3,
+          "h": 41
+        },
+        {
+          "label": "LEC set out lap pace Balanced",
+          "w": 60.3,
+          "h": 41
+        },
+        {
+          "label": "LEC set out lap pace Aggressive Warm-up",
+          "w": 60.3,
+          "h": 41
+        },
+        {
+          "label": "LEC set flying lap attack Safe",
+          "w": 44,
+          "h": 41
+        },
+        {
+          "label": "LEC set flying lap attack Push",
+          "w": 44,
+          "h": 41
+        },
+        {
+          "label": "LEC set flying lap attack Attack",
+          "w": 44,
+          "h": 41
+        },
+        {
+          "label": "LEC set flying lap attack Maximum",
+          "w": 44,
+          "h": 41
+        }
+      ],
+      "textOverflowCount": 0,
+      "textOverflow": [],
+      "tinyTextCount": 33,
+      "tinyTextMin": 7,
+      "tinyText": [
+        {
+          "text": "1×",
+          "size": 10
+        },
+        {
+          "text": "2×",
+          "size": 10
+        },
+        {
+          "text": "4×",
+          "size": 10
+        },
+        {
+          "text": "8×",
+          "size": 10
+        },
+        {
+          "text": "16×",
+          "size": 10
+        },
+        {
+          "text": "SELECT TYRE",
+          "size": 9
+        },
+        {
+          "text": "S",
+          "size": 8
+        },
+        {
+          "text": "S",
+          "size": 9
+        },
+        {
+          "text": "×6",
+          "size": 7
+        },
+        {
+          "text": "M",
+          "size": 8
+        },
+        {
+          "text": "M",
+          "size": 9
+        },
+        {
+          "text": "×4",
+          "size": 7
+        },
+        {
+          "text": "H",
+          "size": 8
+        },
+        {
+          "text": "H",
+          "size": 9
+        },
+        {
+          "text": "×2",
+          "size": 7
+        },
+        {
+          "text": "I",
+          "size": 8
+        }
+      ],
+      "clippedContainers": []
+    },
+    "desktop-1440x900": {
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "docScroll": {
+        "width": 1440,
+        "height": 900
+      },
+      "horizontalScroll": false,
+      "buttonCount": 35,
+      "tooSmallCount": 18,
+      "tooSmall": [
+        {
+          "label": "Pause qualifying",
+          "w": 39,
+          "h": 39
+        },
+        {
+          "label": "Set simulation speed to 1 times",
+          "w": 27,
+          "h": 27
+        },
+        {
+          "label": "Set simulation speed to 2 times",
+          "w": 27,
+          "h": 27
+        },
+        {
+          "label": "Set simulation speed to 4 times",
+          "w": 27,
+          "h": 27
+        },
+        {
+          "label": "Set simulation speed to 8 times",
+          "w": 27,
+          "h": 27
+        },
+        {
+          "label": "Set simulation speed to 16 times",
+          "w": 27,
+          "h": 27
+        },
+        {
+          "label": "SKIP Q1",
+          "w": 94.2,
+          "h": 39
+        },
+        {
+          "label": "Return to team selection",
+          "w": 31,
+          "h": 31
+        },
+        {
+          "label": "LEC set fuel plan 1 Flying Lap",
+          "w": 58.7,
+          "h": 41
+        },
+        {
+          "label": "LEC set fuel plan 2 Flying Laps",
+          "w": 58.7,
+          "h": 41
+        },
+        {
+          "label": "LEC set fuel plan 2 Laps + Margin",
+          "w": 58.7,
+          "h": 41
+        },
+        {
+          "label": "LEC set out lap pace Gentle",
+          "w": 58.7,
+          "h": 41
+        },
+        {
+          "label": "LEC set out lap pace Balanced",
+          "w": 58.7,
+          "h": 41
+        },
+        {
+          "label": "LEC set out lap pace Aggressive Warm-up",
+          "w": 58.7,
+          "h": 41
+        },
+        {
+          "label": "LEC set flying lap attack Safe",
+          "w": 42.8,
+          "h": 41
+        },
+        {
+          "label": "LEC set flying lap attack Push",
+          "w": 42.8,
+          "h": 41
+        },
+        {
+          "label": "LEC set flying lap attack Attack",
+          "w": 42.8,
+          "h": 41
+        },
+        {
+          "label": "LEC set flying lap attack Maximum",
+          "w": 42.8,
+          "h": 41
+        }
+      ],
+      "textOverflowCount": 0,
+      "textOverflow": [],
+      "tinyTextCount": 43,
+      "tinyTextMin": 7,
+      "tinyText": [
+        {
+          "text": "1×",
+          "size": 10
+        },
+        {
+          "text": "2×",
+          "size": 10
+        },
+        {
+          "text": "4×",
+          "size": 10
+        },
+        {
+          "text": "8×",
+          "size": 10
+        },
+        {
+          "text": "16×",
+          "size": 10
+        },
+        {
+          "text": "SELECT TYRE",
+          "size": 9
+        },
+        {
+          "text": "1 LAP",
+          "size": 10
+        },
+        {
+          "text": "2 LAPS",
+          "size": 10
+        },
+        {
+          "text": "MARGIN",
+          "size": 10
+        },
+        {
+          "text": "GENTLE",
+          "size": 10
+        },
+        {
+          "text": "BALANCE",
+          "size": 10
+        },
+        {
+          "text": "WARM-UP",
+          "size": 10
+        },
+        {
+          "text": "SAFE",
+          "size": 10
+        },
+        {
+          "text": "PUSH",
+          "size": 10
+        },
+        {
+          "text": "ATK",
+          "size": 10
+        },
+        {
+          "text": "MAX",
+          "size": 10
+        }
+      ],
+      "clippedContainers": [
+        {
+          "tag": "aside",
+          "cls": "qualifying-race-view-module__ic2ufG__tower",
+          "scrollW": 303,
+          "clientW": 298
+        }
+      ]
+    },
+    "laptop-1280x720": {
+      "viewport": {
+        "width": 1280,
+        "height": 720
+      },
+      "docScroll": {
+        "width": 1280,
+        "height": 720
+      },
+      "horizontalScroll": false,
+      "buttonCount": 35,
+      "tooSmallCount": 26,
+      "tooSmall": [
+        {
+          "label": "Pause qualifying",
+          "w": 39,
+          "h": 39
+        },
+        {
+          "label": "Set simulation speed to 1 times",
+          "w": 27,
+          "h": 27
+        },
+        {
+          "label": "Set simulation speed to 2 times",
+          "w": 27,
+          "h": 27
+        },
+        {
+          "label": "Set simulation speed to 4 times",
+          "w": 27,
+          "h": 27
+        },
+        {
+          "label": "Set simulation speed to 8 times",
+          "w": 27,
+          "h": 27
+        },
+        {
+          "label": "Set simulation speed to 16 times",
+          "w": 27,
+          "h": 27
+        },
+        {
+          "label": "SKIP Q1",
+          "w": 94.2,
+          "h": 39
+        },
+        {
+          "label": "Return to team selection",
+          "w": 31,
+          "h": 31
+        },
+        {
+          "label": "LEC set fuel plan 1 Flying Lap",
+          "w": 59.7,
+          "h": 38
+        },
+        {
+          "label": "LEC set fuel plan 2 Flying Laps",
+          "w": 59.7,
+          "h": 38
+        },
+        {
+          "label": "LEC set fuel plan 2 Laps + Margin",
+          "w": 59.7,
+          "h": 38
+        },
+        {
+          "label": "LEC set out lap pace Gentle",
+          "w": 59.7,
+          "h": 38
+        },
+        {
+          "label": "LEC set out lap pace Balanced",
+          "w": 59.7,
+          "h": 38
+        },
+        {
+          "label": "LEC set out lap pace Aggressive Warm-up",
+          "w": 59.7,
+          "h": 38
+        },
+        {
+          "label": "LEC set flying lap attack Safe",
+          "w": 43.5,
+          "h": 38
+        },
+        {
+          "label": "LEC set flying lap attack Push",
+          "w": 43.5,
+          "h": 38
+        },
+        {
+          "label": "LEC set flying lap attack Attack",
+          "w": 43.5,
+          "h": 38
+        },
+        {
+          "label": "LEC set flying lap attack Maximum",
+          "w": 43.5,
+          "h": 38
+        },
+        {
+          "label": "LEC Abort Lap",
+          "w": 126.7,
+          "h": 42
+        },
+        {
+          "label": "LEC Cool Down",
+          "w": 126.7,
+          "h": 42
+        },
+        {
+          "label": "LEC Return to Pits",
+          "w": 126.7,
+          "h": 42
+        },
+        {
+          "label": "LEC SOFT, set 1, NEW, 100% life, 6 available. ",
+          "w": 72,
+          "h": 42
+        },
+        {
+          "label": "LEC MEDIUM, set 1, NEW, 100% life, 4 available",
+          "w": 72,
+          "h": 42
+        },
+        {
+          "label": "LEC HARD, set 1, NEW, 100% life, 2 available. ",
+          "w": 72,
+          "h": 42
+        }
+      ],
+      "textOverflowCount": 0,
+      "textOverflow": [],
+      "tinyTextCount": 46,
+      "tinyTextMin": 7,
+      "tinyText": [
+        {
+          "text": "1×",
+          "size": 10
+        },
+        {
+          "text": "2×",
+          "size": 10
+        },
+        {
+          "text": "4×",
+          "size": 10
+        },
+        {
+          "text": "8×",
+          "size": 10
+        },
+        {
+          "text": "16×",
+          "size": 10
+        },
+        {
+          "text": "SELECT TYRE",
+          "size": 9
+        },
+        {
+          "text": "1 LAP",
+          "size": 10
+        },
+        {
+          "text": "2 LAPS",
+          "size": 10
+        },
+        {
+          "text": "MARGIN",
+          "size": 10
+        },
+        {
+          "text": "GENTLE",
+          "size": 10
+        },
+        {
+          "text": "BALANCE",
+          "size": 10
+        },
+        {
+          "text": "WARM-UP",
+          "size": 10
+        },
+        {
+          "text": "SAFE",
+          "size": 10
+        },
+        {
+          "text": "PUSH",
+          "size": 10
+        },
+        {
+          "text": "ATK",
+          "size": 10
+        },
+        {
+          "text": "MAX",
+          "size": 10
+        }
+      ],
+      "clippedContainers": []
+    },
+    "laptop-1180x800": {
+      "viewport": {
+        "width": 1180,
+        "height": 800
+      },
+      "docScroll": {
+        "width": 1180,
+        "height": 800
+      },
+      "horizontalScroll": false,
+      "buttonCount": 35,
+      "tooSmallCount": 18,
+      "tooSmall": [
+        {
+          "label": "Pause qualifying",
+          "w": 39,
+          "h": 39
+        },
+        {
+          "label": "Set simulation speed to 1 times",
+          "w": 27,
+          "h": 27
+        },
+        {
+          "label": "Set simulation speed to 2 times",
+          "w": 27,
+          "h": 27
+        },
+        {
+          "label": "Set simulation speed to 4 times",
+          "w": 27,
+          "h": 27
+        },
+        {
+          "label": "Set simulation speed to 8 times",
+          "w": 27,
+          "h": 27
+        },
+        {
+          "label": "Set simulation speed to 16 times",
+          "w": 27,
+          "h": 27
+        },
+        {
+          "label": "SKIP Q1",
+          "w": 94.2,
+          "h": 39
+        },
+        {
+          "label": "Return to team selection",
+          "w": 31,
+          "h": 31
+        },
+        {
+          "label": "LEC set fuel plan 1 Flying Lap",
+          "w": 59.7,
+          "h": 41
+        },
+        {
+          "label": "LEC set fuel plan 2 Flying Laps",
+          "w": 59.7,
+          "h": 41
+        },
+        {
+          "label": "LEC set fuel plan 2 Laps + Margin",
+          "w": 59.7,
+          "h": 41
+        },
+        {
+          "label": "LEC set out lap pace Gentle",
+          "w": 59.7,
+          "h": 41
+        },
+        {
+          "label": "LEC set out lap pace Balanced",
+          "w": 59.7,
+          "h": 41
+        },
+        {
+          "label": "LEC set out lap pace Aggressive Warm-up",
+          "w": 59.7,
+          "h": 41
+        },
+        {
+          "label": "LEC set flying lap attack Safe",
+          "w": 43.5,
+          "h": 41
+        },
+        {
+          "label": "LEC set flying lap attack Push",
+          "w": 43.5,
+          "h": 41
+        },
+        {
+          "label": "LEC set flying lap attack Attack",
+          "w": 43.5,
+          "h": 41
+        },
+        {
+          "label": "LEC set flying lap attack Maximum",
+          "w": 43.5,
+          "h": 41
+        }
+      ],
+      "textOverflowCount": 0,
+      "textOverflow": [],
+      "tinyTextCount": 46,
+      "tinyTextMin": 7,
+      "tinyText": [
+        {
+          "text": "1×",
+          "size": 10
+        },
+        {
+          "text": "2×",
+          "size": 10
+        },
+        {
+          "text": "4×",
+          "size": 10
+        },
+        {
+          "text": "8×",
+          "size": 10
+        },
+        {
+          "text": "16×",
+          "size": 10
+        },
+        {
+          "text": "SELECT TYRE",
+          "size": 9
+        },
+        {
+          "text": "1 LAP",
+          "size": 10
+        },
+        {
+          "text": "2 LAPS",
+          "size": 10
+        },
+        {
+          "text": "MARGIN",
+          "size": 10
+        },
+        {
+          "text": "GENTLE",
+          "size": 10
+        },
+        {
+          "text": "BALANCE",
+          "size": 10
+        },
+        {
+          "text": "WARM-UP",
+          "size": 10
+        },
+        {
+          "text": "SAFE",
+          "size": 10
+        },
+        {
+          "text": "PUSH",
+          "size": 10
+        },
+        {
+          "text": "ATK",
+          "size": 10
+        },
+        {
+          "text": "MAX",
+          "size": 10
+        }
+      ],
+      "clippedContainers": [
+        {
+          "tag": "div",
+          "cls": "broadcast-strip broadcast-strip--iconic qual",
+          "scrollW": 616,
+          "clientW": 608
+        },
+        {
+          "tag": "section",
+          "cls": "race-grid qualifying-race-view-module__ic2uf",
+          "scrollW": 1264,
+          "clientW": 1180
+        }
+      ]
+    },
+    "tablet-1024x768": {
+      "viewport": {
+        "width": 1024,
+        "height": 768
+      },
+      "docScroll": {
+        "width": 1024,
+        "height": 1422
+      },
+      "horizontalScroll": false,
+      "buttonCount": 35,
+      "tooSmallCount": 18,
+      "tooSmall": [
+        {
+          "label": "Pause qualifying",
+          "w": 39,
+          "h": 39
+        },
+        {
+          "label": "Set simulation speed to 1 times",
+          "w": 27,
+          "h": 27
+        },
+        {
+          "label": "Set simulation speed to 2 times",
+          "w": 27,
+          "h": 27
+        },
+        {
+          "label": "Set simulation speed to 4 times",
+          "w": 27,
+          "h": 27
+        },
+        {
+          "label": "Set simulation speed to 8 times",
+          "w": 27,
+          "h": 27
+        },
+        {
+          "label": "Set simulation speed to 16 times",
+          "w": 27,
+          "h": 27
+        },
+        {
+          "label": "SKIP Q1",
+          "w": 94.2,
+          "h": 39
+        },
+        {
+          "label": "Return to team selection",
+          "w": 31,
+          "h": 31
+        },
+        {
+          "label": "LEC set fuel plan 1 Flying Lap",
+          "w": 156,
+          "h": 41
+        },
+        {
+          "label": "LEC set fuel plan 2 Flying Laps",
+          "w": 156,
+          "h": 41
+        },
+        {
+          "label": "LEC set fuel plan 2 Laps + Margin",
+          "w": 156,
+          "h": 41
+        },
+        {
+          "label": "LEC set out lap pace Gentle",
+          "w": 156,
+          "h": 41
+        },
+        {
+          "label": "LEC set out lap pace Balanced",
+          "w": 156,
+          "h": 41
+        },
+        {
+          "label": "LEC set out lap pace Aggressive Warm-up",
+          "w": 156,
+          "h": 41
+        },
+        {
+          "label": "LEC set flying lap attack Safe",
+          "w": 115.8,
+          "h": 41
+        },
+        {
+          "label": "LEC set flying lap attack Push",
+          "w": 115.8,
+          "h": 41
+        },
+        {
+          "label": "LEC set flying lap attack Attack",
+          "w": 115.8,
+          "h": 41
+        },
+        {
+          "label": "LEC set flying lap attack Maximum",
+          "w": 115.8,
+          "h": 41
+        }
+      ],
+      "textOverflowCount": 0,
+      "textOverflow": [],
+      "tinyTextCount": 43,
+      "tinyTextMin": 7,
+      "tinyText": [
+        {
+          "text": "1×",
+          "size": 10
+        },
+        {
+          "text": "2×",
+          "size": 10
+        },
+        {
+          "text": "4×",
+          "size": 10
+        },
+        {
+          "text": "8×",
+          "size": 10
+        },
+        {
+          "text": "16×",
+          "size": 10
+        },
+        {
+          "text": "SELECT TYRE",
+          "size": 9
+        },
+        {
+          "text": "1 LAP",
+          "size": 10
+        },
+        {
+          "text": "2 LAPS",
+          "size": 10
+        },
+        {
+          "text": "MARGIN",
+          "size": 10
+        },
+        {
+          "text": "GENTLE",
+          "size": 10
+        },
+        {
+          "text": "BALANCE",
+          "size": 10
+        },
+        {
+          "text": "WARM-UP",
+          "size": 10
+        },
+        {
+          "text": "SAFE",
+          "size": 10
+        },
+        {
+          "text": "PUSH",
+          "size": 10
+        },
+        {
+          "text": "ATK",
+          "size": 10
+        },
+        {
+          "text": "MAX",
+          "size": 10
+        }
+      ],
+      "clippedContainers": []
+    },
+    "tablet-834x1112": {
+      "viewport": {
+        "width": 834,
+        "height": 1112
+      },
+      "docScroll": {
+        "width": 834,
+        "height": 1429
+      },
+      "horizontalScroll": false,
+      "buttonCount": 35,
+      "tooSmallCount": 18,
+      "tooSmall": [
+        {
+          "label": "Pause qualifying",
+          "w": 39,
+          "h": 39
+        },
+        {
+          "label": "Set simulation speed to 1 times",
+          "w": 27,
+          "h": 27
+        },
+        {
+          "label": "Set simulation speed to 2 times",
+          "w": 27,
+          "h": 27
+        },
+        {
+          "label": "Set simulation speed to 4 times",
+          "w": 27,
+          "h": 27
+        },
+        {
+          "label": "Set simulation speed to 8 times",
+          "w": 27,
+          "h": 27
+        },
+        {
+          "label": "Set simulation speed to 16 times",
+          "w": 27,
+          "h": 27
+        },
+        {
+          "label": "SKIP Q1",
+          "w": 94.4,
+          "h": 39
+        },
+        {
+          "label": "Return to team selection",
+          "w": 31,
+          "h": 31
+        },
+        {
+          "label": "LEC set fuel plan 1 Flying Lap",
+          "w": 124.3,
+          "h": 41
+        },
+        {
+          "label": "LEC set fuel plan 2 Flying Laps",
+          "w": 124.3,
+          "h": 41
+        },
+        {
+          "label": "LEC set fuel plan 2 Laps + Margin",
+          "w": 124.3,
+          "h": 41
+        },
+        {
+          "label": "LEC set out lap pace Gentle",
+          "w": 124.3,
+          "h": 41
+        },
+        {
+          "label": "LEC set out lap pace Balanced",
+          "w": 124.3,
+          "h": 41
+        },
+        {
+          "label": "LEC set out lap pace Aggressive Warm-up",
+          "w": 124.3,
+          "h": 41
+        },
+        {
+          "label": "LEC set flying lap attack Safe",
+          "w": 92,
+          "h": 41
+        },
+        {
+          "label": "LEC set flying lap attack Push",
+          "w": 92,
+          "h": 41
+        },
+        {
+          "label": "LEC set flying lap attack Attack",
+          "w": 92,
+          "h": 41
+        },
+        {
+          "label": "LEC set flying lap attack Maximum",
+          "w": 92,
+          "h": 41
+        }
+      ],
+      "textOverflowCount": 0,
+      "textOverflow": [],
+      "tinyTextCount": 43,
+      "tinyTextMin": 7,
+      "tinyText": [
+        {
+          "text": "1×",
+          "size": 10
+        },
+        {
+          "text": "2×",
+          "size": 10
+        },
+        {
+          "text": "4×",
+          "size": 10
+        },
+        {
+          "text": "8×",
+          "size": 10
+        },
+        {
+          "text": "16×",
+          "size": 10
+        },
+        {
+          "text": "SELECT TYRE",
+          "size": 9
+        },
+        {
+          "text": "1 LAP",
+          "size": 10
+        },
+        {
+          "text": "2 LAPS",
+          "size": 10
+        },
+        {
+          "text": "MARGIN",
+          "size": 10
+        },
+        {
+          "text": "GENTLE",
+          "size": 10
+        },
+        {
+          "text": "BALANCE",
+          "size": 10
+        },
+        {
+          "text": "WARM-UP",
+          "size": 10
+        },
+        {
+          "text": "SAFE",
+          "size": 10
+        },
+        {
+          "text": "PUSH",
+          "size": 10
+        },
+        {
+          "text": "ATK",
+          "size": 10
+        },
+        {
+          "text": "MAX",
+          "size": 10
+        }
+      ],
+      "clippedContainers": [
+        {
+          "tag": "aside",
+          "cls": "qualifying-race-view-module__ic2ufG__tower",
+          "scrollW": 303,
+          "clientW": 284
+        }
+      ]
+    },
+    "phone-430x932": {
+      "viewport": {
+        "width": 430,
+        "height": 932
+      },
+      "docScroll": {
+        "width": 430,
+        "height": 2247
+      },
+      "horizontalScroll": false,
+      "buttonCount": 35,
+      "tooSmallCount": 18,
+      "tooSmall": [
+        {
+          "label": "Pause qualifying",
+          "w": 39,
+          "h": 39
+        },
+        {
+          "label": "Set simulation speed to 1 times",
+          "w": 27,
+          "h": 27
+        },
+        {
+          "label": "Set simulation speed to 2 times",
+          "w": 27,
+          "h": 27
+        },
+        {
+          "label": "Set simulation speed to 4 times",
+          "w": 27,
+          "h": 27
+        },
+        {
+          "label": "Set simulation speed to 8 times",
+          "w": 27,
+          "h": 27
+        },
+        {
+          "label": "Set simulation speed to 16 times",
+          "w": 27,
+          "h": 27
+        },
+        {
+          "label": "SKIP Q1",
+          "w": 94.4,
+          "h": 39
+        },
+        {
+          "label": "Return to team selection",
+          "w": 31,
+          "h": 31
+        },
+        {
+          "label": "LEC set fuel plan 1 Flying Lap",
+          "w": 57,
+          "h": 41
+        },
+        {
+          "label": "LEC set fuel plan 2 Flying Laps",
+          "w": 57,
+          "h": 41
+        },
+        {
+          "label": "LEC set fuel plan 2 Laps + Margin",
+          "w": 57,
+          "h": 41
+        },
+        {
+          "label": "LEC set out lap pace Gentle",
+          "w": 57,
+          "h": 41
+        },
+        {
+          "label": "LEC set out lap pace Balanced",
+          "w": 57,
+          "h": 41
+        },
+        {
+          "label": "LEC set out lap pace Aggressive Warm-up",
+          "w": 57,
+          "h": 41
+        },
+        {
+          "label": "LEC set flying lap attack Safe",
+          "w": 41.5,
+          "h": 41
+        },
+        {
+          "label": "LEC set flying lap attack Push",
+          "w": 41.5,
+          "h": 41
+        },
+        {
+          "label": "LEC set flying lap attack Attack",
+          "w": 41.5,
+          "h": 41
+        },
+        {
+          "label": "LEC set flying lap attack Maximum",
+          "w": 41.5,
+          "h": 41
+        }
+      ],
+      "textOverflowCount": 0,
+      "textOverflow": [],
+      "tinyTextCount": 43,
+      "tinyTextMin": 7,
+      "tinyText": [
+        {
+          "text": "1×",
+          "size": 10
+        },
+        {
+          "text": "2×",
+          "size": 10
+        },
+        {
+          "text": "4×",
+          "size": 10
+        },
+        {
+          "text": "8×",
+          "size": 10
+        },
+        {
+          "text": "16×",
+          "size": 10
+        },
+        {
+          "text": "SELECT TYRE",
+          "size": 9
+        },
+        {
+          "text": "1 LAP",
+          "size": 10
+        },
+        {
+          "text": "2 LAPS",
+          "size": 10
+        },
+        {
+          "text": "MARGIN",
+          "size": 10
+        },
+        {
+          "text": "GENTLE",
+          "size": 10
+        },
+        {
+          "text": "BALANCE",
+          "size": 10
+        },
+        {
+          "text": "WARM-UP",
+          "size": 10
+        },
+        {
+          "text": "SAFE",
+          "size": 10
+        },
+        {
+          "text": "PUSH",
+          "size": 10
+        },
+        {
+          "text": "ATK",
+          "size": 10
+        },
+        {
+          "text": "MAX",
+          "size": 10
+        }
+      ],
+      "clippedContainers": []
+    },
+    "phone-390x844": {
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "docScroll": {
+        "width": 390,
+        "height": 2247
+      },
+      "horizontalScroll": false,
+      "buttonCount": 35,
+      "tooSmallCount": 18,
+      "tooSmall": [
+        {
+          "label": "Pause qualifying",
+          "w": 39,
+          "h": 39
+        },
+        {
+          "label": "Set simulation speed to 1 times",
+          "w": 27,
+          "h": 27
+        },
+        {
+          "label": "Set simulation speed to 2 times",
+          "w": 27,
+          "h": 27
+        },
+        {
+          "label": "Set simulation speed to 4 times",
+          "w": 27,
+          "h": 27
+        },
+        {
+          "label": "Set simulation speed to 8 times",
+          "w": 27,
+          "h": 27
+        },
+        {
+          "label": "Set simulation speed to 16 times",
+          "w": 27,
+          "h": 27
+        },
+        {
+          "label": "SKIP Q1",
+          "w": 94.4,
+          "h": 39
+        },
+        {
+          "label": "Return to team selection",
+          "w": 31,
+          "h": 31
+        },
+        {
+          "label": "LEC set fuel plan 1 Flying Lap",
+          "w": 50.3,
+          "h": 41
+        },
+        {
+          "label": "LEC set fuel plan 2 Flying Laps",
+          "w": 50.3,
+          "h": 41
+        },
+        {
+          "label": "LEC set fuel plan 2 Laps + Margin",
+          "w": 50.3,
+          "h": 41
+        },
+        {
+          "label": "LEC set out lap pace Gentle",
+          "w": 50.3,
+          "h": 41
+        },
+        {
+          "label": "LEC set out lap pace Balanced",
+          "w": 50.3,
+          "h": 41
+        },
+        {
+          "label": "LEC set out lap pace Aggressive Warm-up",
+          "w": 50.3,
+          "h": 41
+        },
+        {
+          "label": "LEC set flying lap attack Safe",
+          "w": 36.5,
+          "h": 41
+        },
+        {
+          "label": "LEC set flying lap attack Push",
+          "w": 36.5,
+          "h": 41
+        },
+        {
+          "label": "LEC set flying lap attack Attack",
+          "w": 36.5,
+          "h": 41
+        },
+        {
+          "label": "LEC set flying lap attack Maximum",
+          "w": 36.5,
+          "h": 41
+        }
+      ],
+      "textOverflowCount": 5,
+      "textOverflow": [
+        {
+          "tag": "strong",
+          "cls": "",
+          "text": "100%",
+          "scrollW": 30,
+          "clientW": 25,
+          "scrollH": 14,
+          "clientH": 13
+        },
+        {
+          "tag": "strong",
+          "cls": "",
+          "text": "100%",
+          "scrollW": 30,
+          "clientW": 25,
+          "scrollH": 14,
+          "clientH": 13
+        },
+        {
+          "tag": "strong",
+          "cls": "",
+          "text": "100%",
+          "scrollW": 30,
+          "clientW": 25,
+          "scrollH": 14,
+          "clientH": 13
+        },
+        {
+          "tag": "strong",
+          "cls": "",
+          "text": "100%",
+          "scrollW": 30,
+          "clientW": 25,
+          "scrollH": 14,
+          "clientH": 13
+        },
+        {
+          "tag": "strong",
+          "cls": "",
+          "text": "100%",
+          "scrollW": 30,
+          "clientW": 25,
+          "scrollH": 14,
+          "clientH": 13
+        }
+      ],
+      "tinyTextCount": 43,
+      "tinyTextMin": 7,
+      "tinyText": [
+        {
+          "text": "1×",
+          "size": 10
+        },
+        {
+          "text": "2×",
+          "size": 10
+        },
+        {
+          "text": "4×",
+          "size": 10
+        },
+        {
+          "text": "8×",
+          "size": 10
+        },
+        {
+          "text": "16×",
+          "size": 10
+        },
+        {
+          "text": "SELECT TYRE",
+          "size": 9
+        },
+        {
+          "text": "1 LAP",
+          "size": 10
+        },
+        {
+          "text": "2 LAPS",
+          "size": 10
+        },
+        {
+          "text": "MARGIN",
+          "size": 10
+        },
+        {
+          "text": "GENTLE",
+          "size": 10
+        },
+        {
+          "text": "BALANCE",
+          "size": 10
+        },
+        {
+          "text": "WARM-UP",
+          "size": 10
+        },
+        {
+          "text": "SAFE",
+          "size": 10
+        },
+        {
+          "text": "PUSH",
+          "size": 10
+        },
+        {
+          "text": "ATK",
+          "size": 10
+        },
+        {
+          "text": "MAX",
+          "size": 10
+        }
+      ],
+      "clippedContainers": [
+        {
+          "tag": "strong",
+          "cls": "",
+          "scrollW": 30,
+          "clientW": 25
+        },
+        {
+          "tag": "strong",
+          "cls": "",
+          "scrollW": 30,
+          "clientW": 25
+        },
+        {
+          "tag": "strong",
+          "cls": "",
+          "scrollW": 30,
+          "clientW": 25
+        },
+        {
+          "tag": "strong",
+          "cls": "",
+          "scrollW": 30,
+          "clientW": 25
+        },
+        {
+          "tag": "strong",
+          "cls": "",
+          "scrollW": 30,
+          "clientW": 25
+        }
+      ]
+    },
+    "phone-360x740": {
+      "viewport": {
+        "width": 360,
+        "height": 740
+      },
+      "docScroll": {
+        "width": 360,
+        "height": 2247
+      },
+      "horizontalScroll": false,
+      "buttonCount": 35,
+      "tooSmallCount": 18,
+      "tooSmall": [
+        {
+          "label": "Pause qualifying",
+          "w": 39,
+          "h": 39
+        },
+        {
+          "label": "Set simulation speed to 1 times",
+          "w": 27,
+          "h": 27
+        },
+        {
+          "label": "Set simulation speed to 2 times",
+          "w": 27,
+          "h": 27
+        },
+        {
+          "label": "Set simulation speed to 4 times",
+          "w": 27,
+          "h": 27
+        },
+        {
+          "label": "Set simulation speed to 8 times",
+          "w": 27,
+          "h": 27
+        },
+        {
+          "label": "Set simulation speed to 16 times",
+          "w": 27,
+          "h": 27
+        },
+        {
+          "label": "SKIP Q1",
+          "w": 94.4,
+          "h": 39
+        },
+        {
+          "label": "Return to team selection",
+          "w": 28,
+          "h": 31
+        },
+        {
+          "label": "LEC set fuel plan 1 Flying Lap",
+          "w": 45.3,
+          "h": 41
+        },
+        {
+          "label": "LEC set fuel plan 2 Flying Laps",
+          "w": 45.3,
+          "h": 41
+        },
+        {
+          "label": "LEC set fuel plan 2 Laps + Margin",
+          "w": 45.3,
+          "h": 41
+        },
+        {
+          "label": "LEC set out lap pace Gentle",
+          "w": 45.3,
+          "h": 41
+        },
+        {
+          "label": "LEC set out lap pace Balanced",
+          "w": 45.3,
+          "h": 41
+        },
+        {
+          "label": "LEC set out lap pace Aggressive Warm-up",
+          "w": 45.3,
+          "h": 41
+        },
+        {
+          "label": "LEC set flying lap attack Safe",
+          "w": 32.8,
+          "h": 41
+        },
+        {
+          "label": "LEC set flying lap attack Push",
+          "w": 32.8,
+          "h": 41
+        },
+        {
+          "label": "LEC set flying lap attack Attack",
+          "w": 32.8,
+          "h": 41
+        },
+        {
+          "label": "LEC set flying lap attack Maximum",
+          "w": 32.8,
+          "h": 41
+        }
+      ],
+      "textOverflowCount": 8,
+      "textOverflow": [
+        {
+          "tag": "span",
+          "cls": "",
+          "text": "BALANCE",
+          "scrollW": 42,
+          "clientW": 39,
+          "scrollH": 11,
+          "clientH": 11
+        },
+        {
+          "tag": "span",
+          "cls": "",
+          "text": "WARM-UP",
+          "scrollW": 42,
+          "clientW": 39,
+          "scrollH": 11,
+          "clientH": 11
+        },
+        {
+          "tag": "span",
+          "cls": "",
+          "text": "Return",
+          "scrollW": 40,
+          "clientW": 38,
+          "scrollH": 13,
+          "clientH": 13
+        },
+        {
+          "tag": "strong",
+          "cls": "",
+          "text": "100%",
+          "scrollW": 30,
+          "clientW": 19,
+          "scrollH": 14,
+          "clientH": 13
+        },
+        {
+          "tag": "strong",
+          "cls": "",
+          "text": "100%",
+          "scrollW": 30,
+          "clientW": 19,
+          "scrollH": 14,
+          "clientH": 13
+        },
+        {
+          "tag": "strong",
+          "cls": "",
+          "text": "100%",
+          "scrollW": 30,
+          "clientW": 19,
+          "scrollH": 14,
+          "clientH": 13
+        },
+        {
+          "tag": "strong",
+          "cls": "",
+          "text": "100%",
+          "scrollW": 30,
+          "clientW": 19,
+          "scrollH": 14,
+          "clientH": 13
+        },
+        {
+          "tag": "strong",
+          "cls": "",
+          "text": "100%",
+          "scrollW": 30,
+          "clientW": 19,
+          "scrollH": 14,
+          "clientH": 13
+        }
+      ],
+      "tinyTextCount": 43,
+      "tinyTextMin": 7,
+      "tinyText": [
+        {
+          "text": "1×",
+          "size": 10
+        },
+        {
+          "text": "2×",
+          "size": 10
+        },
+        {
+          "text": "4×",
+          "size": 10
+        },
+        {
+          "text": "8×",
+          "size": 10
+        },
+        {
+          "text": "16×",
+          "size": 10
+        },
+        {
+          "text": "SELECT TYRE",
+          "size": 9
+        },
+        {
+          "text": "1 LAP",
+          "size": 10
+        },
+        {
+          "text": "2 LAPS",
+          "size": 10
+        },
+        {
+          "text": "MARGIN",
+          "size": 10
+        },
+        {
+          "text": "GENTLE",
+          "size": 10
+        },
+        {
+          "text": "BALANCE",
+          "size": 10
+        },
+        {
+          "text": "WARM-UP",
+          "size": 10
+        },
+        {
+          "text": "SAFE",
+          "size": 10
+        },
+        {
+          "text": "PUSH",
+          "size": 10
+        },
+        {
+          "text": "ATK",
+          "size": 10
+        },
+        {
+          "text": "MAX",
+          "size": 10
+        }
+      ],
+      "clippedContainers": [
+        {
+          "tag": "span",
+          "cls": "",
+          "scrollW": 42,
+          "clientW": 39
+        },
+        {
+          "tag": "span",
+          "cls": "",
+          "scrollW": 42,
+          "clientW": 39
+        },
+        {
+          "tag": "strong",
+          "cls": "",
+          "scrollW": 30,
+          "clientW": 19
+        },
+        {
+          "tag": "strong",
+          "cls": "",
+          "scrollW": 30,
+          "clientW": 19
+        },
+        {
+          "tag": "strong",
+          "cls": "",
+          "scrollW": 30,
+          "clientW": 19
+        },
+        {
+          "tag": "strong",
+          "cls": "",
+          "scrollW": 30,
+          "clientW": 19
+        },
+        {
+          "tag": "strong",
+          "cls": "",
+          "scrollW": 30,
+          "clientW": 19
+        }
+      ]
+    }
+  },
+  "consoleErrors": []
+}

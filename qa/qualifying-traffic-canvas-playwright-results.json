@@ -1,0 +1,280 @@
+{
+  "passed": [
+    "1280x720 centre Circuit Detail is visible",
+    "1280x720 separates one animated canvas from the static circuit",
+    "1280x720 uses persistent driver-label anchors",
+    "1280x720 uses phase-coded map markers",
+    "1280x720 shows the compact map legend",
+    "1280x720 legend covers flying, out, in, pit-entry, yielding, manual-abort and player states",
+    "1280x720 keeps S1 S2 S3 for all 22 drivers in the leaderboard",
+    "1280x720 exposes two compact player-driver tabs",
+    "1280x720 does not duplicate large driver control rows",
+    "1280x720 shows one compact PIT RELEASE control group",
+    "1280x720 shows one compact OUT LAP PACE control group",
+    "1280x720 shows one compact FLYING ATTACK control group",
+    "1280x720 shows one compact FUEL PLAN control group",
+    "1280x720 shows one compact LAP ACTION control group",
+    "1280x720 shows one compact TYRE SELECTION control group",
+    "1280x720 removes the duplicate Active Set card",
+    "1280x720 removes Battery Strategy and manual energy controls",
+    "1280x720 removes the Next Action strip",
+    "1280x720 exposes one release action",
+    "1280x720 keeps visible control labels unclipped",
+    "1280x720 exposes one speed and four labelled tyre meters",
+    "1280x720 keeps the speed infographic circular",
+    "1280x720 keeps all four tyre-temperature meters circular",
+    "1280x720 keeps the release click target at least 44px",
+    "1280x720 renders exactly five combined tyre choices",
+    "1280x720 exposes selectable physical sets with life and state",
+    "1280x720 keeps the compound name and exact set metadata on every available tyre choice",
+    "1280x720 keeps the compound and physical-set selector at the bottom of the rail",
+    "1280x720 vertically centres the operation controls",
+    "1280x720 centres compact operation buttons without stretching them across the rail",
+    "1280x720 exposes exactly five merged tyre buttons for the first player car",
+    "1280x720 cycles the first driver's Soft button through exact physical sets",
+    "1280x720 keeps exactly one physical tyre set selected for the first player car",
+    "1280x720 flying attack selector updates the active driver",
+    "1280x720 fuel selector updates before release",
+    "1280x720 switches LEC and HAM through compact tabs",
+    "1280x720 exposes exactly five merged tyre buttons after switching drivers",
+    "1280x720 selects one exact physical tyre set for the second player car",
+    "1280x720 spreads the early qualifying field instead of releasing one continuous train",
+    "1280x720 labels every active car with stable canvas labels",
+    "1280x720 reaches a visible pulsing flying-lap state",
+    "1280x720 stops marker and label animation while paused",
+    "1280x720 has no document overflow",
+    "1280x720 qualifying shell fits the viewport",
+    "1280x720 preserves leaderboard, centre circuit and right controls",
+    "1280x720 keeps the circuit as the dominant visual focus",
+    "1280x720 keeps the entire control rail above the fold",
+    "1280x720 keeps all six control groups inside the rail",
+    "1440x900 centre Circuit Detail is visible",
+    "1440x900 separates one animated canvas from the static circuit",
+    "1440x900 uses persistent driver-label anchors",
+    "1440x900 uses phase-coded map markers",
+    "1440x900 shows the compact map legend",
+    "1440x900 legend covers flying, out, in, pit-entry, yielding, manual-abort and player states",
+    "1440x900 keeps S1 S2 S3 for all 22 drivers in the leaderboard",
+    "1440x900 exposes two compact player-driver tabs",
+    "1440x900 does not duplicate large driver control rows",
+    "1440x900 shows one compact PIT RELEASE control group",
+    "1440x900 shows one compact OUT LAP PACE control group",
+    "1440x900 shows one compact FLYING ATTACK control group",
+    "1440x900 shows one compact FUEL PLAN control group",
+    "1440x900 shows one compact LAP ACTION control group",
+    "1440x900 shows one compact TYRE SELECTION control group",
+    "1440x900 removes the duplicate Active Set card",
+    "1440x900 removes Battery Strategy and manual energy controls",
+    "1440x900 removes the Next Action strip",
+    "1440x900 exposes one release action",
+    "1440x900 keeps visible control labels unclipped",
+    "1440x900 exposes one speed and four labelled tyre meters",
+    "1440x900 keeps the speed infographic circular",
+    "1440x900 keeps all four tyre-temperature meters circular",
+    "1440x900 keeps the release click target at least 44px",
+    "1440x900 renders exactly five combined tyre choices",
+    "1440x900 exposes selectable physical sets with life and state",
+    "1440x900 keeps the compound name and exact set metadata on every available tyre choice",
+    "1440x900 keeps the compound and physical-set selector at the bottom of the rail",
+    "1440x900 vertically centres the operation controls",
+    "1440x900 centres compact operation buttons without stretching them across the rail",
+    "1440x900 exposes exactly five merged tyre buttons for the first player car",
+    "1440x900 cycles the first driver's Soft button through exact physical sets",
+    "1440x900 keeps exactly one physical tyre set selected for the first player car",
+    "1440x900 flying attack selector updates the active driver",
+    "1440x900 fuel selector updates before release",
+    "1440x900 switches LEC and HAM through compact tabs",
+    "1440x900 exposes exactly five merged tyre buttons after switching drivers",
+    "1440x900 selects one exact physical tyre set for the second player car",
+    "1440x900 spreads the early qualifying field instead of releasing one continuous train",
+    "1440x900 labels every active car with stable canvas labels",
+    "1440x900 reaches a visible pulsing flying-lap state",
+    "1440x900 stops marker and label animation while paused",
+    "1440x900 has no document overflow",
+    "1440x900 qualifying shell fits the viewport",
+    "1440x900 preserves leaderboard, centre circuit and right controls",
+    "1440x900 keeps the circuit as the dominant visual focus",
+    "1440x900 keeps the entire control rail above the fold",
+    "1440x900 keeps all six control groups inside the rail",
+    "browser reports no runtime errors"
+  ],
+  "viewports": {
+    "1280x720": {
+      "innerWidth": 1280,
+      "innerHeight": 720,
+      "scrollWidth": 1280,
+      "scrollHeight": 720,
+      "root": {
+        "left": 0,
+        "top": 0,
+        "right": 1280,
+        "bottom": 720,
+        "width": 1280,
+        "height": 720
+      },
+      "tower": {
+        "left": 8,
+        "top": 88,
+        "right": 286,
+        "bottom": 712,
+        "width": 278,
+        "height": 624
+      },
+      "map": {
+        "left": 295,
+        "top": 89,
+        "right": 883,
+        "bottom": 711,
+        "width": 588,
+        "height": 622
+      },
+      "controls": {
+        "left": 892,
+        "top": 88,
+        "right": 1272,
+        "bottom": 712,
+        "width": 380,
+        "height": 624
+      },
+      "controlSections": [
+        {
+          "left": 905,
+          "top": 305.6875,
+          "right": 1076,
+          "bottom": 372.921875,
+          "width": 171,
+          "height": 67.234375
+        },
+        {
+          "left": 905,
+          "top": 376.921875,
+          "right": 1259,
+          "bottom": 444.15625,
+          "width": 354,
+          "height": 67.234375
+        },
+        {
+          "left": 905,
+          "top": 448.15625,
+          "right": 1259,
+          "bottom": 515.390625,
+          "width": 354,
+          "height": 67.234375
+        },
+        {
+          "left": 905,
+          "top": 519.390625,
+          "right": 1259,
+          "bottom": 586.625,
+          "width": 354,
+          "height": 67.234375
+        },
+        {
+          "left": 1088,
+          "top": 305.6875,
+          "right": 1259,
+          "bottom": 372.921875,
+          "width": 171,
+          "height": 67.234375
+        },
+        {
+          "left": 905,
+          "top": 590.625,
+          "right": 1259,
+          "bottom": 707,
+          "width": 354,
+          "height": 116.375
+        }
+      ]
+    },
+    "1440x900": {
+      "innerWidth": 1440,
+      "innerHeight": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900,
+      "root": {
+        "left": 0,
+        "top": 0,
+        "right": 1440,
+        "bottom": 900,
+        "width": 1440,
+        "height": 900
+      },
+      "tower": {
+        "left": 10,
+        "top": 90,
+        "right": 310,
+        "bottom": 890,
+        "width": 300,
+        "height": 800
+      },
+      "map": {
+        "left": 321,
+        "top": 91,
+        "right": 987,
+        "bottom": 889,
+        "width": 666,
+        "height": 798
+      },
+      "controls": {
+        "left": 998,
+        "top": 90,
+        "right": 1430,
+        "bottom": 890,
+        "width": 432,
+        "height": 800
+      },
+      "controlSections": [
+        {
+          "left": 1015,
+          "top": 307.6875,
+          "right": 1208,
+          "bottom": 418.921875,
+          "width": 193,
+          "height": 111.234375
+        },
+        {
+          "left": 1015,
+          "top": 422.921875,
+          "right": 1413,
+          "bottom": 534.15625,
+          "width": 398,
+          "height": 111.234375
+        },
+        {
+          "left": 1015,
+          "top": 538.15625,
+          "right": 1413,
+          "bottom": 649.390625,
+          "width": 398,
+          "height": 111.234375
+        },
+        {
+          "left": 1015,
+          "top": 653.390625,
+          "right": 1413,
+          "bottom": 764.625,
+          "width": 398,
+          "height": 111.234375
+        },
+        {
+          "left": 1220,
+          "top": 307.6875,
+          "right": 1413,
+          "bottom": 418.921875,
+          "width": 193,
+          "height": 111.234375
+        },
+        {
+          "left": 1015,
+          "top": 768.625,
+          "right": 1413,
+          "bottom": 885,
+          "width": 398,
+          "height": 116.375
+        }
+      ]
+    }
+  },
+  "consoleErrors": []
+}

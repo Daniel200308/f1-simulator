@@ -1,43 +1,326 @@
 # Project Pitwall
 
-First playable engineering slice for a real-time open-wheel race management simulation. The prototype runs the current 2026 Formula 1 driver grid around Silverstone using a deterministic fixed-timestep simulation in a Web Worker.
+Project Pitwall은 실버스톤·몬자·스즈카를 순회하는 3라운드 미니 챔피언십형 실시간 Formula 1 레이스 운영 시뮬레이션 게임입니다. 플레이어는 11개 컨스트럭터 중 한 팀을 선택해 두 드라이버의 페이스, 자동 ERS 전략, 타이어, 냉각과 피트 전략을 관리합니다. 기본 선택은 Ferrari의 Charles Leclerc와 Lewis Hamilton입니다.
 
-## Run
+현재 버전은 각 라운드의 FP1·FP2·FP3 차량 세팅, Q1·Q2·Q3 퀄리파잉, 레이스와 결과 분석을 시즌 순위·차량 신뢰성·다음 라운드로 연결합니다. 레이스·위크엔드·챔피언십·부품 상태·타이어 재고는 하나의 버전형 세이브로 자동/수동 저장하고 JSON으로 내보내거나 복원할 수 있습니다.
+
+> 프로젝트의 구현 완료 범위, 현재 브랜치 변경사항, 검증 결과, 브랜치별 Git 상태와 다음 개발 우선순위는 [`PROJECT_STATUS.md`](./PROJECT_STATUS.md)에 자세히 정리되어 있습니다.
+
+> 이 프로젝트는 비공식 게임 프로토타입이며 Formula 1, FIA 또는 각 팀과 제휴·승인된 제품이 아닙니다.
+
+## 빠른 시작
+
+### 요구 환경
+
+- Node.js 20 이상 권장
+- npm
+- 최신 Chrome, Edge 또는 Safari
+
+### 실행
 
 ```bash
 npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+브라우저에서 [http://127.0.0.1:3000](http://127.0.0.1:3000)을 엽니다.
 
-## Controls
-
-- The race starts automatically at 1×. Use the transport button in the top-right to pause or resume.
-- Select 1×, 2×, 4×, 8×, or 16× simulation speed.
-- Click a car marker or timing-tower row to inspect it.
-- Select either Mercedes driver and issue Pace or Tyre Management commands from the strategy dock.
-- Reset restores seed `20260712` and the original grid.
-
-## Verification
+프로덕션 빌드는 다음과 같이 확인할 수 있습니다.
 
 ```bash
-npm run lint
+npm run build
+npm run start
+```
+
+## 현재 게임 진행 흐름
+
+1. 시작 화면에서 11개 팀 중 한 팀을 선택합니다. 선택한 팀의 두 차량만 플레이어 명령을 받습니다.
+2. Weekend Hub에서 FP1·FP2·FP3를 진행하며 두 차량의 윙, 서스펜션과 냉각 세팅을 조정합니다.
+3. 각 Practice·Qualifying 세션이 끝날 때 두 드라이버의 차량 상태, 드라이버 보고와 엔지니어 분석을 확인합니다.
+4. Q1·Q2·Q3에서 공식 2026 세션 시간과 탈락 규칙에 따라 최종 출발 순서를 결정합니다.
+5. 퀄리파잉 결과와 사용한 타이어 세트, 차량 세팅을 레이스로 가져오고 스타트 타이어를 확정합니다.
+6. 트랙 상단의 5개 빨간불이 순서대로 켜진 뒤 소등되면 22대가 Hamilton Straight의 짧은 단일 라인에서 출발합니다.
+7. 레이스 중 Leader Board 또는 Driver Control에서 관리할 드라이버를 선택합니다.
+8. 페이스, 에너지, 타이어 관리와 냉각을 실시간으로 조정합니다.
+9. Strategy Intelligence의 시나리오와 피트 예상치를 참고해 다음 타이어와 피트 타이밍을 결정합니다.
+10. 옐로 플래그, VSC, Safety Car, 날씨 변화, 차량 열 상태와 트래픽에 대응합니다.
+11. 레이스가 끝나면 Race Report에서 결과, 추월, 피트스톱, 사고, 열 경고와 타이어 전략을 검토합니다.
+12. Season 허브에서 드라이버·컨스트럭터 포인트와 부품 마모를 확인하고 다음 라운드인 Monza와 Suzuka로 진행합니다.
+13. Save 도구에서 전체 진행을 저장·복원하거나 휴대 가능한 JSON 백업을 내보냅니다.
+
+### 미니 챔피언십과 진행 저장
+
+- R1 Silverstone, R2 Monza, R3 Suzuka의 서킷별 길이·랩 수·코너·피트·DRS/에너지 구간을 하나의 서킷 레지스트리에서 공급
+- 공식 F1 포인트 구조, 패스티스트 랩 보너스와 동점 시 최고 순위 횟수 기반 countback
+- 라운드 종료 후 ICE·TC·MGU-K·ES·기어박스·브레이크 마모, 성능 저하·결정론적 고장 위험과 부품 교체 그리드 페널티
+- 스키마 v1 세이브, 입력 검증, 결정론적 JSON, 로컬 자동 저장, 수동 저장·복원·내보내기·가져오기
+- 첫 위크엔드 3단계 안내와 재실행 가능한 도움말, 알림 오디오·볼륨·모션 감소·고대비 설정
+
+## 구현된 기능
+
+### 실제 기반 그리드와 다중 서킷
+
+- 11개 팀, 22명의 2026 드라이버 그리드
+- 드라이버 실명, 차량 번호, 3글자 약어, 팀 컬러 적용
+- Silverstone, Monza, Suzuka의 독립 지오메트리·랩 수·코너·피트레인·섹터·에너지 프로파일
+- OpenStreetMap 기반의 곡선형 단일 센터라인
+- 화면 비율이 달라져도 차량이 같은 트랙 경로 위를 주행하도록 거리 기반 좌표 보간
+- 각 차량을 팀 컬러 원과 3글자 드라이버 이름으로 표시
+- 실버스톤 실제 1랩 텔레메트리 CSV의 거리·속도 프로파일을 기준으로 구간 목표 속도 구성
+
+### 표준 레이스 위크엔드와 퀄리파잉
+
+- 11개 팀 선택 화면과 선택한 컨스트럭터의 두 차량에 대한 동적 명령 권한
+- Ferrari를 기본 플레이어 팀으로 설정하고 Leclerc·Hamilton을 기본 제어 드라이버로 구성
+- FP1, FP2, FP3 각 60분의 표준 연습주행 구조
+- Q1 18분: 22대 참가 후 하위 6대 탈락
+- 7분 휴식 후 Q2 15분: 16대 참가 후 하위 6대 탈락
+- 7분 휴식 후 Q3 13분: 상위 10대의 폴 포지션 경쟁
+- 진출 차량의 이전 세션 랩타임 삭제와 Q1·Q2·Q3별 독립 분류
+- Q3 상위 10대, Q2 탈락 6대, Q1 탈락 6대 순으로 22대 최종 그리드 생성
+- 결정론적 랩 시뮬레이션과 동일 기록 발생 시 먼저 기록한 차량 우선
+- 프론트윙, 서스펜션, 냉각 세팅과 세팅 데이터 신뢰도
+- 최적 수치를 직접 공개하지 않는 초기 베이스라인과 FP1 → FP2 → FP3 드라이버 서술형 디브리프
+- Copse·Maggotts 고속 밸런스, 케르브·트랙션, 냉각·드래그와 세션 순위를 근거로 사용자가 다음 세팅을 판단하는 피드백
+- 각 Practice·Qualifying 세션 직후 두 차량의 에어로 밸런스, 기계 밸런스, 열 여유와 타이어 상태를 시각화한 팀 디브리프
+- 세션별 드라이버 체감 보고와 엔지니어의 랩·순위·진출/탈락 분석 메시지
+- 전체 세션 건너뛰기를 막고 FP1부터 Q3까지 각 디브리프를 확인하는 순차 진행
+- 기본 세팅만으로 플레이어 팀 두 대가 자동으로 프런트 로우를 차지하지 않도록 팀 성능·세팅 손실·런 변동성 재조정
+- 연습주행 세팅 효과와 위크엔드 타이어 사용량을 레이스 성능·재고로 전달
+- 세션별 결과표, 탈락선, 타이어, 베스트 랩과 선두 격차 표시
+
+### 실시간 레이스 시뮬레이션
+
+- Web Worker에서 실행되는 100ms 고정 타임스텝 엔진
+- 동일한 시드와 명령 입력에 동일한 결과를 내는 결정론적 시뮬레이션
+- 일시정지 및 1x, 2x, 4x, 8x, 16x 배속
+- 1초마다 소수점 셋째 자리까지 갱신되는 앞차와의 간격
+- 연료량, 타이어 성능, 차량 상태, 트래픽, 날씨, 드라이버 모드와 열 상태를 반영한 랩타임
+- 주요 사고와 Race Control 이벤트 발생 시 자동 일시정지
+- 상태 해시, 시드, 틱과 스냅샷 수 표시로 시뮬레이션 상태 추적
+
+### 레이스 방송형 UI
+
+- 100% 브라우저 배율과 데스크톱 화면에 맞춘 반응형 레이아웃
+- 텍스트 중심 세션 정보, 전체 패널 색으로 상태를 전달하는 Track Flag, 고정형 FIA Race Control 피드를 담은 상단 바
+- Track Flag가 바뀌는 순간에만 패널 전체가 세 번 점멸하고 이후 해당 플래그 색을 유지하는 브로드캐스트 HUD
+- 현재 랩과 Race Time을 제목 바로 아래에 두고 22대의 순위, 앞차 간격, 상태와 현재 타이어를 보여주는 Leader Board
+- 실제 F1 표기 방식에 가까운 타이어 컴파운드 원형 배지
+- 트랙을 덜 가리는 세로형 Local Surface, 코너 번호, 스타트 라이트, 차량 위치 표시
+- OpenF1 `race_control` 필드 구조를 참고한 카테고리·범위·랩·차량·섹터 메타데이터와 큰 안내 문구
+- 공지가 없을 때도 `TRACK CLEAR · RACE CONTROL MONITORING`을 유지해 레이스 컨트롤 위치가 움직이지 않는 중앙 고정 피드
+- 웻 상황에서도 트랙 배경 디자인은 유지하며 노면 정보만 상태값으로 반영
+- 1280×720을 포함한 주요 데스크톱 해상도에서 스크롤 없이 사용하도록 조정
+
+### Driver Control
+
+Driver Control 제목 영역에서 드라이버를 바로 전환할 수 있으며, 플레이어 팀 차량만 직접 지휘할 수 있습니다.
+
+| 영역 | 선택 항목 | 주요 영향 |
+| --- | --- | --- |
+| Pace | Attack, Push, Standard, Conserve, Cool | 랩타임, 연료, 타이어 마모와 열 발생 |
+| Energy | Attack, Balanced, Defend, Recharge | ERS 사용·회수와 공격·방어 성능 |
+| Tyre | Grip, Balanced, Save, Temperature | 접지력, 수명과 타이어 온도 |
+| Cooling | Normal, Lift & Coast, Max Cooling | 속도 손실과 파워유닛·브레이크 냉각 |
+| Next Tyre | Soft, Medium, Hard, Intermediate, Wet | 다음 피트스톱 장착 타이어 예약 |
+
+트랙 차량 인디케이터는 모든 차량에 같은 자동 ERS 규칙을 적용합니다. 실제 배터리 배치 구간은 빨간 링, 회수 구간은 초록 링, 중립 구간은 청록 링으로 표시하며, 플레이어의 Battery Usage 선택은 자동 구간 제어 안에서 공격성·보존 성향을 결정합니다.
+
+### 차량 열 관리
+
+- 차량 인포그래픽 위에 앞·뒤, 좌·우 4개 타이어 온도를 각각 표시
+- 4개 브레이크 온도와 파워유닛, 기어박스, 에너지 스토어 온도 추적
+- 날씨, 노면 수분, 구간 특성, 하중, 주행 모드와 냉각 설정이 온도 변화에 반영
+- 타이어별 적정 온도 범위, 열 스트레스, 출력 저하와 신뢰성 위험 계산
+- 상태 색상, 게이지와 경고 문구로 숫자만 보지 않고 위험도를 판단할 수 있는 UI
+- 열 위험에 대응할 수 있는 Cool, Recharge, Lift & Coast, Max Cooling 명령
+
+### Strategy Intelligence 3.0
+
+- Box Now, Stay Out, Undercut, Overcut 시나리오 비교
+- 각 시나리오의 예상 레이스 타임, 피트 손실, 재합류 순위와 트래픽 계산
+- 타이어 성능 교차점, 날씨 변화, Safety Car, 더블 스택과 차량 열 위험 반영
+- 추천 전략의 근거와 신뢰도 표시
+- 1랩째 정상적인 드라이 조건에서 불필요한 피트 추천을 억제하고 긴급 상황만 예외 처리
+- 전략 타임라인에서 예상 피트 윈도우와 언더컷 기회를 표시
+
+### Racecraft AI 2.0
+
+- Attack, Defend, Harvest, Hold 전투 상태
+- 공격 대상과 방어 위협, 추월·방어 확률, 접근 속도, 더티 에어 계산
+- 3초 뒤 예상 간격과 즉시 적용 가능한 전투 프리셋
+- AI 판단을 초당 2회 갱신해 성능과 반응성을 균형 있게 유지
+- 최소 2.5초 동안 순위와 간격이 안정된 경우에만 추월로 확정
+- Attack 페이스·ERS·슬립스트림 보너스의 과도한 중첩을 줄이고 디펜스와 더티에어가 실제 추월 난도에 영향을 주도록 재조정
+- 스타트 직후 단순 순위 재정렬은 추월 통계에서 제외
+- 상대별 쿨다운으로 같은 두 차량의 중복 추월 기록 방지
+
+### Pit Stop Operations 2.0
+
+- 차량별·정차 횟수별로 안정적으로 유지되는 피트 예상치
+- 정차 시간, 총 피트 손실, 피트 크루 준비 상태, 타이어 세트와 피트 트래픽 표시
+- 팀 동료가 같은 랩에 예약된 경우까지 포함한 더블 스택 위험 계산
+- Slow Release, Wheel Gun, Double Stack 이슈와 실제 정차 결과 반영
+- 차량별 타이어 세트 재고와 Fresh, Available, Reserved, Fitted, Used 상태 관리
+- 새 타이어뿐 아니라 사용한 컴파운드 재사용까지 스틴트 기록에 반영
+- 예약 취소와 Stay Out 명령 지원
+- 피트 진입부터 출구까지 총 피트 시간과 정지·타이어 교체시간을 각각 실시간 계측
+- 피트 완료 이벤트와 팀 라디오에 총 소요시간, 타이어 교체시간과 피트 이슈 기록
+
+### 날씨와 Race Control
+
+- 트랙 위치별 강수량, 노면 수분, 건조 라인과 섹터별 로컬 서피스
+- FastF1의 랩별 `Compound`, `TyreLife`, `Stint`, `PitInTime`, `PitOutTime` 분석 구조를 참고한 스틴트 전략 모델
+- 차량 바로 아래 노면만 보지 않고 전체 트랙의 젖은 구간 비율, 심한 수막 비율, 건조 라인과 5분 예보를 함께 평가
+- 드라이·인터미디어트·웻 교차점, 사용 가능한 타이어 세트, 타이어 수명, 피트 손실과 더블 스택 위험을 반영한 AI 피트 판단
+- 우천 시 10초마다 전략을 재평가하고, 컴파운드 전환 히스테리시스와 최소 스틴트 조건으로 반복 교체 방지
+- 플레이어 팀에는 자동 명령 대신 `WEATHER CROSSOVER · BOX THIS LAP` 엔지니어 무전을 보내 최종 판단 권한 유지
+- Yellow, VSC, Safety Car 단계와 피트레인 상태
+- 물리적인 Safety Car 위치, 대열 순서와 델타 관리
+- Safety Car 중 피트 진입·정차·재합류로 바뀌는 순위와 앞차 간격을 즉시 Leader Board에 반영
+- 사고, 중립화 발령·해제와 재시작 이벤트 기록
+- Safety Car 또는 VSC 상황의 줄어든 피트 손실을 전략 계산에 반영
+
+### Dynamic Team Radio
+
+- 선택한 차량과 무관하게 선택한 팀의 두 드라이버 메시지를 하나의 팀 채널에 통합
+- 15초 단위로 타이어 수명·온도, 에너지, 더티에어, 앞뒤 간격, 차량 밸런스와 현재 페이스를 평가
+- 드라이버 불평과 주행 감각, 엔지니어의 간격·자원·지속 가능 페이스 안내를 상황에 따라 능동적으로 생성
+- 가장 최근 세 개의 핵심 메시지를 큰 카드형 타임라인으로 표시하고 드라이버·엔지니어 출처와 시간을 분리
+- FIA Race Control 공지는 팀 라디오에서 분리해 최상단 중앙의 고정 공지 영역에 표시
+
+### Race Report
+
+- 경기 리포트 계산에 필요한 프레임만 내부적으로 압축 기록하며 사용자용 Replay 화면은 제거
+- 경기 중에는 현재 선두 기준의 잠정 리포트, 완주 후에는 최종 우승자 기준 리포트 생성
+- 최종 순위, 패스티스트 랩, 추월, 피트스톱과 피트 이슈 집계
+- 사고, 열 경고, 타이어 전략과 플레이어 드라이버 디브리프
+- 리셋 시 이전 경기의 스냅샷과 이벤트가 새 세션에 섞이지 않도록 수명주기 보호
+
+## 주요 화면과 조작
+
+- **Leader Board**: 드라이버를 선택하고 순위, 앞차 간격, 상태와 타이어를 확인합니다.
+- **차량 상태**: 실시간 원형 배터리 잔량, 타이어·브레이크·PU·기어박스 온도와 피트 진행 상태를 확인합니다.
+- **Race Operations**: 배터리·타이어·열 상태 인포그래픽, 레이스크래프트, 피트 운영과 타이어 재고를 확인합니다.
+- **Strategy 3.0**: 큰 글씨로 전략 시나리오를 비교하고 추천 피트 계획을 적용합니다.
+- **Report**: 경기 중 잠정 결과와 완주 후 최종 결과를 분석합니다.
+- **상단 재생 컨트롤**: 레이스를 일시정지·재개하고 시뮬레이션 배속을 변경합니다.
+- **Escape**: 열린 운영 패널을 닫고 이전 포커스로 돌아갑니다.
+
+Race Operations, Strategy 3.0, Report 패널은 키보드 포커스 트랩과 포커스 복귀를 지원합니다.
+
+## 프로젝트 구조
+
+```text
+src/
+├── app/                    Next.js 진입점과 전역 스타일
+├── components/race/        트랙, 상단 바, Leader Board, 제어·전략·리포트 UI
+├── domain/                 레이스 상태와 명령 타입
+├── fixtures/               22명 드라이버와 11개 팀 그리드 데이터
+├── hooks/                  Worker 통신과 UI용 React 훅
+├── simulation/             레이스 엔진과 각 시뮬레이션 시스템
+├── store/                  UI와 Worker 사이의 상태 관리
+└── workers/                레이스 Web Worker
+```
+
+주요 시뮬레이션 모듈:
+
+- `engine.ts`: 고정 타임스텝 레이스 엔진과 시스템 통합
+- `track.ts`, `silverstone-telemetry.ts`: 트랙 지오메트리와 속도 프로파일
+- `thermal-management.ts`: 타이어·브레이크·파워트레인 열 모델
+- `weather.ts`, `race-control.ts`: 날씨, 노면과 중립화 상태
+- `race-control-feed.ts`: OpenF1형 Race Control 메시지 정규화와 상단 피드 데이터
+- `ai-strategy.ts`, `tyre-crossover.ts`: 전 트랙 노면·예보·스틴트 기반 AI 타이어 교차점 판단
+- `strategy-intelligence.ts`, `live-strategy.ts`: 전략 시나리오와 실시간 추천
+- `racecraft.ts`: 공격·방어와 추월 판정
+- `pit-operations.ts`: 피트 예상, 재고와 실제 피트 이벤트
+- `fia-2026-rules.ts`, `stewarding.ts`: 2026 FIA 위반 판정표, 조사 상태 머신, 패널티 수행·전환
+- `race-replay.ts`, `race-report.ts`: 리플레이 데이터와 경기 리포트
+- `championship.ts`: 3라운드 일정, 포인트, countback과 다음 라운드 진행
+- `game-save.ts`: 스키마 v1 전체 세이브 검증·직렬화·복원
+- `reliability.ts`: 부품 마모, 정비, 성능 저하와 고장 위험
+
+### FIA 패널티 시스템
+
+- 사건을 `NOTED → UNDER INVESTIGATION → DECISION PENDING → PENALTY / NO FURTHER ACTION`으로 영구 추적
+- 피트 과속, Unsafe Release, 충돌 책임, 트랙 이탈 이득, 트랙 리밋, SC/VSC 델타, False Start, 타이어 규정과 Blue Flag 불이행 판정
+- 5초·10초 패널티는 다음 실제 타이어 피트스톱에서 먼저 수행하며, 홀드 중 차량 접촉과 타이어 작업을 금지
+- Drive-Through와 10초 Stop-and-Go는 타이어 교체와 결합하지 않고 최대 두 번의 컨트롤 라인 통과 안에 수행
+- SC/VSC 중에는 이미 피트 진입 절차에 있지 않은 DT/SG 수행을 막고, 수행 마감 라인 카운트를 정지
+- 마지막 랩 구간 또는 경기 종료 시 미수행 패널티를 5·10·20·30초 결과 패널티로 전환
+- Leader Board는 평상시 상태 문자를 제거하고, 심사 중에는 노란 느낌표, 미수행 패널티는 빨간 느낌표만 표시
+- 패널티 수행 완료 시 빨간 표시가 사라지며 Race Report의 공식 순위와 실격 판정에 반영
+
+## 개발 명령어
+
+```bash
+npm run dev          # 개발 서버
+npm run typecheck    # TypeScript 타입 검사
+npm run lint         # ESLint 검사
+npm run test         # Vitest 전체 테스트
+npm run test:watch   # 테스트 감시 모드
+npm run build        # Next.js 프로덕션 빌드
+npm run start        # 프로덕션 서버
+```
+
+## 검증 현황
+
+현재 구현은 다음 검증을 통과했습니다.
+
+- TypeScript 타입 검사
+- ESLint 검사
+- Next.js 프로덕션 빌드
+- Vitest 전체 회귀 테스트
+- Playwright 기반 1440×900·1280×800·390×844 실제 화면 및 핵심 위크엔드 진행 검증
+- Vitest 30개 통과 파일, 250개 테스트 통과(샘플링 전용 1개 파일·1개 테스트 제외)
+- 결정론적 52랩 완주 시뮬레이션
+- 시드 `20260712` 기준 52랩 종료, 추월량 상한과 모든 차량 상태 유효성 회귀 검증
+- 전 트랙 우천 분포, 국지성 소나기, AI 인터미디어트 전환과 플레이어 엔지니어 피트 콜 회귀 검증
+- 1280×720 및 주요 데스크톱 해상도에서 100% 배율 UI 확인
+
+커밋 전 권장 전체 검증:
+
+```bash
 npm run typecheck
-npm test
+npm run lint
+npm run test
 npm run build
 ```
 
-The footer exposes the fixed tick, seed, and deterministic state hash.
+## 현재 범위와 남은 개발
 
-## Current scope
+현재 버전은 Silverstone 단일 레이스의 운영과 전략 경험에 집중합니다. 아래 항목은 아직 완성 범위에 포함되지 않았습니다.
 
-Included: the 11-team/22-driver 2026 grid, Silverstone's 5.891 km Grand Prix layout and 52-lap race distance, continuously extrapolated curved-centreline movement, lap/position/gaps, tyre life and temperature, fuel burn, Pace and Tyre Management commands, PixiJS live map, timing tower, two player-car cards, fixed tick, speed controls, deterministic reset, and debug data.
+- 여러 서킷과 시즌 캘린더
+- 드라이버·컨스트럭터 챔피언십
+- 팀 재정, 연구개발, 시설, 계약과 커리어 모드
+- 시즌 전체 타이어 할당과 파워유닛 부품 수명 관리
+- 열 위험을 넘어선 상세 기계 고장·수리 시스템
+- 온라인 멀티플레이와 서버 저장
+- 3D 레이스 화면, 오디오와 중계 연출
+- 리플레이·리포트 파일 내보내기와 장기 세이브 데이터
 
-Intentionally deferred: tyre-set changes and pit stops, 2026 energy deployment, active-aero rules beyond zone visualization, battle resolution, weather, safety car, qualifying, and team management. These are sequenced in `F1_2026_GAME_DESIGN.md`.
+다음 확장 우선순위는 다중 서킷 데이터 파이프라인, 챔피언십·팀 운영, 부품 신뢰성 시스템과 장기 세이브 순서입니다.
 
-## Data sources
+## 데이터 출처
 
-- Driver names, teams, three-letter abbreviations, and numbers: [Formula 1 official 2026 drivers](https://www.formula1.com/en/drivers), [2026 driver standings](https://www.formula1.com/en/results/2026/drivers), and [official 2026 driver numbers](https://www.formula1.com/en/latest/article/all-the-2026-f1-driver-numbers-confirmed-in-full.5rh7o9mPntG7NerzVk9onc).
-- Silverstone length, corners, laps, and 2026 Straight Mode information: [Formula 1 official Silverstone circuit guide](https://www.formula1.com/en/latest/article/circuit-guide-everything-you-need-to-know-about-silverstone-2026.5Sl0O8g393enBWVIkjRzOr).
-- Silverstone centreline geometry: © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright), available under the Open Database License. The raw raceway ways were normalized and converted into a closed Catmull–Rom curve for this prototype.
+- Silverstone 트랙 중심선: [OpenStreetMap](https://www.openstreetmap.org/) 기반 가공 데이터
+- 1랩 텔레메트리 기준: [zvanjak/MML의 `f1_silverstone_lap.csv`](https://github.com/zvanjak/MML)
+- 트랙 길이, 랩 수와 코너 메타데이터: 공개 Silverstone 및 Formula 1 서킷 정보에 맞춰 구성
+- FP1·FP2·FP3와 Q1·Q2·Q3 세션 규칙: FIA 2026 Formula 1 Sporting Regulations Section B, Issue 07 기준
+- 패널티 종류·수행 절차: [FIA 2026 F1 Sporting Regulations Section B, Issue 07 (2026-06-25)](https://www.fia.com/system/files/documents/fia_2026_f1_regulations_-_section_b_sporting_-_iss_07_-_2026-06-25.pdf), 특히 B1.9.5–B1.9.7
+- 위반별 기준 제재: [2026 Formula 1 Penalty Guidelines v01](https://www.fia.com/sites/default/files/2026_f1_penalty_guidelines.pdf)
+- Race Control 메시지 스키마와 카테고리 의미: [OpenF1 `race_control` 구현 및 API 문서](https://github.com/br-g/openf1)
+- 랩별 컴파운드·스틴트·타이어 수명·피트 타이밍 분석 구조: [FastF1](https://github.com/theOehrly/Fast-F1)
+
+원본 라이선스와 제3자 고지는 [`THIRD_PARTY_NOTICES.md`](./THIRD_PARTY_NOTICES.md)에서 확인할 수 있습니다. 초기 게임 설계 방향은 [`F1_2026_GAME_DESIGN.md`](./F1_2026_GAME_DESIGN.md)에 정리되어 있습니다.
+
+## 기술 스택
+
+- Next.js 16
+- React 19
+- TypeScript 5
+- PixiJS 8
+- Zustand 5
+- Vitest 4
+- ESLint

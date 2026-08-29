@@ -1,0 +1,338 @@
+{
+  "passed": [
+    "1440x900 renders all 22 grid cars",
+    "1440x900 keeps P22 visible",
+    "1440x900 gives each player car its own compound tabs",
+    "1440x900 exposes five compounds for both player cars",
+    "1440x900 allows a Soft race start",
+    "1440x900 applies the Soft selection immediately",
+    "1440x900 lists the selected compound's sets",
+    "1440x900 reports remaining life on every selectable set",
+    "1440x900 can select an exact starting set",
+    "1440x900 shows the conditions the race starts in",
+    "1440x900 shows a plan block for each player car",
+    "1440x900 displays Plan A, Plan B and Plan C",
+    "1440x900 plans show legal multi-compound stint graphics and stop counts",
+    "1440x900 keeps P22, car two, Plan C and START RACE inside the viewport",
+    "1440x900 has no document overflow",
+    "1440x900 shows every Leader Board heading without clipping",
+    "1440x900 centers FREE, HOLD and SWAP icons",
+    "1440x900 gives the latest driver message the primary radio slot",
+    "1440x900 shows one compact engineer command response",
+    "1440x900 keeps long radio and blue engineer metadata inside the radio panel",
+    "1440x900 race HUD has no document overflow",
+    "1280x720 renders all 22 grid cars",
+    "1280x720 keeps P22 visible",
+    "1280x720 gives each player car its own compound tabs",
+    "1280x720 exposes five compounds for both player cars",
+    "1280x720 allows a Soft race start",
+    "1280x720 applies the Soft selection immediately",
+    "1280x720 lists the selected compound's sets",
+    "1280x720 reports remaining life on every selectable set",
+    "1280x720 can select an exact starting set",
+    "1280x720 shows the conditions the race starts in",
+    "1280x720 shows a plan block for each player car",
+    "1280x720 displays Plan A, Plan B and Plan C",
+    "1280x720 plans show legal multi-compound stint graphics and stop counts",
+    "1280x720 keeps P22, car two, Plan C and START RACE inside the viewport",
+    "1280x720 has no document overflow",
+    "1280x720 shows every Leader Board heading without clipping",
+    "1280x720 centers FREE, HOLD and SWAP icons",
+    "1280x720 gives the latest driver message the primary radio slot",
+    "1280x720 shows one compact engineer command response",
+    "1280x720 keeps long radio and blue engineer metadata inside the radio panel",
+    "1280x720 race HUD has no document overflow",
+    "browser console has no uncaught errors"
+  ],
+  "viewports": {
+    "1440x900 prep": {
+      "metrics": {
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "document": {
+          "width": 1440,
+          "height": 900
+        },
+        "root": {
+          "left": 0,
+          "top": 0,
+          "right": 1440,
+          "bottom": 900
+        }
+      },
+      "bounds": [
+        {
+          "selector": "[class*='gridPair']:last-child article:last-child",
+          "left": 252.78125,
+          "top": 732.4375,
+          "right": 463.5625,
+          "bottom": 760.4375,
+          "width": 210.78125,
+          "height": 28
+        },
+        {
+          "selector": "[class*='driverStrategyRow']:last-of-type",
+          "left": 495.5625,
+          "top": 537.65625,
+          "right": 1410,
+          "bottom": 772.3125,
+          "width": 914.4375,
+          "height": 234.65625
+        },
+        {
+          "selector": "[class*='preRacePlanRows'] > article:nth-child(3)",
+          "left": 507.5625,
+          "top": 479.765625,
+          "right": 1399,
+          "bottom": 520.65625,
+          "width": 891.4375,
+          "height": 40.890625
+        },
+        {
+          "selector": "[class*='raceDebriefArea'] button",
+          "left": 1087,
+          "top": 828.5,
+          "right": 1417,
+          "bottom": 882.5,
+          "width": 330,
+          "height": 54
+        }
+      ],
+      "planFacts": [
+        {
+          "label": "PLAN ABALANCED ONE-STOPSL1–19BOX L19HL20–521 STOPRECOMMENDED · LOW RISK",
+          "stints": 2,
+          "compounds": 2
+        },
+        {
+          "label": "PLAN BATTACK TWO-STOPSL1–16BOX L16HL17–35BOX L35ML36–522 STOPS+18.7s · LOW RISK",
+          "stints": 3,
+          "compounds": 3
+        },
+        {
+          "label": "PLAN CLONG-STINT ONE-STOPSL1–23BOX L23HL24–521 STOP+40.0s · HIGH RISK",
+          "stints": 2,
+          "compounds": 2
+        }
+      ]
+    },
+    "1440x900 race": {
+      "metrics": {
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "document": {
+          "width": 1440,
+          "height": 900
+        },
+        "root": {
+          "left": 0,
+          "top": 0,
+          "right": 1440,
+          "bottom": 900
+        }
+      },
+      "headerFacts": [
+        {
+          "text": "P",
+          "fits": true,
+          "width": 22
+        },
+        {
+          "text": "DRIVER",
+          "fits": true,
+          "width": 54
+        },
+        {
+          "text": "TYRE",
+          "fits": true,
+          "width": 36
+        },
+        {
+          "text": "LIFE",
+          "fits": true,
+          "width": 42
+        },
+        {
+          "text": "GAP",
+          "fits": true,
+          "width": 80
+        }
+      ],
+      "orderFacts": [
+        {
+          "text": "FREE",
+          "icon": true,
+          "iconOffset": 0.0078125,
+          "labelOffset": 0
+        },
+        {
+          "text": "HOLD",
+          "icon": true,
+          "iconOffset": 0.0078125,
+          "labelOffset": 0
+        },
+        {
+          "text": "SWAP",
+          "icon": true,
+          "iconOffset": 0,
+          "labelOffset": 0.0078125
+        }
+      ],
+      "radioFit": {
+        "metaFits": true,
+        "overflowY": "auto",
+        "endReachable": true,
+        "weatherStable": true
+      }
+    },
+    "1280x720 prep": {
+      "metrics": {
+        "viewport": {
+          "width": 1280,
+          "height": 720
+        },
+        "document": {
+          "width": 1280,
+          "height": 720
+        },
+        "root": {
+          "left": 0,
+          "top": 0,
+          "right": 1280,
+          "bottom": 720
+        }
+      },
+      "bounds": [
+        {
+          "selector": "[class*='gridPair']:last-child article:last-child",
+          "left": 225.578125,
+          "top": 573.171875,
+          "right": 413.15625,
+          "bottom": 597.171875,
+          "width": 187.578125,
+          "height": 24
+        },
+        {
+          "selector": "[class*='driverStrategyRow']:last-of-type",
+          "left": 438.15625,
+          "top": 440.59375,
+          "right": 1254.984375,
+          "bottom": 627,
+          "width": 816.828125,
+          "height": 186.40625
+        },
+        {
+          "selector": "[class*='preRacePlanRows'] > article:nth-child(3)",
+          "left": 448.15625,
+          "top": 397.78125,
+          "right": 1245.984375,
+          "bottom": 427.59375,
+          "width": 797.828125,
+          "height": 29.8125
+        },
+        {
+          "selector": "[class*='raceDebriefArea'] button",
+          "left": 927,
+          "top": 652.5,
+          "right": 1257,
+          "bottom": 702.5,
+          "width": 330,
+          "height": 50
+        }
+      ],
+      "planFacts": [
+        {
+          "label": "PLAN ABALANCED ONE-STOPSL1–19BOX L19HL20–521 STOPRECOMMENDED · LOW RISK",
+          "stints": 2,
+          "compounds": 2
+        },
+        {
+          "label": "PLAN BATTACK TWO-STOPSL1–16BOX L16HL17–35BOX L35ML36–522 STOPS+18.7s · LOW RISK",
+          "stints": 3,
+          "compounds": 3
+        },
+        {
+          "label": "PLAN CLONG-STINT ONE-STOPSL1–23BOX L23HL24–521 STOP+40.0s · HIGH RISK",
+          "stints": 2,
+          "compounds": 2
+        }
+      ]
+    },
+    "1280x720 race": {
+      "metrics": {
+        "viewport": {
+          "width": 1280,
+          "height": 720
+        },
+        "document": {
+          "width": 1280,
+          "height": 720
+        },
+        "root": {
+          "left": 0,
+          "top": 0,
+          "right": 1280,
+          "bottom": 720
+        }
+      },
+      "headerFacts": [
+        {
+          "text": "P",
+          "fits": true,
+          "width": 21
+        },
+        {
+          "text": "DRIVER",
+          "fits": true,
+          "width": 46
+        },
+        {
+          "text": "TYRE",
+          "fits": true,
+          "width": 34
+        },
+        {
+          "text": "LIFE",
+          "fits": true,
+          "width": 40
+        },
+        {
+          "text": "GAP",
+          "fits": true,
+          "width": 61
+        }
+      ],
+      "orderFacts": [
+        {
+          "text": "FREE",
+          "icon": true,
+          "iconOffset": 0.0078125,
+          "labelOffset": 0
+        },
+        {
+          "text": "HOLD",
+          "icon": true,
+          "iconOffset": 0.0078125,
+          "labelOffset": 0
+        },
+        {
+          "text": "SWAP",
+          "icon": true,
+          "iconOffset": 0,
+          "labelOffset": 0.0078125
+        }
+      ],
+      "radioFit": {
+        "metaFits": true,
+        "overflowY": "auto",
+        "endReachable": true,
+        "weatherStable": true
+      }
+    }
+  },
+  "consoleErrors": []
+}

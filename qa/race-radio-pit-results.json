@@ -1,0 +1,62 @@
+{
+  "passed": [
+    "never more pit panels than player cars",
+    "1920x1080 shows every team-radio message in full",
+    "1920x1080 never clips radio message text",
+    "1920x1080 keeps Race Control text unclipped",
+    "1920x1080 keeps the driver energy block unclipped",
+    "1920x1080 never overlaps blocks inside the driver energy panel",
+    "1920x1080 never overlaps the thermal map with the energy block",
+    "1440x900 shows every team-radio message in full",
+    "1440x900 never clips radio message text",
+    "1440x900 keeps Race Control text unclipped",
+    "1440x900 keeps the driver energy block unclipped",
+    "1440x900 never overlaps blocks inside the driver energy panel",
+    "1440x900 never overlaps the thermal map with the energy block",
+    "1280x720 shows every team-radio message in full",
+    "1280x720 never clips radio message text",
+    "1280x720 keeps Race Control text unclipped",
+    "1280x720 keeps the driver energy block unclipped",
+    "1280x720 never overlaps blocks inside the driver energy panel",
+    "1280x720 never overlaps the thermal map with the energy block",
+    "browser reports no runtime errors"
+  ],
+  "consoleErrors": [],
+  "viewports": {
+    "1920x1080": {
+      "radioMessages": [],
+      "radioText": [],
+      "raceControl": [],
+      "carCards": [],
+      "surfaceHeight": 102,
+      "radioHeight": 654,
+      "energyOverlaps": [],
+      "cardSectionOverlaps": []
+    },
+    "1440x900": {
+      "radioMessages": [],
+      "radioText": [],
+      "raceControl": [],
+      "carCards": [],
+      "surfaceHeight": 102,
+      "radioHeight": 434,
+      "energyOverlaps": [],
+      "cardSectionOverlaps": []
+    },
+    "1280x720": {
+      "radioMessages": [],
+      "radioText": [],
+      "raceControl": [],
+      "carCards": [],
+      "surfaceHeight": 102,
+      "radioHeight": 259,
+      "energyOverlaps": [],
+      "cardSectionOverlaps": []
+    }
+  },
+  "pitPanels": {
+    "maxPanels": 0,
+    "pulsingSeen": 0,
+    "stationarySeen": 0
+  }
+}

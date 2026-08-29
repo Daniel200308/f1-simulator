@@ -1,0 +1,116 @@
+{
+  "passed": [
+    "1280x720 divides the centreline into exactly three sector paths",
+    "1280x720 keeps S1, S2 and S3 labels visible on the circuit",
+    "1280x720 renders two sector timing boundaries",
+    "1280x720 renders a distinct start-finish line",
+    "1280x720 labels start-finish, pit entry and pit exit",
+    "1280x720 uses three restrained but distinct sector tones",
+    "1280x720 sector labels are large enough to scan",
+    "1280x720 uses larger driver abbreviations with player emphasis",
+    "1280x720 uses high-contrast white labels with dark plates",
+    "1280x720 preserves stable driver label directions",
+    "1280x720 legend matches all seven live marker states",
+    "1280x720 keeps one memoised SVG and one animated Canvas",
+    "1280x720 renders an amber YIELD state for at least one slower car",
+    "1280x720 exercises the map with a realistic multi-car traffic field",
+    "1280x720 avoids almost-identical live marker positions during the pass",
+    "1280x720 fully freezes Canvas motion and YIELD pulses when paused",
+    "1280x720 has no document overflow",
+    "1280x720 keeps all three primary work areas inside the viewport",
+    "1440x900 divides the centreline into exactly three sector paths",
+    "1440x900 keeps S1, S2 and S3 labels visible on the circuit",
+    "1440x900 renders two sector timing boundaries",
+    "1440x900 renders a distinct start-finish line",
+    "1440x900 labels start-finish, pit entry and pit exit",
+    "1440x900 uses three restrained but distinct sector tones",
+    "1440x900 sector labels are large enough to scan",
+    "1440x900 uses larger driver abbreviations with player emphasis",
+    "1440x900 uses high-contrast white labels with dark plates",
+    "1440x900 preserves stable driver label directions",
+    "1440x900 legend matches all seven live marker states",
+    "1440x900 keeps one memoised SVG and one animated Canvas",
+    "1440x900 renders an amber YIELD state for at least one slower car",
+    "1440x900 exercises the map with a realistic multi-car traffic field",
+    "1440x900 avoids almost-identical live marker positions during the pass",
+    "1440x900 fully freezes Canvas motion and YIELD pulses when paused",
+    "1440x900 has no document overflow",
+    "1440x900 keeps all three primary work areas inside the viewport",
+    "browser reports no runtime errors"
+  ],
+  "viewports": {
+    "1280x720": {
+      "traffic": {
+        "yieldingCars": 1,
+        "overlaps": 0,
+        "activeCars": 8,
+        "minimumProgressGap": "0.078950"
+      },
+      "innerWidth": 1280,
+      "innerHeight": 720,
+      "scrollWidth": 1280,
+      "scrollHeight": 720,
+      "map": {
+        "left": 347,
+        "top": 89,
+        "right": 963,
+        "bottom": 711,
+        "width": 616,
+        "height": 622
+      },
+      "controls": {
+        "left": 972,
+        "top": 88,
+        "right": 1272,
+        "bottom": 712,
+        "width": 300,
+        "height": 624
+      },
+      "tower": {
+        "left": 8,
+        "top": 88,
+        "right": 338,
+        "bottom": 712,
+        "width": 330,
+        "height": 624
+      }
+    },
+    "1440x900": {
+      "traffic": {
+        "yieldingCars": 1,
+        "overlaps": 0,
+        "activeCars": 4,
+        "minimumProgressGap": "0.053611"
+      },
+      "innerWidth": 1440,
+      "innerHeight": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900,
+      "map": {
+        "left": 367,
+        "top": 89,
+        "right": 1105,
+        "bottom": 891,
+        "width": 738,
+        "height": 802
+      },
+      "controls": {
+        "left": 1114,
+        "top": 88,
+        "right": 1432,
+        "bottom": 892,
+        "width": 318,
+        "height": 804
+      },
+      "tower": {
+        "left": 8,
+        "top": 88,
+        "right": 358,
+        "bottom": 892,
+        "width": 350,
+        "height": 804
+      }
+    }
+  },
+  "consoleErrors": []
+}
