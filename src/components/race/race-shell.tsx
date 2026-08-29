@@ -171,11 +171,6 @@ export function RaceShell() {
     && selectedCar.teamId === snapshot?.playerTeamId
     && !selectedCar.finished
     && selectedCar.incidentStatus !== "RETIRED");
-  const raceControlLabel = snapshot?.raceControl === "YELLOW"
-    ? "YELLOW"
-    : snapshot?.raceControl === "SAFETY_CAR"
-      ? snapshot.safetyCarPhase === "RESTART" ? "SAFETY CAR ENDING" : "SAFETY CAR"
-      : snapshot?.raceControl === "VSC" ? "VIRTUAL SAFETY CAR" : snapshot?.raceControl.replace("_", " ") ?? "GREEN";
   const qualifyingLiveSession = weekend.qualifyingLive?.session;
   const qualifyingLiveStatus = weekend.qualifyingLive?.status;
   const qualifyingLivePaused = weekend.qualifyingLive?.paused ?? false;
@@ -597,7 +592,6 @@ export function RaceShell() {
               <button aria-label="Open display and audio settings" onClick={() => setPreferencesOpen(true)} title="Display and audio settings" type="button"><Settings2 aria-hidden="true" size={14} /><span>SETTINGS</span></button>
               <button aria-label="Open strategy intelligence" disabled={!snapshot || !selectedCarActive} onClick={() => setStrategyCarId(selectedCar?.carId ?? null)} type="button"><BrainCircuit aria-hidden="true" size={14} /><span>STRATEGY</span></button>
               <button aria-label="Open race report" disabled={!snapshot || !replayRecording?.frames.length} onClick={() => { controls.pause(); setReportOpen(true); }} type="button"><Trophy aria-hidden="true" size={14} /><span>REPORT</span></button>
-              <div className={`live-pill live-pill--${(snapshot?.raceControl ?? "GREEN").toLowerCase()}`}><i /> {startPhase === "RACING" ? (paused ? "PAUSED" : snapshot?.raceControl === "GREEN" ? `${speed}× LIVE` : raceControlLabel) : "ON GRID"}</div>
             </div>
           </div>
           <RaceMap startPhase={startPhase} lightsOn={lightsOn} />
