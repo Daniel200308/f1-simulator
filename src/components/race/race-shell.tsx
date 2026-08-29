@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { BrainCircuit, HardDrive, Settings2, Trophy } from "lucide-react";
+import { BrainCircuit, Flag, HardDrive, Settings2, Trophy } from "lucide-react";
 
 import type { RaceSnapshot, TyreCompound } from "@/domain/race";
 import { CarStatusPanel } from "@/components/race/car-status";
@@ -62,6 +62,19 @@ function freshWeekendSeed(): number {
     ? crypto.getRandomValues(new Uint32Array(1))[0]
     : Date.now() >>> 0;
   return (DEFAULT_SEED ^ (Date.now() >>> 0) ^ entropy) >>> 0;
+}
+
+function CircuitCountryFlag({ country }: { country: string }) {
+  if (country !== "United Kingdom") return <Flag aria-hidden="true" size={15} strokeWidth={2.2} />;
+  return (
+    <svg aria-hidden="true" className="circuit-title__flag" viewBox="0 0 24 16">
+      <rect fill="#173b80" height="16" rx="2" width="24" />
+      <path d="M0 0 24 16M24 0 0 16" fill="none" stroke="#fff" strokeWidth="4" />
+      <path d="M0 0 24 16M24 0 0 16" fill="none" stroke="#cf2027" strokeWidth="1.7" />
+      <path d="M12 0v16M0 8h24" fill="none" stroke="#fff" strokeWidth="5" />
+      <path d="M12 0v16M0 8h24" fill="none" stroke="#cf2027" strokeWidth="2.6" />
+    </svg>
+  );
 }
 
 const AUTOSAVE_KEY = "project-pitwall:game-save:v1";
@@ -571,7 +584,13 @@ export function RaceShell() {
         <TimingTower />
         <section className="map-column">
           <div className="circuit-title">
-            <div><span className="eyebrow">{circuit.country.toUpperCase()} · {(circuit.lengthMeters / 1_000).toFixed(3)} KM · {circuit.turns} TURNS</span><h1>{circuit.name}</h1></div>
+            <div>
+              <span className="eyebrow circuit-title__eyebrow">
+                <CircuitCountryFlag country={circuit.country} />
+                <span>{circuit.country.toUpperCase()} · {(circuit.lengthMeters / 1_000).toFixed(3)} KM · {circuit.turns} TURNS</span>
+              </span>
+              <h1>{circuit.name}</h1>
+            </div>
             <div className="operations-launcher">
               <button aria-label="Open save manager" disabled={!saveStateReady} onClick={() => { controls.pause(); setSaveManagerOpen(true); }} title="Save and restore" type="button"><HardDrive aria-hidden="true" size={14} /><span>SAVE</span></button>
               <button aria-label="Open championship" onClick={() => setChampionshipOpen(true)} title={`Championship${applyGridDropLabel(reliability.pendingGridPenaltyPlaces)}`} type="button"><Trophy aria-hidden="true" size={14} /><span>SEASON</span>{reliability.pendingGridPenaltyPlaces > 0 && <b>{reliability.pendingGridPenaltyPlaces}</b>}</button>

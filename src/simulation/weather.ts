@@ -58,6 +58,7 @@ export type WeatherScenarioKind =
   | "HEAVY_SUSTAINED"
   | "SUNSHOWER"
   | "STOP_START_SHOWERS"
+  | "MID_RACE_SHOWERS"
   | "LATE_STORM"
   | "CLEARING_RAIN";
 
@@ -92,11 +93,12 @@ const WEATHER_RAIN_SCENARIO_KINDS: readonly Exclude<WeatherScenarioKind, "CLEAR"
   "HEAVY_SUSTAINED",
   "SUNSHOWER",
   "STOP_START_SHOWERS",
+  "MID_RACE_SHOWERS",
   "LATE_STORM",
   "CLEARING_RAIN",
 ];
-/** Keeps a useful dry-race baseline while retaining varied wet scenarios. */
-export const WEATHER_CLEAR_SCENARIO_SHARE = 0.14;
+/** Keeps a useful dry-race baseline while making mid-race weather a little more common. */
+export const WEATHER_CLEAR_SCENARIO_SHARE = 0.12;
 const weatherScenarioCache = new Map<number, WeatherScenario>();
 
 interface WeatherScenarioProfile {
@@ -152,6 +154,12 @@ const WEATHER_SCENARIO_PROFILES: Readonly<Record<Exclude<WeatherScenarioKind, "C
   STOP_START_SHOWERS: {
     cellCount: 3, start: [100, 2_200], duration: [620, 1_050], peak: [0.6, 0.86], stagger: [360, 760],
     travel: [1.2, 1.95], radius: [0.32, 0.5], buildFraction: [0.18, 0.42], buildExponent: [0.42, 0.95], decayExponent: [0.62, 1.25],
+  },
+  MID_RACE_SHOWERS: {
+    // A deliberately compact mid-race window: enough to create a real tyre
+    // crossover without turning every weekend into a wet race.
+    cellCount: 2, start: [1_250, 2_750], duration: [720, 1_280], peak: [0.55, 0.82], stagger: [150, 420],
+    travel: [1.05, 1.75], radius: [0.34, 0.54], buildFraction: [0.24, 0.5], buildExponent: [0.5, 1.05], decayExponent: [0.65, 1.25],
   },
   LATE_STORM: {
     cellCount: 2, start: [2_300, 4_000], duration: [900, 1_650], peak: [0.7, 0.99], stagger: [60, 260],

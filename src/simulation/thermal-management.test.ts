@@ -14,7 +14,7 @@ describe("thermal management", () => {
     expect(thermalPerformanceFactor(hotCar)).toBeLessThan(0.96);
   });
 
-  it("moves brake heat toward the axle selected by brake bias", () => {
+  it("uses the fixed default braking distribution for brake heat", () => {
     const start = { frontLeft: 500, frontRight: 500, rearLeft: 500, rearRight: 500 };
     const result = advanceBrakeTemperatures(start, {
       previousSpeedKph: 300,
@@ -25,7 +25,6 @@ describe("thermal management", () => {
       localWater: 0,
       airTemperature: 22,
       pitStopped: false,
-      brakeBiasPercent: 61,
       coolingMode: "NORMAL",
     }, 1);
     expect(result.frontLeft).toBeGreaterThan(result.rearLeft);

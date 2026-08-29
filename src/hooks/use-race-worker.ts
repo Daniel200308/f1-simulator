@@ -49,7 +49,6 @@ export function useRaceWorker() {
     setEnergyMode: (carId: string, mode: EnergyMode) => send({ type: "SET_ENERGY_MODE", carId, mode }),
     debugEnergy: (carId: string, action: EnergyDebugAction) => send({ type: "DEBUG_ENERGY", carId, action }),
     setCoolingMode: (carId: string, mode: CoolingMode) => send({ type: "SET_COOLING_MODE", carId, mode }),
-    setBrakeBias: (carId: string, brakeBiasPercent: number) => send({ type: "SET_BRAKE_BIAS", carId, brakeBiasPercent }),
     box: (carId: string, compound: TyreCompound, tyreSetId?: string) => send({ type: "BOX", carId, compound, tyreSetId }),
     servePenalty: (carId: string) => send({ type: "SERVE_PENALTY", carId }),
     stayOut: (carId: string) => send({ type: "CANCEL_PIT", carId }),

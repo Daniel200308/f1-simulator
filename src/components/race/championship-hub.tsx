@@ -53,7 +53,7 @@ export function ChampionshipHub({ championship, reliability, onClose, onMaintena
       <main aria-label="Championship operations" aria-modal="true" className={styles.panel} role="dialog">
         <header className={styles.header}>
           <span><Trophy aria-hidden="true" size={26} /></span>
-          <div><small>PROJECT PITWALL · MINI CHAMPIONSHIP</small><h1>{championshipComplete ? "Season complete" : `Round ${round?.roundNumber} ready`}</h1></div>
+          <div><small>PROJECT PITWALL · MINI CHAMPIONSHIP</small><h1 className="formula-title">{championshipComplete ? "Season complete" : `Round ${round?.roundNumber} ready`}</h1></div>
           <button onClick={onClose} ref={closeRef} type="button">Return to pitwall</button>
         </header>
 
@@ -67,7 +67,7 @@ export function ChampionshipHub({ championship, reliability, onClose, onMaintena
         </section>
 
         <section className={styles.hero}>
-          <div><Flag aria-hidden="true" size={18} /><span>NEXT EVENT</span><h2>{championshipComplete ? "Championship classified" : circuit.name}</h2><p>{championshipComplete ? `${championship.roundResults.length} rounds complete` : `${circuit.country} · ${(circuit.lengthMeters / 1_000).toFixed(3)} km · ${circuit.totalLaps} laps · ${circuit.turns} turns`}</p></div>
+          <div><Flag aria-hidden="true" size={18} /><span>NEXT EVENT</span><h2 className="formula-title">{championshipComplete ? "Championship classified" : circuit.name}</h2><p>{championshipComplete ? `${championship.roundResults.length} rounds complete` : `${circuit.country} · ${(circuit.lengthMeters / 1_000).toFixed(3)} km · ${circuit.totalLaps} laps · ${circuit.turns} turns`}</p></div>
           {!championshipComplete && <button onClick={onStartRound} type="button">Enter race weekend</button>}
         </section>
 

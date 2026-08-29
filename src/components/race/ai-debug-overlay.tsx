@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { RaceCarState, RaceSnapshot } from "@/domain/race";
 import { DRIVER_BY_ID, TEAM_BY_ID } from "@/fixtures/grid";
 import { strategyPersonality } from "@/simulation/ai-strategy";
+import { damageScenarioLabel } from "@/simulation/damage-response";
 import { useRaceStore } from "@/store/race-store";
 
 import styles from "./ai-debug-overlay.module.css";
@@ -77,6 +78,12 @@ function safetyCarResponse(car: RaceCarState, snapshot: RaceSnapshot): string {
   if (car.safetyCarQueuePosition !== null) return `${label(snapshot.safetyCarPhase)} · Q${car.safetyCarQueuePosition}`;
   if (snapshot.raceControl === "SAFETY_CAR") return `${label(snapshot.safetyCarPhase)} · ${NOT_AVAILABLE}`;
   return NOT_AVAILABLE;
+}
+
+function damageResponse(car: RaceCarState): string {
+  if (car.incidentStatus !== "DAMAGED") return NOT_AVAILABLE;
+  if (!car.damageScenario) return "PENDING RESPONSE";
+  return `${damageScenarioLabel(car.damageScenario)} · ${Math.max(0, car.damageScenarioTimer ?? 0).toFixed(1)}s`;
 }
 
 function Field({
@@ -152,6 +159,7 @@ function DriverRow({
         <Field fieldLabel="CAR BEHIND" value={formatGap(behind, car.gapToCarBehind)} />
         <Field fieldLabel="WEATHER / RESPONSE" value={weatherResponse(car, snapshot)} wide />
         <Field fieldLabel="DRIVER MOMENT" value={`${label(car.driverMoment ?? "NONE")} · ${Math.max(0, car.driverMomentTimer ?? 0).toFixed(1)}s`} wide />
+        <Field fieldLabel="DAMAGE RESPONSE" value={damageResponse(car)} wide />
         <Field fieldLabel="SAFETY CAR / RESPONSE" value={safetyCarResponse(car, snapshot)} wide />
         <Field fieldLabel="AI REASONS" value={car.aiDecision?.reasons.join(" · ") ?? NOT_AVAILABLE} wide />
         <Field fieldLabel="LAST DECISION" value={car.aiDecision ? `${car.aiDecision.decidedAt.toFixed(1)}s` : NOT_AVAILABLE} />

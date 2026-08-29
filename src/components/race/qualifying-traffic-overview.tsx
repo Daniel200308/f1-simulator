@@ -190,7 +190,7 @@ function stableHash(value: string): number {
 function markerColor(carId: string): string {
   const driver = DRIVER_BY_ID.get(carId);
   const team = driver ? TEAM_BY_ID.get(driver.teamId) : null;
-  return `#${(team?.primaryColor ?? 0x20d7e7).toString(16).padStart(6, "0")}`;
+  return `#${(team?.primaryColor ?? 0xf4f7f8).toString(16).padStart(6, "0")}`;
 }
 
 function currentProgress(marker: AnimatedCar, now: number): number {

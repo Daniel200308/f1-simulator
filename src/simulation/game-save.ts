@@ -97,6 +97,7 @@ const PIT_STATUSES = ["TRACK", "PIT_ENTRY", "PIT_LANE", "PIT_STOP", "PIT_EXIT"] 
 const PIT_STOP_ISSUES = ["NONE", "SLOW_RELEASE", "WHEEL_GUN", "DOUBLE_STACK"] as const;
 const STRATEGY_INTENTS = ["HOLD", "EXTEND", "UNDERCUT", "OVERCUT", "WEATHER", "CHEAP_STOP", "TYRE_LIMIT"] as const;
 const INCIDENT_STATUSES = ["RUNNING", "SPUN", "DAMAGED", "RETIRED"] as const;
+const DAMAGE_SCENARIOS = ["CONTINUE_SLOW", "STOP_AND_REJOIN", "STOP_AND_RETIRE", "PIT_AND_RETIRE"] as const;
 const CHAMPIONSHIP_STATUSES = ["IN_PROGRESS", "COMPLETED"] as const;
 const ROUND_CLASSIFICATION_STATUSES = ["FINISHED", "RETIRED"] as const;
 const VSC_COMPLIANCE_STATUSES = ["COMPLIANT", "WARNING", "VIOLATION"] as const;
@@ -369,6 +370,9 @@ function validateRaceCar(value: unknown, path: string, issues: MutableIssues): R
   expectEnum(car.pitStopIssue, PIT_STOP_ISSUES, `${path}.pitStopIssue`, issues);
   expectEnum(car.strategyIntent, STRATEGY_INTENTS, `${path}.strategyIntent`, issues);
   expectEnum(car.incidentStatus, INCIDENT_STATUSES, `${path}.incidentStatus`, issues);
+  if ("damageScenario" in car && car.damageScenario !== null && car.damageScenario !== undefined) {
+    expectEnum(car.damageScenario, DAMAGE_SCENARIOS, `${path}.damageScenario`, issues);
+  }
   expectEnum(car.vscComplianceStatus, VSC_COMPLIANCE_STATUSES, `${path}.vscComplianceStatus`, issues);
 
   for (const key of ["currentLap", "gridPosition", "racePosition", "currentSector"] as const) {
@@ -381,7 +385,7 @@ function validateRaceCar(value: unknown, path: string, issues: MutableIssues): R
   const numberKeys = [
     "segmentProgress", "lapDistance", "totalDistance", "totalRaceTime", "currentSpeed", "reactionTime",
     "trackLineOffset", "gapToLeader", "gapToCarAhead", "gapToCarBehind", "tyreLife", "tyreTemperature",
-    "brakeTemperature", "powerUnitTemperature", "gearboxTemperature", "energyStoreTemperature", "brakeBiasPercent",
+    "brakeTemperature", "powerUnitTemperature", "gearboxTemperature", "energyStoreTemperature",
     "powerUnitStress", "gearboxStress", "energyStoreStress", "brakeStress", "thermalDeratePercent", "thermalRiskPercent",
     "fuelRemainingKg", "setupPerformanceFactor", "eventPerformanceFactor", "batteryPercent", "dirtyAirLoss",
     "pitLaneTimer", "pitTimer", "pitStopTargetSeconds", "damageLevel", "vscDeltaSeconds", "vscViolationSeconds",
@@ -393,7 +397,7 @@ function validateRaceCar(value: unknown, path: string, issues: MutableIssues): R
   }
   for (const key of ["overtakeEligible", "overtakeActive", "boostActive", "finished"] as const) expectBoolean(car[key], `${path}.${key}`, issues);
   expectOptionalBoolean(car, "energyAutoEnabled", path, issues);
-  for (const key of ["driverMomentTimer", "lastDriverMomentAt", "incidentStartedAt", "lastIncidentAt", "pitLimiterFaultSeconds", "lastPitStopCompletedAt"] as const) {
+  for (const key of ["driverMomentTimer", "lastDriverMomentAt", "incidentStartedAt", "lastIncidentAt", "pitLimiterFaultSeconds", "lastPitStopCompletedAt", "damageScenarioTimer", "damageScenarioStartedAt"] as const) {
     expectOptionalNumber(car, key, path, issues);
   }
   expectOptionalNumber(car, "reliabilityConditionPercent", path, issues, { minimum: 0, maximum: 100 });
@@ -860,7 +864,8 @@ export function isGameSaveV1(value: unknown): value is GameSaveV1 {
 export function validateGameSave(value: unknown): GameSaveV1 {
   const issues = collectGameSaveValidationIssues(value);
   if (issues.length > 0) throw new GameSaveValidationError(issues);
-  return value as GameSaveV1;
+  const normalized = stripLegacyBrakeBalanceFields(value);
+  return normalized as GameSaveV1;
 }
 
 /**
@@ -880,7 +885,7 @@ export function migrateGameSave(value: unknown): unknown {
 
   switch (save.schemaVersion) {
     case GAME_SAVE_SCHEMA_VERSION:
-      return save;
+      return stripLegacyBrakeBalanceFields(save);
     // Future example:
     // case 2: return migrateV2ToV3(save);
     default:
@@ -892,6 +897,32 @@ function canonicalize(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonicalize);
   if (!isRecord(value)) return value;
   return Object.fromEntries(Object.keys(value).sort().map((key) => [key, canonicalize(value[key])]));
+}
+
+/** Remove the retired player-facing brake-balance field from legacy saves. */
+function stripLegacyBrakeBalanceFields(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    let changed = false;
+    const items = value.map((item) => {
+      const normalized = stripLegacyBrakeBalanceFields(item);
+      changed ||= normalized !== item;
+      return normalized;
+    });
+    return changed ? items : value;
+  }
+  if (!isRecord(value)) return value;
+
+  let changed = false;
+  const entries = Object.entries(value).flatMap(([key, item]) => {
+    if (key === "brakeBiasPercent") {
+      changed = true;
+      return [];
+    }
+    const normalized = stripLegacyBrakeBalanceFields(item);
+    changed ||= normalized !== item;
+    return [[key, normalized] as const];
+  });
+  return changed ? Object.fromEntries(entries) : value;
 }
 
 function detachSimulationState(

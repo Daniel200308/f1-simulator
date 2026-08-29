@@ -426,7 +426,7 @@
   gap: var(--q-space-xs);
 }
 .segmentOptions button {
-  --option-tone: #20d7e7;
+  --option-tone: #f4f7f8;
   --neon-cycle: 2.9s;
   position: relative;
   isolation: isolate;
@@ -575,11 +575,11 @@
 .releaseOptions button > span { position: relative; z-index: 2; display: grid; gap: 3px; }
 .releaseOptions button > span strong { min-width: 0; overflow: hidden; font: 900 var(--q-font-body)/1.1 var(--font-mono); letter-spacing: .03em; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
 .releaseOptions button > span small { min-width: 0; overflow: hidden; color: currentColor; font: 800 var(--q-font-micro)/1.15 var(--font-mono); letter-spacing: .01em; opacity: .82; text-overflow: ellipsis; white-space: nowrap; }
-.orbOptions button:hover:not(:disabled) { color: #eafcfd; background: rgba(32, 215, 231,.07); transform: translateY(-1px); }
+.orbOptions button:hover:not(:disabled) { color: #f7fafb; background: rgba(244, 247, 248, .07); transform: translateY(-1px); }
 .releaseOptions button[data-ready="true"]:hover:not(:disabled) { color: #fff; border-color: #fff; background: linear-gradient(135deg, color-mix(in srgb, var(--action-tone) 32%, #10252b), color-mix(in srgb, var(--action-tone) 11%, #061116) 76%); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--action-tone) 22%, transparent), inset 0 -3px color-mix(in srgb, var(--action-tone) 76%, transparent), 0 9px 24px -11px color-mix(in srgb, var(--action-tone) 96%, transparent), 0 0 28px -4px color-mix(in srgb, var(--action-tone) 68%, transparent); transform: translateY(-2px); }
 .orbOptions button:hover:not(:disabled) > i { border-color: #7b858f; transform: scale(1.04); }
-.orbOptions button[aria-pressed="true"] { color: #dffcff; background: rgba(32, 215, 231,.08); }
-.orbOptions button[aria-pressed="true"] > i { color: #031015; border: 2px solid #20d7e7; background: #20d7e7; box-shadow: 0 0 0 4px rgba(32, 215, 231, .07), 0 0 15px rgba(32, 215, 231, .25); }
+.orbOptions button[aria-pressed="true"] { color: #fff; background: rgba(244, 247, 248, .08); }
+.orbOptions button[aria-pressed="true"] > i { color: #031015; border: 2px solid #f4f7f8; background: #f4f7f8; box-shadow: 0 0 0 4px rgba(244, 247, 248, .07), 0 0 15px rgba(244, 247, 248, .25); }
 .orbOptions button:disabled { color: #64777e; cursor: not-allowed; opacity: .52; }
 
 @keyframes qualifying-option-scan {
@@ -900,3 +900,31 @@
 .orbOptions button,
 .combinedTyreSelector button,
 .physicalTyreSets button { background: linear-gradient(145deg, color-mix(in srgb, var(--option-tone, var(--action-tone, var(--compound-tone, var(--surface-vivid)))) 5%, var(--surface-raised)), var(--surface-deep) 76%); }
+
+/* Qualifying focus: show only the active session and keep controls crisp.
+   These buttons are frequently hit while the rail is moving; the earlier
+   animated halos were decorative, made the left edge look clipped, and added
+   visual noise around the actual state. */
+.sessionOnly { display: grid; place-items: center; padding-inline: 14px !important; text-align: center; }
+.sessionOnly::before { right: 18%; left: 18%; height: 2px; background: var(--surface-line-strong); box-shadow: none; }
+.sessionOnly :global(.hud-stat-copy) { min-height: 100%; grid-template-rows: 1fr; place-items: center; align-content: center; }
+.sessionOnly :global(.hud-stat-copy > strong) { margin: 0; color: #f5f7f8; font: 900 clamp(32px, 3.1vw, 52px)/1 var(--font-display); letter-spacing: .02em; text-shadow: none; }
+
+.segmentOptions button,
+.releaseOptions button,
+.orbOptions button { box-shadow: none; text-shadow: none; transform: none; }
+.segmentOptions button::before,
+.segmentOptions button::after,
+.releaseOptions button::before,
+.releaseOptions button::after { display: none; }
+.segmentOptions button { border-radius: 12px; background: var(--surface-deep); }
+.segmentOptions button[aria-pressed="true"] { border-color: color-mix(in srgb, var(--option-tone) 72%, #f4f7f8); background: color-mix(in srgb, var(--option-tone) 15%, var(--surface-deep)); box-shadow: inset 0 -2px color-mix(in srgb, var(--option-tone) 58%, transparent); transform: none; text-shadow: none; }
+.segmentOptions button:hover:not(:disabled) { border-color: color-mix(in srgb, var(--option-tone) 58%, var(--surface-line-strong)); background: color-mix(in srgb, var(--option-tone) 8%, var(--surface-deep)); box-shadow: none; transform: none; }
+.releaseOptions button { background: var(--surface-deep); }
+.releaseOptions button[data-ready="true"] { border-color: color-mix(in srgb, var(--action-tone) 68%, #f4f7f8); background: color-mix(in srgb, var(--action-tone) 14%, var(--surface-deep)); box-shadow: inset 0 -2px color-mix(in srgb, var(--action-tone) 58%, transparent); text-shadow: none; }
+.releaseOptions button[data-ready="true"] > i { box-shadow: none; animation: none; }
+.releaseOptions button:hover:not(:disabled),
+.releaseOptions button[data-ready="true"]:hover:not(:disabled) { border-color: color-mix(in srgb, var(--action-tone) 76%, #f4f7f8); background: color-mix(in srgb, var(--action-tone) 18%, var(--surface-deep)); box-shadow: inset 0 -2px color-mix(in srgb, var(--action-tone) 62%, transparent); transform: none; }
+.orbOptions button:hover:not(:disabled) { box-shadow: none; transform: none; }
+.orbOptions button[aria-pressed="true"] { box-shadow: inset 0 -2px #f4f7f8; text-shadow: none; }
+.orbOptions button[aria-pressed="true"] > i { box-shadow: none; }

@@ -67,7 +67,6 @@ Project Pitwall은 **Silverstone·Monza·Suzuka 3라운드를 저장·복원하�
 - Energy: Attack, Balanced, Defend, Recharge
 - Tyre: Grip, Balanced, Save, Temperature
 - Cooling: Normal, Lift & Coast, Max Cooling
-- Brake Bias: 50~64%
 - Next Tyre: Soft, Medium, Hard, Intermediate, Wet
 
 각 명령은 랩타임·연료·타이어 마모·에너지·브레이크 및 파워유닛 열 상태에 연결됩니다. UI에서 선택한 드라이버와 팀 권한은 Worker 프로토콜을 통해 엔진에 전달됩니다.

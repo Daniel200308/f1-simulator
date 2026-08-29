@@ -1,7 +1,7 @@
 /// <reference lib="webworker" />
 
 import type { RaceSnapshot, SimulationSpeed } from "@/domain/race";
-import { cancelCarPit, createInitialSnapshot, debugEnergyState, FIXED_STEP_SECONDS, requestPenaltyService, setCarBrakeBias, setCarCoolingMode, setCarEnergyMode, setCarPace, setCarPit, setCarStartingTyre, setCarTyreMode, setTeamOrder, stepSnapshot } from "@/simulation/engine";
+import { cancelCarPit, createInitialSnapshot, debugEnergyState, FIXED_STEP_SECONDS, requestPenaltyService, setCarCoolingMode, setCarEnergyMode, setCarPace, setCarPit, setCarStartingTyre, setCarTyreMode, setTeamOrder, stepSnapshot } from "@/simulation/engine";
 import type { WorkerCommand, WorkerEvent } from "@/simulation/protocol";
 import { criticalRaceControlTransition } from "@/simulation/race-control-transitions";
 
@@ -123,10 +123,6 @@ context.onmessage = (message: MessageEvent<WorkerCommand>) => {
         break;
       case "SET_COOLING_MODE":
         snapshot = setCarCoolingMode(snapshot, message.data.carId, message.data.mode);
-        publish();
-        break;
-      case "SET_BRAKE_BIAS":
-        snapshot = setCarBrakeBias(snapshot, message.data.carId, message.data.brakeBiasPercent);
         publish();
         break;
       case "BOX":

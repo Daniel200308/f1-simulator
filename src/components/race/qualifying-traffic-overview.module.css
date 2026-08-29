@@ -60,8 +60,8 @@
 .pitLine { fill: none; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
 .trackHalo { stroke: rgba(112, 151, 163, .11); stroke-width: 7.2; }
 .trackLine { stroke: #1d343d; stroke-width: 4.6; }
-.sectorPath { --sector-tone: #43d8ff; stroke: var(--sector-tone); stroke-width: 2.3; opacity: .9; filter: drop-shadow(0 0 3px color-mix(in srgb, var(--sector-tone) 34%, transparent)); }
-.sectorPath[data-sector="S1"] { --sector-tone: #43d8ff; }
+.sectorPath { --sector-tone: #f4f7f8; stroke: var(--sector-tone); stroke-width: 2.3; opacity: .9; filter: drop-shadow(0 0 3px color-mix(in srgb, var(--sector-tone) 34%, transparent)); }
+.sectorPath[data-sector="S1"] { --sector-tone: #f4f7f8; }
 .sectorPath[data-sector="S2"] { --sector-tone: #7b8fe0; }
 .sectorPath[data-sector="S3"] { --sector-tone: #c07cfa; }
 .pitLine { stroke: rgba(233, 241, 243, .74); stroke-width: 1.9; stroke-dasharray: 6 3; }

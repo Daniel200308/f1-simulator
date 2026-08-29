@@ -99,7 +99,7 @@ function formatClock(seconds: number): string {
 function teamTone(carId: string): string {
   const driver = DRIVER_BY_ID.get(carId);
   const team = driver ? TEAM_BY_ID.get(driver.teamId) : null;
-  return `#${(team?.primaryColor ?? 0x20d7e7).toString(16).padStart(6, "0")}`;
+  return `#${(team?.primaryColor ?? 0xf4f7f8).toString(16).padStart(6, "0")}`;
 }
 
 function QualifyingSystemTools({ onReset, onOpenSave, onOpenChampionship, onOpenPreferences, saveReady, pendingGridPenaltyPlaces }: Pick<QualifyingRaceViewProps, "onReset" | "onOpenSave" | "onOpenChampionship" | "onOpenPreferences" | "saveReady" | "pendingGridPenaltyPlaces">) {
@@ -160,7 +160,7 @@ function QualifyingTopbar({ state, onStart, onSpeedChange, onPause, onReset, onS
     <header className={`topbar topbar--telemetry ${styles.topbar}`} aria-label={`${live.session} qualifying header`}>
       <div className="brand-block brand-block--signal"><div className="brand-copy"><strong>PROJECT PITWALL</strong><small>{circuit.shortName} QUALIFYING</small></div></div>
       <div className={`broadcast-strip broadcast-strip--iconic ${styles.broadcast}`}>
-        <section className="broadcast-session session-copy-panel"><div className="hud-stat-copy"><span>{circuit.shortName}</span><strong>{live.session}</strong><small>QUALIFYING</small></div></section>
+        <section aria-label={`${live.session} qualifying session`} className={`broadcast-session session-copy-panel ${styles.sessionOnly}`}><div className="hud-stat-copy"><strong>{live.session}</strong></div></section>
         <section
           aria-label={chequered ? "Chequered flag" : flagLabel}
           aria-live="polite"
@@ -330,7 +330,7 @@ function TyreTelemetry({ car }: { car: QualifyingCarState }) {
 }
 
 function ControlSection({ children, title, value, control, priority = false }: { children: ReactNode; title: string; value: string; control: string; priority?: boolean }) {
-  return <section className={styles.controlSection} data-control={control} data-priority={priority}><header><span>{title}</span><b title={value}>{value}</b></header>{children}</section>;
+  return <section className={styles.controlSection} data-control={control} data-priority={priority}><header><span className="formula-title">{title}</span><b title={value}>{value}</b></header>{children}</section>;
 }
 
 function QualifyingCommandDock({

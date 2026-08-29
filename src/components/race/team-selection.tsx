@@ -1,7 +1,7 @@
 "use client";
 
 import type { CSSProperties } from "react";
-import { ChevronRight, RadioTower, Users } from "lucide-react";
+import { ChevronRight, Users } from "lucide-react";
 
 import { DRIVERS, TEAM_BY_ID, TEAMS } from "@/fixtures/grid";
 import { season2026TeamCarRating } from "@/fixtures/season-2026-performance";
@@ -27,13 +27,13 @@ export function TeamSelection({ selectedTeamId, circuitName = "SILVERSTONE", onS
   return (
     <div className={styles.backdrop}>
       <main className={styles.selector} style={{ "--selected-team": colorHex(selectedTeam.primaryColor) } as CSSProperties}>
-        {/* The title block is the first thing a new player reads, so it is
-            centred and given the largest type in the panel. */}
         <header className={styles.header}>
-          <span className={styles.mark}><RadioTower aria-hidden="true" size={30} /></span>
-          <small>PROJECT PITWALL · CAREER SETUP</small>
-          <h1>Choose Your Team</h1>
-          <b>ROUND 01 <i aria-hidden="true" /> {circuitName}</b>
+          <strong className={styles.brandTitle}>PROJECT PITWALL</strong>
+          <div className={styles.eventTitle}>
+            <strong>BRITISH GRAND PRIX</strong>
+            <span>{circuitName.toUpperCase()}</span>
+          </div>
+          <h1 className={styles.teamPrompt}>Choose Your Team</h1>
         </header>
 
         <section className={styles.workspace}>

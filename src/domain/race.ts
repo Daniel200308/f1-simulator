@@ -41,6 +41,8 @@ export type RedFlagRestartType = "STANDING" | "ROLLING";
 export type VscComplianceStatus = "COMPLIANT" | "WARNING" | "VIOLATION";
 export type PitLaneProcedureStatus = "OPEN" | "CLOSED";
 export type IncidentStatus = "RUNNING" | "SPUN" | "DAMAGED" | "RETIRED";
+/** Deterministic response selected when a car suffers race-ending damage risk. */
+export type DamageScenario = "CONTINUE_SLOW" | "STOP_AND_REJOIN" | "STOP_AND_RETIRE" | "PIT_AND_RETIRE";
 /** Short-lived driver reactions that sit between normal pace and a full incident. */
 export type DriverMoment = "NONE" | "LOW_GRIP" | "LOCK_UP" | "REAR_SNAP" | "SPRAY" | "SPIN_RECOVERY";
 export type InfringementType =
@@ -420,8 +422,6 @@ export interface RaceCarState {
   energyStoreTemperature: number;
   /** Driver-selectable cooling instruction. */
   coolingMode: CoolingMode;
-  /** Front brake bias percentage. */
-  brakeBiasPercent: number;
   /** Accumulated component stress, from 0 (fresh) to 100 (critical). */
   powerUnitStress: number;
   gearboxStress: number;
@@ -498,6 +498,11 @@ export interface RaceCarState {
   /** Cooldown prevents the same driver from repeatedly receiving incidents. */
   lastIncidentAt?: number | null;
   damageLevel: number;
+  /** Persistent AI response to a damage event; null for an undamaged car. */
+  damageScenario?: DamageScenario | null;
+  /** Remaining time before a stop, retirement, or damage-induced pit call. */
+  damageScenarioTimer?: number;
+  damageScenarioStartedAt?: number | null;
   retiredReason: string | null;
   vscDeltaSeconds: number;
   vscViolationSeconds: number;

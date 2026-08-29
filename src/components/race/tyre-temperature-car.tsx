@@ -147,7 +147,7 @@ export function VehicleThermalMap({
           className="vehicle-thermal__car"
           height={118}
           priority
-          src="/assets/telemetry/formula-car-top.png"
+          src="/assets/telemetry/pitwall-car-top.png"
           unoptimized
           width={71}
         />

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { RaceEvent, RaceSnapshot, TyreTemperatureState } from "@/domain/race";
+import type { DamageScenario, RaceEvent, RaceSnapshot, TyreTemperatureState } from "@/domain/race";
 import { playerCarIdsFor, TEAMS } from "@/fixtures/grid";
 import { averageTyreTemperature, buildOperationalRadio, buildWeatherTransitionRadio, cancelCarPit, checksumFor, createInitialSnapshot, estimatePitOutPosition, FIXED_STEP_SECONDS, OPERATIONAL_RADIO_INTERVAL_TICKS, PIT_BOX_DISTANCE, PIT_ENTRY_START, PIT_EXIT_END, SAFETY_CAR_RANDOM_MAX_LAP, SAFETY_CAR_RANDOM_MIN_LAP, scheduledSafetyCarTriggerDistance, setCarEnergyMode, setCarPace, setCarPit, setCarStartingTyre, setCarTyreMode, stepSnapshot } from "@/simulation/engine";
 import { SILVERSTONE_REFERENCE_LAP_SECONDS, telemetryReferenceLapTime, telemetrySpeedAtDistance } from "@/simulation/silverstone-telemetry";
@@ -195,6 +195,154 @@ describe("race simulation", () => {
     expect(state.radioMessages.some((message) => message.source === "RACE CONTROL")).toBe(true);
   });
 
+  it("lets a damaged car lose places under VSC, then rejoin when its temporary stop is over", () => {
+    const initial = createInitialSnapshot(20_260_901);
+    const targetIndex = 7;
+    const targetId = initial.cars[targetIndex].carId;
+    const baseDistance = SILVERSTONE_CIRCUIT.lengthMeters * 3 + 2_000;
+    let state: RaceSnapshot = {
+      ...initial,
+      status: "RUNNING",
+      raceControl: "VSC",
+      raceControlTimer: 30,
+      yellowSector: 2,
+      scheduledSafetyCarDistance: Number.MAX_SAFE_INTEGER,
+      safetyCarDeployments: 1,
+      cars: initial.cars.map((car, index) => {
+        const totalDistance = baseDistance - index * 80;
+        return car.carId === targetId
+          ? {
+              ...car,
+              totalDistance,
+              lapDistance: totalDistance % SILVERSTONE_CIRCUIT.lengthMeters,
+              currentSpeed: 330,
+              reactionTime: 0,
+              racePosition: targetIndex + 1,
+              incidentStatus: "DAMAGED" as const,
+              damageLevel: 0.72,
+              damageScenario: "STOP_AND_REJOIN" as DamageScenario,
+              damageScenarioTimer: 3.6,
+              damageScenarioStartedAt: 0,
+              lastIncidentAt: 0,
+            }
+          : {
+              ...car,
+              totalDistance,
+              lapDistance: totalDistance % SILVERSTONE_CIRCUIT.lengthMeters,
+              currentSpeed: 330,
+              reactionTime: 0,
+              racePosition: index + 1,
+            };
+      }),
+    };
+
+    for (let tick = 0; tick < 120; tick += 1) state = stepSnapshot(state);
+
+    const damagedCar = state.cars.find((car) => car.carId === targetId)!;
+    expect(damagedCar.incidentStatus).toBe("DAMAGED");
+    expect(damagedCar.damageScenario).toBe("STOP_AND_REJOIN");
+    expect(damagedCar.racePosition).toBeGreaterThan(targetIndex + 1);
+    expect(damagedCar.currentSpeed).toBeGreaterThan(0);
+    expect(state.events.some((event) => event.carId === targetId && event.message.includes("REJOINING WITH DAMAGE"))).toBe(true);
+  });
+
+  it("moves a terminal damage response to the back of the classification after a stop", () => {
+    const initial = createInitialSnapshot(20_260_902);
+    const targetIndex = 5;
+    const targetId = initial.cars[targetIndex].carId;
+    const baseDistance = SILVERSTONE_CIRCUIT.lengthMeters * 3 + 2_000;
+    let state: RaceSnapshot = {
+      ...initial,
+      status: "RUNNING",
+      raceControl: "VSC",
+      raceControlTimer: 30,
+      yellowSector: 1,
+      scheduledSafetyCarDistance: Number.MAX_SAFE_INTEGER,
+      safetyCarDeployments: 1,
+      cars: initial.cars.map((car, index) => {
+        const totalDistance = baseDistance - index * 140;
+        return car.carId === targetId
+          ? {
+              ...car,
+              totalDistance,
+              lapDistance: totalDistance % SILVERSTONE_CIRCUIT.lengthMeters,
+              currentSpeed: 210,
+              reactionTime: 0,
+              racePosition: targetIndex + 1,
+              incidentStatus: "DAMAGED" as const,
+              damageLevel: 0.76,
+              damageScenario: "STOP_AND_RETIRE" as DamageScenario,
+              damageScenarioTimer: 0.3,
+              damageScenarioStartedAt: 0,
+              lastIncidentAt: 0,
+            }
+          : {
+              ...car,
+              totalDistance,
+              lapDistance: totalDistance % SILVERSTONE_CIRCUIT.lengthMeters,
+              currentSpeed: 210,
+              reactionTime: 0,
+              racePosition: index + 1,
+            };
+      }),
+    };
+
+    for (let tick = 0; tick < 10; tick += 1) state = stepSnapshot(state);
+
+    const retiredCar = state.cars.find((car) => car.carId === targetId)!;
+    expect(retiredCar.incidentStatus).toBe("RETIRED");
+    expect(retiredCar.finished).toBe(true);
+    expect(retiredCar.racePosition).toBe(initial.cars.length);
+    expect(retiredCar.retiredReason).toContain("TERMINAL VEHICLE DAMAGE");
+    expect(state.events.some((event) => event.carId === targetId && event.message.includes("RETIRED DUE TO TERMINAL DAMAGE"))).toBe(true);
+  });
+
+  it("continues a damaged car until it reaches the pit, then retires after the garage check", () => {
+    const initial = createInitialSnapshot(20_260_903);
+    const targetId = initial.cars[0].carId;
+    const totalDistance = SILVERSTONE_CIRCUIT.lengthMeters * 3 + SILVERSTONE_CIRCUIT.pitLane.entryStart + 2;
+    let state: RaceSnapshot = {
+      ...initial,
+      status: "RUNNING",
+      raceControl: "VSC",
+      raceControlTimer: 50,
+      scheduledSafetyCarDistance: Number.MAX_SAFE_INTEGER,
+      safetyCarDeployments: 1,
+      cars: initial.cars.map((car, index) => car.carId === targetId
+        ? {
+            ...car,
+            totalDistance,
+            lapDistance: SILVERSTONE_CIRCUIT.pitLane.entryStart + 2,
+            currentSpeed: 180,
+            reactionTime: 0,
+            racePosition: 1,
+            incidentStatus: "DAMAGED" as const,
+            damageLevel: 0.72,
+            damageScenario: "PIT_AND_RETIRE" as DamageScenario,
+            damageScenarioTimer: 0,
+            damageScenarioStartedAt: 0,
+            lastIncidentAt: 0,
+          }
+        : {
+            ...car,
+            totalDistance: totalDistance - index * 180,
+            lapDistance: (SILVERSTONE_CIRCUIT.pitLane.entryStart + 2 - index * 180 + SILVERSTONE_CIRCUIT.lengthMeters) % SILVERSTONE_CIRCUIT.lengthMeters,
+            currentSpeed: 180,
+            reactionTime: 0,
+            racePosition: index + 1,
+          }),
+    };
+
+    for (let tick = 0; tick < 240 && state.cars[0].incidentStatus !== "RETIRED"; tick += 1) state = stepSnapshot(state);
+
+    const retiredCar = state.cars.find((car) => car.carId === targetId)!;
+    expect(retiredCar.incidentStatus).toBe("RETIRED");
+    expect(retiredCar.finished).toBe(true);
+    expect(retiredCar.pitStatus).toBe("PIT_STOP");
+    expect(retiredCar.pitStops).toBe(1);
+    expect(state.events.some((event) => event.carId === targetId && event.message.includes("RETIRED AFTER DAMAGE CHECK"))).toBe(true);
+  });
+
   it("returns to green when a race-control period expires", () => {
     const initial = createInitialSnapshot(12);
     const state = stepSnapshot({ ...initial, status: "RUNNING", raceControl: "VSC", raceControlTimer: 0.05 });
@@ -346,7 +494,7 @@ describe("race simulation", () => {
     });
     expect(bunching.safetyCarPhase).toBe("BUNCHING");
     expect(bunching.pitLaneOpen).toBe(true);
-    const nextSafetyCarDistance = bunching.safetyCarDistance! + (125 / 3.6) * 0.1;
+    const nextSafetyCarDistance = bunching.safetyCarDistance! + (bunching.safetyCarSpeed / 3.6) * 0.1;
     const restart = stepSnapshot({
       ...bunching,
       safetyCarPhase: "BUNCHING",
@@ -469,7 +617,7 @@ describe("race simulation", () => {
     const leader = activeCars.find((car) => car.racePosition === 1)!;
 
     expect(state.safetyCarDistance).toBe(72);
-    expect(state.safetyCarSpeed).toBe(65);
+    expect(state.safetyCarSpeed).toBe(42);
     expect(state.pitLaneStatus).toBe("CLOSED");
     expect(state.pitLaneOpen).toBe(false);
     expect(queue.every((position) => position !== null)).toBe(true);
@@ -655,7 +803,7 @@ describe("race simulation", () => {
 
     let observedPass = false;
     let maximumPerezSpeed = 0;
-    for (let tick = 0; tick < 2_400; tick += 1) {
+    for (let tick = 0; tick < 3_200; tick += 1) {
       const entry = waveBy.safetyCarWaveBy.find((candidate) => candidate.carId === "cadillac-1")!;
       const perez = waveBy.cars.find((car) => car.carId === "cadillac-1")!;
       observedPass ||= entry.passedSafetyCar === true;

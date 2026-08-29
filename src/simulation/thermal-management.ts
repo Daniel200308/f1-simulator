@@ -172,9 +172,12 @@ export interface BrakeThermalContext {
   localWater: number;
   airTemperature: number;
   pitStopped: boolean;
-  brakeBiasPercent: number;
   coolingMode: CoolingMode;
 }
+
+// Preserve the existing default front/rear distribution internally; no
+// player-facing control or per-car state is involved.
+const FIXED_FRONT_BRAKE_SHARE = 0.565;
 
 export function advanceBrakeTemperatures(
   current: TyreTemperatureState,
@@ -187,7 +190,7 @@ export function advanceBrakeTemperatures(
   const cooling = context.coolingMode === "MAX_COOLING" ? 105 : context.coolingMode === "LIFT_AND_COAST" ? 58 : 0;
   const waterCooling = clamp(context.localWater, 0, 1) * (75 + context.currentSpeedKph * 0.22);
   const airflowCooling = clamp((context.currentSpeedKph - 120) * 0.18, 0, 38);
-  const frontShare = clamp(context.brakeBiasPercent / 100, 0.50, 0.64);
+  const frontShare = FIXED_FRONT_BRAKE_SHARE;
   const rearShare = 1 - frontShare;
   const leftLoad = context.hotterSide === "LEFT" ? context.cornerIntensity * 42 : context.hotterSide === "RIGHT" ? -context.cornerIntensity * 18 : 0;
   const rightLoad = context.hotterSide === "RIGHT" ? context.cornerIntensity * 42 : context.hotterSide === "LEFT" ? -context.cornerIntensity * 18 : 0;

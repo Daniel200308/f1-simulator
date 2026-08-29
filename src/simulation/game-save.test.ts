@@ -55,6 +55,7 @@ describe("versioned game saves", () => {
     expect(validateGameSave(save)).toBe(save);
     expect(gameSaveValidationIssues(save)).toEqual([]);
     expect(JSON.parse(JSON.stringify(save))).toEqual(save);
+    expect(JSON.stringify(save)).not.toContain("brakeBiasPercent");
     expect(createGameSaveV1({
       savedAt: save.savedAt,
       raceSnapshot: save.raceSnapshot,
@@ -115,6 +116,18 @@ describe("versioned game saves", () => {
     expect(save).toEqual(original);
     expect(() => migrateGameSave({ ...save, schemaVersion: 2 })).toThrow(UnsupportedGameSaveVersionError);
     expect(() => migrateGameSave({ ...save, schemaVersion: 0 })).toThrow(/Unsupported game save schema version: 0/);
+  });
+
+  it("removes the retired brake-balance field from legacy saves", () => {
+    const legacy = jsonClone(representativeSave()) as unknown as Record<string, unknown>;
+    const raceSnapshot = legacy.raceSnapshot as Record<string, unknown>;
+    const cars = raceSnapshot.cars as Array<Record<string, unknown>>;
+    cars.forEach((car) => { car.brakeBiasPercent = 61; });
+
+    const restored = parseGameSave(JSON.stringify(legacy));
+    expect(restored.raceSnapshot.cars.every((car) => !("brakeBiasPercent" in car))).toBe(true);
+    expect(stringifyGameSave(legacy)).not.toContain("brakeBiasPercent");
+    expect(cars.every((car) => car.brakeBiasPercent === 61)).toBe(true);
   });
 
   it("rejects malformed JSON and unsupported versions safely", () => {

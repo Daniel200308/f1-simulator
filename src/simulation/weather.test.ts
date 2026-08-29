@@ -94,7 +94,7 @@ describe("spatial weather", () => {
     expect(Math.min(...peaks)).toBeGreaterThanOrEqual(0.42);
     expect(Math.max(...peaks)).toBeGreaterThan(0.9);
     expect(directionQuadrants).toEqual(new Set([0, 1, 2, 3]));
-    expect(kinds.size).toBe(13);
+    expect(kinds.size).toBe(14);
     expect(scenarios.some((scenario) => scenario.kind === "CLEAR")).toBe(true);
     expect(scenarios.some((scenario) => scenario.kind === "SUDDEN_DOWNPOUR" && scenario.cells.some((cell) => cell.buildFraction < 0.16))).toBe(true);
   });
@@ -107,6 +107,7 @@ describe("spatial weather", () => {
     expect(byKind.get("SUSTAINED_RAIN")?.cells.some((cell) => cell.durationSeconds >= 1_800)).toBe(true);
     expect(byKind.get("HEAVY_SUSTAINED")?.cells.some((cell) => cell.peakIntensity >= 0.72)).toBe(true);
     expect(byKind.get("STOP_START_SHOWERS")?.cells).toHaveLength(3);
+    expect(byKind.get("MID_RACE_SHOWERS")?.cells.every((cell) => cell.startSeconds >= 1_250 && cell.startSeconds <= 2_750 + 420)).toBe(true);
     expect(byKind.get("LATE_STORM")?.cells.every((cell) => cell.startSeconds >= 2_300)).toBe(true);
     expect(byKind.get("CLEARING_RAIN")?.cells.some((cell) => cell.startSeconds < 0)).toBe(true);
   });

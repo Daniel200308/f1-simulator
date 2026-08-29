@@ -27,7 +27,7 @@ export function PitwallPreferences({ value, onChange, onClose, onReplayTour }: {
       <section aria-label="Pitwall preferences" aria-modal="true" className={styles.panel} role="dialog">
         <header>
           <span><Gauge aria-hidden="true" size={20} /></span>
-          <div><small>DISPLAY & AUDIO</small><h2>Pitwall settings</h2></div>
+          <div><small>DISPLAY & AUDIO</small><h2 className="formula-title">Pitwall settings</h2></div>
           <button aria-label="Close settings" onClick={onClose} ref={closeRef} type="button"><X aria-hidden="true" size={18} /></button>
         </header>
         <div className={styles.options}>

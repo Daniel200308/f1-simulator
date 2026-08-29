@@ -20,7 +20,7 @@ export function TeamRadioOverlay() {
   const latestDriverMessage = teamMessages.find((message) => message.source === "DRIVER");
   const latestCommandEngineerMessage = [...teamMessages]
     .filter((message) => message.source === "ENGINEER"
-      && (/-(pace|tyre|energy|box|stay-out|team-order|serve-penalty|cooling|brake-bias)$/.test(message.id)
+      && (/-(pace|tyre|energy|box|stay-out|team-order|serve-penalty|cooling)$/.test(message.id)
         || message.id.endsWith("-operations-radio-control-engineer")))
     .sort((left, right) => right.elapsedTime - left.elapsedTime)[0];
   const radioMessages = [latestDriverMessage, latestCommandEngineerMessage].filter((message): message is NonNullable<typeof message> => Boolean(message));

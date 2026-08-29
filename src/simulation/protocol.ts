@@ -13,7 +13,6 @@ export type WorkerCommand =
   | { type: "SET_ENERGY_MODE"; carId: string; mode: EnergyMode }
   | { type: "DEBUG_ENERGY"; carId: string; action: EnergyDebugAction }
   | { type: "SET_COOLING_MODE"; carId: string; mode: CoolingMode }
-  | { type: "SET_BRAKE_BIAS"; carId: string; brakeBiasPercent: number }
   | { type: "BOX"; carId: string; compound: TyreCompound; tyreSetId?: string }
   | { type: "SERVE_PENALTY"; carId: string }
   | { type: "CANCEL_PIT"; carId: string }

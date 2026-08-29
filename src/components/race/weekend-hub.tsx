@@ -50,7 +50,6 @@ function SessionRail({ state }: { state: WeekendState }) {
         const complete = state.completedSessions.includes(rule.id as never);
         const active = rule.id === state.currentSession;
         const status = complete ? "completed" : active ? "current" : "upcoming";
-        const SessionIcon = rule.group === "QUALIFYING" ? Timer : Flag;
         return (
           <li
             aria-current={active ? "step" : undefined}
@@ -62,7 +61,7 @@ function SessionRail({ state }: { state: WeekendState }) {
             key={rule.id}
           >
             <div className={styles.sessionContent}>
-              <SessionIcon aria-hidden="true" className={styles.sessionIcon} size={18} strokeWidth={2.1} />
+              <span aria-hidden="true" className={styles.sessionNode}>{complete ? <Check size={15} strokeWidth={3} /> : <i />}</span>
               <span className={styles.sessionCopy}><b>{rule.id}</b></span>
             </div>
           </li>
@@ -90,7 +89,7 @@ function SetupControl({ carId, setup, state, onChange, slot }: { carId: string; 
       <header><span>#{driver.number}</span><div><strong>{driver.shortName}</strong><small>{driver.name}</small></div><b>{state.setupKnowledge}% DATA</b></header>
       <div className={styles.setupVisual}>
         <div className={styles.carFigure}>
-          <Image alt={`${driver.name} setup car, top view`} height={640} priority src="/assets/telemetry/formula-car-top.png" width={420} />
+          <Image alt={`${driver.name} setup car, top view`} height={640} priority src="/assets/telemetry/pitwall-car-top.png" width={420} />
           <span>{driver.shortName}</span>
         </div>
         <div className={styles.controlStack}>
@@ -160,7 +159,7 @@ function DebriefDock({ state }: { state: WeekendState }) {
   const latestReport = state.sessionReports.at(-1);
   return (
     <section className={styles.debriefDock} aria-label="Garage debrief">
-      <header><Activity aria-hidden="true" size={18} /><div><b>DRIVER DEBRIEF</b><small>HOW THE CAR FELT OUT THERE</small></div><strong>{state.setupKnowledge}% CONFIDENCE</strong></header>
+      <header><Activity aria-hidden="true" size={18} /><div><b className="formula-title">DRIVER DEBRIEF</b><small>HOW THE CAR FELT OUT THERE</small></div><strong>{state.setupKnowledge}% CONFIDENCE</strong></header>
       <div className={styles.debriefGrid}>
         {playerCarIds.map((carId, slot) => {
           const driver = DRIVER_BY_ID.get(carId)!;
@@ -253,7 +252,7 @@ function DriverStrategyRow({
   const activeCompound = requestedCompound ?? selection.compound;
   const visibleSets = raceStartTyreSetsFor(carId, activeCompound, tyreInventory);
 
-  return <article className={styles.driverStrategyRow} style={{ "--grid-team": `#${TEAM_BY_ID.get(driver.teamId)?.primaryColor.toString(16).padStart(6, "0") ?? "20d7e7"}` } as CSSProperties}>
+  return <article className={styles.driverStrategyRow} style={{ "--grid-team": `#${TEAM_BY_ID.get(driver.teamId)?.primaryColor.toString(16).padStart(6, "0") ?? "f4f7f8"}` } as CSSProperties}>
     <header className={styles.driverStrategyHead}>
       <span className={styles.driverStrategyIdentity}><b>P{gridPosition}</b><i /><div><strong>{driver.shortName}</strong><small>#{driver.number} · {doctrine.replaceAll("_", " ")}</small></div></span>
       <span className={styles.driverStrategyStart}><TyreBadge compound={selection.compound} size="medium" title={`${selection.compound} set ${selection.setNumber} selected`} /><span><b>SET {selection.setNumber.toString().padStart(2, "0")}</b><small>{selection.freshness} · {selection.condition}% · {selection.lapsUsed}L</small></span></span>
@@ -358,7 +357,7 @@ function RacePreparation({ state, startingTyres, onStartingTyreChange }: Pick<We
   return (
     <div className={styles.racePreparation}>
       <section className={styles.gridPreview}>
-        <header><Trophy aria-hidden="true" size={18} /><span><b>STARTING GRID</b><small>QUALIFYING CLASSIFICATION · AI START COMPOUNDS</small></span></header>
+        <header><Trophy aria-hidden="true" size={18} /><span><b className="formula-title">STARTING GRID</b><small>QUALIFYING CLASSIFICATION · AI START COMPOUNDS</small></span></header>
         <div className={styles.gridLanes}>{gridRows.map((row, rowIndex) => <div className={styles.gridPair} key={rowIndex}>{row.map((carId, laneIndex) => {
           const driver = DRIVER_BY_ID.get(carId);
           const team = driver ? TEAM_BY_ID.get(driver.teamId) : undefined;
@@ -372,7 +371,7 @@ function RacePreparation({ state, startingTyres, onStartingTyreChange }: Pick<We
       </section>
 
       <section className={styles.raceStrategyWorkspace}>
-        <header><Flag aria-hidden="true" size={18} /><span><b>RACE START TYRES &amp; STRATEGY</b><small>SELECT AN EXACT SET · POST-Q3 LIFE DRIVES PLAN A / B / C</small></span></header>
+        <header><Flag aria-hidden="true" size={18} /><span><b className="formula-title">RACE START TYRES &amp; STRATEGY</b><small>SELECT AN EXACT SET · POST-Q3 LIFE DRIVES PLAN A / B / C</small></span></header>
 
         {/*
          * Grid conditions at the moment the race starts. Rain can already be
@@ -485,7 +484,7 @@ export function SessionReport({ report, onClose, classification = null, actionLa
         <header>
           <div className={styles.sessionReportHeading}>
             <span><i><Check aria-hidden="true" size={13} /></i>SESSION COMPLETE<em>TEAM DEBRIEF</em></span>
-            <h2 id="session-report-title">{report.title}</h2>
+            <h2 className="formula-title" id="session-report-title">{report.title}</h2>
             <p>{report.summary}</p>
           </div>
           <button className={styles.sessionReportClose} aria-label="Close session report" onClick={onClose} type="button"><X aria-hidden="true" size={21} /></button>
@@ -547,18 +546,18 @@ export function WeekendHub({ state, startingTyres, onRunSession, onSetupChange, 
         <section className={`${styles.workspace} ${isRace ? styles.raceWorkspace : ""} ${!isRace && !sessionResult ? styles.workspaceSolo : ""}`}>
           {isRace ? (
             <section className={styles.timingPanel}>
-              <header><div><Flag aria-hidden="true" size={19} /><span><b>RACE PREPARATION</b><small>FINAL GRID · START TYRE CONFIRMATION</small></span></div></header>
+              <header><div><Flag aria-hidden="true" size={19} /><span><b className="formula-title">RACE PREPARATION</b><small>FINAL GRID · START TYRE CONFIRMATION</small></span></div></header>
               <RacePreparation onStartingTyreChange={onStartingTyreChange} startingTyres={startingTyres} state={state} />
             </section>
           ) : (
             <>
               <section className={styles.garageCanvas}>
-                <header><Settings2 aria-hidden="true" size={19} /><div><b>GARAGE TELEMETRY</b><small>{circuit.shortName} SETUP LAB · TWO-CAR COMPARISON</small></div><span>−50 · NEUTRAL 0 · +50 · STEP 1</span></header>
+                <header><Settings2 aria-hidden="true" size={19} /><div><b className="formula-title">GARAGE TELEMETRY</b><small>{circuit.shortName} SETUP LAB · TWO-CAR COMPARISON</small></div><span>−50 · NEUTRAL 0 · +50 · STEP 1</span></header>
                 <div className={styles.setupCars}>{playerCarIds.map((carId, index) => <SetupControl carId={carId} key={carId} onChange={(setup) => onSetupChange(carId, setup)} setup={state.setups[carId]} slot={index} state={state} />)}</div>
               </section>
 
               {sessionResult && <section className={styles.timingPanel}>
-                <header><div>{sessionResult ? <Timer aria-hidden="true" size={19} /> : <Activity aria-hidden="true" size={19} />}<span><b>{sessionResult ? `${sessionResult.session} CLASSIFICATION` : "SESSION PLAN"}</b><small>{sessionResult ? `${sessionResult.entries.length} CLASSIFIED · BEST LAP ORDER` : `${state.currentSession} RUN PROGRAMME · READY`}</small></span></div>{sessionResult?.entries.some((entry) => entry.eliminated) && <em>ELIMINATION ZONE</em>}</header>
+                <header><div>{sessionResult ? <Timer aria-hidden="true" size={19} /> : <Activity aria-hidden="true" size={19} />}<span><b className="formula-title">{sessionResult ? `${sessionResult.session} CLASSIFICATION` : "SESSION PLAN"}</b><small>{sessionResult ? `${sessionResult.entries.length} CLASSIFIED · BEST LAP ORDER` : `${state.currentSession} RUN PROGRAMME · READY`}</small></span></div>{sessionResult?.entries.some((entry) => entry.eliminated) && <em>ELIMINATION ZONE</em>}</header>
                 <Classification state={state} />
               </section>}
             </>

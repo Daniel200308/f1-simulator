@@ -73,7 +73,7 @@ function energyMarkerStateFor(car: RaceCarState): EnergyMarkerState {
   return {
     flow,
     strategy,
-    color: aggressive ? 0xff687d : conservative ? 0x67e4a2 : 0x20d7e7,
+    color: aggressive ? 0xff687d : conservative ? 0x67e4a2 : 0xf4f7f8,
     active: false,
     label: "AUTO",
   };
@@ -86,133 +86,42 @@ function interpolateDisplayDistance(current: number, target: number, deltaMs: nu
 
 type SectorRainfallValues = readonly [number, number, number];
 
-function traceRainfallCurve(context: CanvasRenderingContext2D, points: readonly { x: number; y: number }[]): void {
-  context.moveTo(points[0].x, points[0].y);
-  for (let index = 0; index < points.length - 1; index += 1) {
-    const current = points[index];
-    const next = points[index + 1];
-    const controlX = (current.x + next.x) / 2;
-    context.bezierCurveTo(controlX, current.y, controlX, next.y, next.x, next.y);
-  }
-}
-
-function drawRainfallGraph(canvas: HTMLCanvasElement, rainfall: SectorRainfallValues, time: number, paused: boolean): void {
-  const bounds = canvas.getBoundingClientRect();
-  const width = Math.max(1, bounds.width);
-  const height = Math.max(1, bounds.height);
-  const density = Math.min(2, window.devicePixelRatio || 1);
-  const pixelWidth = Math.round(width * density);
-  const pixelHeight = Math.round(height * density);
-  if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
-    canvas.width = pixelWidth;
-    canvas.height = pixelHeight;
-  }
-  const context = canvas.getContext("2d");
-  if (!context) return;
-  context.setTransform(density, 0, 0, density, 0, 0);
-  context.clearRect(0, 0, width, height);
-
-  const chartTop = 9;
-  // Reserve a clear label lane below the curve so the S1/S2/S3 captions never
-  // visually touch the live rainfall nodes, including in the all-dry state.
-  const chartBottom = height - 47;
-  const chartHeight = Math.max(1, chartBottom - chartTop);
-  const xPositions = [width * 0.17, width * 0.5, width * 0.83] as const;
-  const points = rainfall.map((value, index) => ({
-    x: xPositions[index],
-    y: chartBottom - Math.max(0, Math.min(1, value)) * chartHeight,
-  }));
-
-  context.save();
-  context.setLineDash([2, 5]);
-  context.lineWidth = 1;
-  context.strokeStyle = "rgba(73, 185, 224, .18)";
-  for (const x of xPositions) {
-    context.beginPath();
-    context.moveTo(x, chartTop);
-    context.lineTo(x, chartBottom);
-    context.stroke();
-  }
-  context.restore();
-
-  const fill = context.createLinearGradient(0, chartTop, 0, chartBottom);
-  fill.addColorStop(0, "rgba(42, 198, 255, .32)");
-  fill.addColorStop(1, "rgba(20, 116, 164, .035)");
-  context.beginPath();
-  traceRainfallCurve(context, points);
-  context.lineTo(points[points.length - 1].x, chartBottom);
-  context.lineTo(points[0].x, chartBottom);
-  context.closePath();
-  context.fillStyle = fill;
-  context.fill();
-
-  context.beginPath();
-  traceRainfallCurve(context, points);
-  context.lineWidth = 2.4;
-  context.lineCap = "round";
-  context.strokeStyle = "#39d4ff";
-  context.shadowColor = "rgba(57, 212, 255, .62)";
-  context.shadowBlur = 8;
-  context.stroke();
-  context.shadowBlur = 0;
-
-  points.forEach((point, index) => {
-    const activity = rainfall[index];
-    const pulse = paused || activity < 0.04 ? 0 : Math.sin(time / 260 + index * 1.8) * 0.8;
-    context.beginPath();
-    context.arc(point.x, point.y, 4.6 + pulse, 0, Math.PI * 2);
-    context.fillStyle = activity > 0.6 ? "#8ac8ff" : "#27cfff";
-    context.shadowColor = activity > 0.6 ? "rgba(120, 167, 255, .9)" : "rgba(39, 207, 255, .82)";
-    context.shadowBlur = 9;
-    context.fill();
-    context.shadowBlur = 0;
-  });
-}
-
-function SectorRainfallGraph({ rainfall, paused }: { rainfall: SectorRainfallValues; paused: boolean }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const targetRef = useRef<SectorRainfallValues>(rainfall);
-  const displayedRef = useRef<[number, number, number]>([...rainfall]);
-  const pausedRef = useRef(paused);
-
-  useEffect(() => {
-    targetRef.current = rainfall;
-    pausedRef.current = paused;
-  }, [paused, rainfall]);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    let animationFrame = 0;
-    let previousTime = performance.now();
-    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const render = (time: number) => {
-      const delta = Math.min(100, Math.max(0, time - previousTime));
-      previousTime = time;
-      const blend = reducedMotion ? 1 : 1 - Math.exp(-delta / 280);
-      displayedRef.current = displayedRef.current.map((value, index) => (
-        value + (targetRef.current[index] - value) * blend
-      )) as [number, number, number];
-      drawRainfallGraph(canvas, displayedRef.current, time, pausedRef.current || reducedMotion);
-      animationFrame = window.requestAnimationFrame(render);
-    };
-    const resizeObserver = new ResizeObserver(() => {
-      drawRainfallGraph(canvas, displayedRef.current, performance.now(), pausedRef.current || reducedMotion);
-    });
-    resizeObserver.observe(canvas);
-    animationFrame = window.requestAnimationFrame(render);
-    return () => {
-      window.cancelAnimationFrame(animationFrame);
-      resizeObserver.disconnect();
-    };
-  }, []);
-
-  return <canvas
-    aria-hidden="true"
-    className="track-weather__canvas"
-    data-sector-rainfall={rainfall.map((value) => Math.round(value * 100)).join(",")}
-    ref={canvasRef}
-  />;
+function SectorRainfallBars({ rainfall }: { rainfall: SectorRainfallValues }) {
+  return (
+    <div className="track-weather__bars" role="list">
+      {rainfall.map((rainIntensity, index) => {
+        const sector = (index + 1) as 1 | 2 | 3;
+        const percent = Math.round(Math.max(0, Math.min(1, rainIntensity)) * 100);
+        return (
+          <div
+            aria-label={`Sector ${sector}: rain ${percent} percent`}
+            className="track-weather__row"
+            data-rainfall={percent}
+            data-sector={sector}
+            key={sector}
+            role="listitem"
+            title={`Sector ${sector}: rain ${percent}%`}
+          >
+            <b className="track-weather__sector-label">S{sector}</b>
+            <span
+              aria-label={`Sector ${sector} rainfall ${percent} percent`}
+              aria-valuemax={100}
+              aria-valuemin={0}
+              aria-valuenow={percent}
+              className="track-weather__bar"
+              role="progressbar"
+            >
+              {Array.from({ length: 10 }, (_, segment) => {
+                const segmentProgress = Math.max(0, Math.min(1, percent / 10 - segment));
+                return <i aria-hidden="true" key={segment} style={{ "--segment-progress": `${Math.round(segmentProgress * 100)}%` } as CSSProperties} />;
+              })}
+            </span>
+            <strong>{percent}<small>%</small></strong>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 function raceMapViewport(width: number, height: number, points: Parameters<typeof createTrackViewport>[0]) {
@@ -230,7 +139,6 @@ export function RaceMap({ startPhase, lightsOn, qualifyingState = null }: { star
   const qualifyingPositionsRef = useRef<Map<string, number>>(new Map());
   const qualifyingReceivedAtRef = useRef(0);
   const snapshot = useRaceStore((state) => state.snapshot);
-  const paused = useRaceStore((state) => state.paused);
   const selectedCarId = useRaceStore((state) => state.selectedCarId);
   const qualifyingLive = qualifyingState?.qualifyingLive ?? null;
   const playerTeamId = qualifyingState?.playerTeamId ?? snapshot?.playerTeamId ?? DEFAULT_PLAYER_TEAM_ID;
@@ -358,18 +266,20 @@ export function RaceMap({ startPhase, lightsOn, qualifyingState = null }: { star
       incidentBadge.addChild(incidentShape, incidentText);
       incidentBadge.visible = false;
       const safetyCarBadge = new PIXI.Container();
-      const safetyAura = new PIXI.Graphics().circle(0, 0, 25).fill({ color: 0x20d7e7, alpha: 0.08 });
-      const safetyGlow = new PIXI.Graphics().circle(0, 0, 20).stroke({ width: 2, color: 0x20d7e7, alpha: 0.42 });
-      const safetyRing = new PIXI.Graphics().circle(0, 0, 15).stroke({ width: 2, color: 0xffd34d, alpha: 0.92 });
+      const safetyAura = new PIXI.Graphics().circle(0, 0, 38).fill({ color: 0x39d4ff, alpha: 0.1 });
+      const safetyGlow = new PIXI.Graphics().circle(0, 0, 30).stroke({ width: 2.4, color: 0x39d4ff, alpha: 0.62 });
+      const safetyRing = new PIXI.Graphics().circle(0, 0, 22).stroke({ width: 2.8, color: 0xffd34d, alpha: 0.98 });
       const safetyShape = new PIXI.Graphics()
-        .roundRect(-15, -8, 30, 16, 5)
+        .roundRect(-22, -12, 44, 24, 7)
         .fill({ color: 0x07171c, alpha: 0.98 })
-        .stroke({ width: 1.7, color: 0xe9fdff, alpha: 0.94 });
-      const safetyRoof = new PIXI.Graphics().roundRect(-8, -4.5, 16, 6.5, 2).fill({ color: 0x20d7e7, alpha: 0.94 });
-      const safetyBeacon = new PIXI.Graphics().circle(0, -10, 3).fill({ color: 0xff5269, alpha: 0.98 });
-      const safetyText = new PIXI.Text({ text: "SC", style: { fontFamily: "Arial, sans-serif", fontSize: 8, fontWeight: "900", fill: 0xf4fbff } });
+        .stroke({ width: 2.2, color: 0xf4f7f8, alpha: 1 });
+      const safetyLabelPlate = new PIXI.Graphics()
+        .roundRect(-16, -7.5, 32, 15, 4)
+        .fill({ color: 0xf4f7f8, alpha: 1 });
+      const safetyBeacon = new PIXI.Graphics().circle(0, -15, 3.5).fill({ color: 0xff5269, alpha: 0.98 });
+      const safetyText = new PIXI.Text({ text: "SC", style: { fontFamily: "Arial, sans-serif", fontSize: 11, fontWeight: "900", fill: 0x071015 } });
       safetyText.anchor.set(0.5);
-      safetyCarBadge.addChild(safetyAura, safetyGlow, safetyRing, safetyShape, safetyRoof, safetyBeacon, safetyText);
+      safetyCarBadge.addChild(safetyAura, safetyGlow, safetyRing, safetyShape, safetyLabelPlate, safetyBeacon, safetyText);
       safetyCarBadge.zIndex = 50;
       safetyCarBadge.visible = false;
       alertLayer.addChild(incidentBadge, safetyCarBadge);
@@ -397,7 +307,7 @@ export function RaceMap({ startPhase, lightsOn, qualifyingState = null }: { star
         weather.surfaceZones?.forEach((zone) => {
           const effectiveWater = Math.min(1, zone.wetness * (1 - zone.dryingLine * 0.45) + zone.standingWater * 0.22);
           if (effectiveWater < 0.035) return;
-          const color = effectiveWater > 0.64 ? 0x245bff : effectiveWater > 0.27 ? 0x398cff : 0x20d7e7;
+          const color = effectiveWater > 0.64 ? 0x245bff : effectiveWater > 0.27 ? 0x398cff : 0xf4f7f8;
           const samples = Math.max(2, Math.ceil((zone.endDistance - zone.startDistance) / 24));
           for (let index = 0; index <= samples; index += 1) {
             const distance = zone.startDistance + ((zone.endDistance - zone.startDistance) * index) / samples;
@@ -523,7 +433,7 @@ export function RaceMap({ startPhase, lightsOn, qualifyingState = null }: { star
           if (!segment.activeAeroAllowed) return;
           const p1 = projectTrackPoint(segment.p1, viewport);
           const p2 = projectTrackPoint(segment.p2, viewport);
-          aeroLayer.moveTo(p1.x, p1.y).lineTo(p2.x, p2.y).stroke({ width: 3, color: 0x20d7e7, alpha: 0.38, cap: "butt" });
+          aeroLayer.moveTo(p1.x, p1.y).lineTo(p2.x, p2.y).stroke({ width: 3, color: 0xf4f7f8, alpha: 0.38, cap: "butt" });
         });
 
         const laneSamples = 28;
@@ -541,7 +451,7 @@ export function RaceMap({ startPhase, lightsOn, qualifyingState = null }: { star
           const isPlayerBox = teamId === playerTeamId;
           pitLane
             .circle(box.x, box.y, isPlayerBox ? 2.4 : 1.5)
-            .fill({ color: isPlayerBox ? 0x20d7e7 : 0x8fa6ae, alpha: isPlayerBox ? 0.95 : 0.5 });
+            .fill({ color: isPlayerBox ? 0xf4f7f8 : 0x8fa6ae, alpha: isPlayerBox ? 0.95 : 0.5 });
         }
 
         const centre = projectedCenterline.reduce((sum, point) => ({ x: sum.x + point.x, y: sum.y + point.y }), { x: 0, y: 0 });
@@ -565,8 +475,8 @@ export function RaceMap({ startPhase, lightsOn, qualifyingState = null }: { star
           const plate = new PIXI.Graphics()
             .roundRect(x - 17, y - 6, 34, 12, 5)
             .fill({ color: 0x071015, alpha: 0.94 })
-            .stroke({ width: 1, color: 0x20d7e7, alpha: 0.72 });
-          const text = new PIXI.Text({ text: `${zone.id} ↔`, style: { fontFamily: "Arial, sans-serif", fontSize: 7, fontWeight: "900", fill: 0x20d7e7 } });
+            .stroke({ width: 1, color: 0xf4f7f8, alpha: 0.72 });
+          const text = new PIXI.Text({ text: `${zone.id} ↔`, style: { fontFamily: "Arial, sans-serif", fontSize: 7, fontWeight: "900", fill: 0xf4f7f8 } });
           text.anchor.set(0.5);
           text.position.set(x, y + 0.2);
           aeroLabelLayer.addChild(plate, text);
@@ -781,8 +691,8 @@ export function RaceMap({ startPhase, lightsOn, qualifyingState = null }: { star
             marker.container.zIndex = 40 - (qualifyingPositionsRef.current.get(car.carId) ?? 30);
             const selected = state.selectedCarId === car.carId;
             marker.label.visible = true;
-            marker.label.tint = selected ? 0x20d7e7 : 0xffffff;
-            const phaseColor = car.phase === "PUSH_LAP" ? 0xff334f : car.phase === "IN_LAP" ? 0x36dc79 : 0x20d7e7;
+            marker.label.tint = selected ? 0xf4f7f8 : 0xffffff;
+            const phaseColor = car.phase === "PUSH_LAP" ? 0xff334f : car.phase === "IN_LAP" ? 0x36dc79 : 0xf4f7f8;
             const ringKey = `${car.phase}:${phaseColor}:${selected}`;
             if (marker.lastRingKey !== ringKey) {
               marker.ring.clear();
@@ -835,8 +745,10 @@ export function RaceMap({ startPhase, lightsOn, qualifyingState = null }: { star
               : projectTrackPoint(pointAtDistance(snapshot.safetyCarDistance, circuit), viewport);
             safetyCarBadge.position.set(safetyPoint.x, safetyPoint.y);
             const beaconPulse = 0.72 + Math.sin(performance.now() / 150) * 0.24;
-            safetyAura.alpha = 0.07 + beaconPulse * 0.05;
-            safetyGlow.alpha = 0.28 + beaconPulse * 0.22;
+            safetyAura.alpha = 0.08 + beaconPulse * 0.07;
+            safetyGlow.alpha = 0.38 + beaconPulse * 0.25;
+            safetyRing.alpha = 0.76 + beaconPulse * 0.24;
+            safetyRing.scale.set(0.96 + beaconPulse * 0.06);
             safetyRing.rotation = performance.now() / 2_400;
             safetyBeacon.alpha = beaconPulse;
             safetyCarBadge.visible = true;
@@ -908,7 +820,7 @@ export function RaceMap({ startPhase, lightsOn, qualifyingState = null }: { star
             marker.container.zIndex = 30 - car.racePosition;
             const selected = state.selectedCarId === car.carId;
             marker.label.visible = true;
-            marker.label.tint = selected ? 0x20d7e7 : 0xffffff;
+            marker.label.tint = selected ? 0xf4f7f8 : 0xffffff;
             marker.ring.clear();
             const energyIndicator = energyMarkerStateFor(car);
             const energyPulse = energyIndicator.active ? 0.78 + Math.sin(now / 180) * 0.14 : 0.62;
@@ -1023,16 +935,7 @@ export function RaceMap({ startPhase, lightsOn, qualifyingState = null }: { star
             <span><Droplets aria-hidden="true" size={15} /> WEATHER</span>
             <div><strong>SECTOR RAINFALL</strong></div>
           </header>
-          <div className="track-weather__chart">
-            <SectorRainfallGraph paused={paused} rainfall={sectorRainfall} />
-            <div className="track-weather__sectors">{sectorRainfall.map((rainIntensity, index) => {
-              const sector = (index + 1) as 1 | 2 | 3;
-              return <span data-rainfall={Math.round(rainIntensity * 100)} data-sector={sector} key={sector} aria-label={`Sector ${sector}: rain ${Math.round(rainIntensity * 100)} percent`} title={`Sector ${sector}: rain ${Math.round(rainIntensity * 100)}%`}>
-                <b>SECTOR {sector}</b>
-                <strong>{Math.round(rainIntensity * 100)}%<small>RAIN</small></strong>
-              </span>;
-            })}</div>
-          </div>
+          <SectorRainfallBars rainfall={sectorRainfall} />
         </div>
       </aside>}
       {isQualifying && <aside

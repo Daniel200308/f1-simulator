@@ -1,26 +1,24 @@
 .backdrop { position: fixed; inset: 0; z-index: 120; display: grid; place-items: center; padding: 20px; background: radial-gradient(circle at 22% 18%, color-mix(in srgb, var(--selected-team, #ff5269) 10%, transparent), transparent 32%), #03080c; }
 .selector { --selected-team: #ff5269; --selected-team-muted: var(--selected-team); width: min(1480px, 100%); height: min(940px, calc(100dvh - 40px)); max-height: calc(100dvh - 40px); display: grid; grid-template-rows: auto minmax(0,1fr); overflow: hidden; border: 1px solid rgba(148,177,190,.25); background: linear-gradient(145deg, rgba(11,24,31,.99), rgba(3,8,12,.99)); box-shadow: 0 34px 110px rgba(0,0,0,.68), inset 0 3px 0 var(--selected-team-muted); }
-/* Centred title block: the mark, eyebrow, headline, sub-line and round badge
+/* Centred title block: the eyebrow, headline and event title
    stack on one axis so the panel opens on a single clear focal point. */
-.header { display: grid; justify-items: center; gap: 0; padding: clamp(14px, 2.4vh, 22px) 26px clamp(13px, 2.2vh, 20px); border-bottom: 1px solid rgba(148,177,190,.16); text-align: center; pointer-events: none; }
-.mark { width: clamp(44px, 6vh, 56px); height: clamp(44px, 6vh, 56px); display: grid; place-items: center; border: 1px solid color-mix(in srgb, var(--selected-team-muted) 65%, #30434c); border-radius: 50%; color: var(--selected-team-muted); background: color-mix(in srgb, var(--selected-team-muted) 9%, #061015); box-shadow: 0 0 30px color-mix(in srgb, var(--selected-team-muted) 22%, transparent); }
-.header small, .briefBody > span { color: var(--selected-team-muted); font: 900 clamp(11px, 1.6vh, 13px) var(--font-mono); letter-spacing: .3em; }
-.header small { margin-top: clamp(8px, 1.4vh, 12px); text-indent: .3em; }
-/* The headline needs its own line box: a tight line-height on a large display
-   size clips descenders, which the layout probe reports as an overflow. */
-.header h1 { margin: clamp(5px, 1vh, 8px) 0 0; padding-bottom: 2px; font-size: clamp(34px, min(3.9vw, 6.4vh), 56px); line-height: 1.16; letter-spacing: -.04em; }
-.header p { max-width: 66ch; margin: clamp(6px, 1.1vh, 9px) 0 0; color: #9db1b9; font: 14px/1.5 var(--font-mono); }
-.header > b { display: flex; align-items: center; gap: 11px; margin-top: clamp(9px, 1.6vh, 14px); padding: 6px 16px; border: 1px solid color-mix(in srgb, var(--selected-team-muted) 42%, rgba(148,177,190,.24)); border-radius: 999px; color: #dbe5e8; font: 900 12px var(--font-mono); letter-spacing: .2em; }
-.header > b i { width: 4px; height: 4px; border-radius: 50%; background: var(--selected-team-muted); box-shadow: 0 0 8px var(--selected-team-muted); }
+.header { display: grid; justify-items: center; gap: 0; padding: clamp(16px, 2.6vh, 24px) 26px clamp(16px, 2.4vh, 22px); border-bottom: 1px solid rgba(148,177,190,.16); text-align: center; pointer-events: none; }
+.brandTitle { color: #f4f7f8; font: 900 clamp(15px, 1.25vw, 21px)/1 var(--font-display); letter-spacing: .14em; text-transform: uppercase; }
+.briefBody > span { color: var(--selected-team-muted); font: 900 clamp(11px, 1.6vh, 13px) var(--font-mono); letter-spacing: .3em; }
+/* The event is the page's focal point; the team prompt remains a quiet action cue. */
+.eventTitle { display: grid; justify-items: center; gap: 4px; margin-top: clamp(10px, 1.6vh, 15px); font-family: var(--font-display); text-transform: uppercase; }
+.eventTitle strong { color: #f4f7f8; font-size: clamp(34px, min(4vw, 6.8vh), 62px); font-weight: 900; line-height: 1.04; letter-spacing: .01em; }
+.eventTitle span { color: var(--selected-team-muted); font-size: clamp(18px, min(1.8vw, 3vh), 28px); font-weight: 900; line-height: 1.05; letter-spacing: .18em; text-indent: .18em; }
+.teamPrompt { margin: clamp(15px, 2.2vh, 22px) 0 0; color: #aebbc0; font-family: "Arial Pitwall", Arial, sans-serif; font-size: clamp(13px, min(1.05vw, 1.8vh), 18px); font-weight: 900; line-height: 1.12; letter-spacing: .12em; text-transform: uppercase; }
 .workspace { min-width: 0; min-height: 0; display: grid; grid-template-columns: minmax(0,1fr) 420px; }
 .teamGrid { min-width: 0; min-height: 0; display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); grid-auto-rows: minmax(0, 1fr); align-content: stretch; gap: clamp(8px, 1.4vh, 13px); padding: clamp(14px, 2.2vh, 24px); overflow: hidden auto; }
 /* Each card centres its own content so the grid reads as a set of even tiles. */
-.teamGrid button { --team: #20d7e7; --team-muted: var(--team); position: relative; min-width: 0; min-height: clamp(78px, 12vh, 116px); display: grid; align-content: center; justify-items: center; gap: 4px; padding: clamp(11px, 1.8vh, 17px) 15px clamp(13px, 2vh, 19px); overflow: hidden; border: 1px solid rgba(148,177,190,.16); color: #eaf1f3; background: linear-gradient(145deg, rgba(15,29,36,.88), rgba(5,12,16,.96)); cursor: pointer; touch-action: manipulation; text-align: center; transition: transform .16s ease, border-color .16s ease, background .16s ease; -webkit-tap-highlight-color: transparent; }
+.teamGrid button { --team: #f4f7f8; --team-muted: var(--team); position: relative; min-width: 0; min-height: clamp(78px, 12vh, 116px); display: grid; align-content: center; justify-items: center; gap: 4px; padding: clamp(11px, 1.8vh, 17px) 15px clamp(13px, 2vh, 19px); overflow: hidden; border: 1px solid rgba(148,177,190,.16); color: #eaf1f3; background: linear-gradient(145deg, rgba(15,29,36,.88), rgba(5,12,16,.96)); cursor: pointer; touch-action: manipulation; text-align: center; transition: transform .16s ease, border-color .16s ease, background .16s ease; -webkit-tap-highlight-color: transparent; }
 .teamGrid button:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--team-muted) 64%, #30434c); }
 .teamGrid button.selected { border-color: var(--team-muted); background: linear-gradient(145deg, color-mix(in srgb, var(--team-muted) 12%, #0b171d), rgba(5,12,16,.98)); box-shadow: inset 0 0 28px color-mix(in srgb, var(--team-muted) 8%, transparent), 0 12px 28px rgba(0,0,0,.24); }
 .teamGrid button > span { color: var(--team-muted); font: 950 clamp(12px, 1.6vh, 15px) var(--font-mono); letter-spacing: .14em; opacity: .82; }
 .teamGrid button strong, .teamGrid button small { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.teamGrid button strong { font-size: clamp(18px, min(1.5vw, 2.6vh), 24px); line-height: 1.14; letter-spacing: -.02em; }
+.teamGrid button strong { font-family: var(--font-display); font-size: clamp(17px, min(1.4vw, 2.4vh), 23px); font-weight: 900; line-height: 1.08; letter-spacing: .01em; }
 .teamGrid button small { margin-top: 2px; color: #8ba0a8; font: 700 clamp(11px, 1.5vh, 13px) var(--font-mono); letter-spacing: .12em; }
 .teamGrid button.selected > span, .teamGrid button.selected small { color: var(--team-muted); opacity: 1; }
 .teamGrid button i { position: absolute; right: 0; bottom: 0; left: 0; height: 3px; background: var(--team-muted); opacity: .45; }
@@ -67,14 +65,14 @@
   .backdrop { padding: 0; }
   .selector { min-height: 100dvh; border-inline: 0; }
   .header { padding: 20px 14px 18px; }
-  .mark { width: 48px; height: 48px; }
-  .header small { margin-top: 11px; font-size: 11px; letter-spacing: .22em; }
-  .header h1 { margin-top: 7px; font-size: 32px; }
-  .header p { margin-top: 9px; font-size: 12px; line-height: 1.45; }
-  .header > b { margin-top: 13px; font-size: 10px; }
+  .brandTitle { font-size: 15px; letter-spacing: .12em; }
+  .eventTitle { margin-top: 12px; }
+  .eventTitle strong { font-size: 34px; }
+  .eventTitle span { font-size: 18px; }
+  .teamPrompt { margin-top: 15px; font-size: 15px; letter-spacing: .1em; }
   .teamGrid { grid-template-columns: 1fr; gap: 8px; padding: 14px; }
   .teamGrid button { min-height: 92px; padding: 13px; }
-  .teamGrid button strong { font-size: 20px; }
+  .teamGrid button strong { font-size: 18px; letter-spacing: 0; }
   .teamBrief { min-height: 470px; padding: 22px 18px; }
   .briefBody h2 { font-size: 30px; }
   .performance { margin-block: 18px 14px; }
@@ -84,7 +82,6 @@
 /* Aubergine / black / lavender surface treatment for team selection. */
 .backdrop { background: radial-gradient(circle at 22% 18%, var(--surface-glow), transparent 32%), var(--surface-void); }
 .selector { border-color: var(--surface-line-strong); background: linear-gradient(145deg, var(--surface-raised), var(--surface-deep)); box-shadow: 0 34px 110px var(--surface-shadow), inset 0 3px 0 var(--selected-team-muted); }
-.mark { background: color-mix(in srgb, var(--selected-team-muted) 9%, var(--surface-deep)); }
 .teamGrid button { border-color: var(--surface-line); background: linear-gradient(145deg, color-mix(in srgb, var(--surface-raised) 84%, #000), var(--surface-deep)); }
 .teamGrid button.selected { background: linear-gradient(145deg, color-mix(in srgb, var(--team-muted) 12%, var(--surface-raised)), var(--surface-deep)); }
 .teamBrief { background: linear-gradient(145deg, color-mix(in srgb, var(--selected-team-muted) 7%, var(--surface-raised)), var(--surface-deep)); }

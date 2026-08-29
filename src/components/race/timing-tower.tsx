@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import { CircleAlert, X } from "lucide-react";
+import { ArrowDown, ArrowUp, CircleAlert, X } from "lucide-react";
 
 import { DRIVER_BY_ID, TEAM_BY_ID } from "@/fixtures/grid";
 import { TyreBadge } from "@/components/race/tyre-badge";
@@ -21,15 +21,62 @@ export function TimingTower() {
   const select = useRaceStore((state) => state.setSelectedCarId);
   const timingGaps = useRaceStore((state) => state.timingGaps);
   const timingGapRevision = useRaceStore((state) => state.timingGapRevision);
-  const cars = snapshot ? [...snapshot.cars].sort((a, b) => a.racePosition - b.racePosition) : [];
+  const cars = useMemo(() => snapshot ? [...snapshot.cars].sort((a, b) => a.racePosition - b.racePosition) : [], [snapshot]);
   const currentLap = cars[0]?.currentLap ?? 1;
   const totalLaps = circuitById(snapshot?.circuitId).totalLaps;
   const [sportingNoticeCarId, setSportingNoticeCarId] = useState<string | null>(null);
+  const [positionChanges, setPositionChanges] = useState<Record<string, "UP" | "DOWN">>({});
+  const previousRaceSeedRef = useRef<number | null>(null);
+  const previousPositionsRef = useRef(new Map<string, number>());
+  const positionChangeApplyTimeoutRef = useRef<number | null>(null);
+  const positionChangeTimeoutRef = useRef<number | null>(null);
+  const positionSignature = cars.map((car) => `${car.carId}:${car.racePosition}`).join("|");
+  const raceSeed = snapshot?.seed ?? null;
   const noticeCar = cars.find((car) => car.carId === sportingNoticeCarId);
   const noticeDriver = noticeCar ? DRIVER_BY_ID.get(noticeCar.driverId) : undefined;
-  const noticePenalty = sportingNoticeCarId ? snapshot?.penalties.find((penalty) => penalty.carId === sportingNoticeCarId && (penalty.status === "PENDING" || penalty.status === "SERVING" || penalty.status === "ESCALATED")) : undefined;
+  const noticePenalty = sportingNoticeCarId ? snapshot?.penalties.find((penalty) => penalty.carId === sportingNoticeCarId && penalty.status !== "EXPIRED") : undefined;
   const noticeInvestigation = sportingNoticeCarId ? snapshot?.investigations.find((investigation) => investigation.carId === sportingNoticeCarId && (investigation.status === "NOTED" || investigation.status === "UNDER_INVESTIGATION" || investigation.status === "DECISION_PENDING")) : undefined;
   const activeSportingNotice = noticePenalty ?? noticeInvestigation;
+
+  useEffect(() => {
+    const previousPositions = previousPositionsRef.current;
+    const nextPositions = new Map(cars.map((car) => [car.carId, car.racePosition]));
+    const nextChanges: Record<string, "UP" | "DOWN"> = {};
+
+    for (const car of cars) {
+      const previousPosition = previousPositions.get(car.carId);
+      if (previousPosition === undefined || previousPosition === car.racePosition) continue;
+      nextChanges[car.carId] = car.racePosition < previousPosition ? "UP" : "DOWN";
+    }
+
+    if (raceSeed !== previousRaceSeedRef.current) {
+      previousRaceSeedRef.current = raceSeed;
+      previousPositionsRef.current = nextPositions;
+      if (positionChangeApplyTimeoutRef.current !== null) window.clearTimeout(positionChangeApplyTimeoutRef.current);
+      if (positionChangeTimeoutRef.current !== null) window.clearTimeout(positionChangeTimeoutRef.current);
+      window.setTimeout(() => setPositionChanges({}), 0);
+      return;
+    }
+
+    previousPositionsRef.current = nextPositions;
+    if (Object.keys(nextChanges).length === 0) return;
+
+    if (positionChangeApplyTimeoutRef.current !== null) window.clearTimeout(positionChangeApplyTimeoutRef.current);
+    positionChangeApplyTimeoutRef.current = window.setTimeout(() => {
+      setPositionChanges(nextChanges);
+      if (positionChangeTimeoutRef.current !== null) window.clearTimeout(positionChangeTimeoutRef.current);
+      positionChangeTimeoutRef.current = window.setTimeout(() => {
+        setPositionChanges({});
+        positionChangeTimeoutRef.current = null;
+      }, 1800);
+      positionChangeApplyTimeoutRef.current = null;
+    }, 0);
+  }, [cars, positionSignature, raceSeed]);
+
+  useEffect(() => () => {
+    if (positionChangeApplyTimeoutRef.current !== null) window.clearTimeout(positionChangeApplyTimeoutRef.current);
+    if (positionChangeTimeoutRef.current !== null) window.clearTimeout(positionChangeTimeoutRef.current);
+  }, []);
 
   return (
     <aside className="panel timing-panel" data-gap-revision={timingGapRevision}>
@@ -64,15 +111,19 @@ export function TimingTower() {
           const team = TEAM_BY_ID.get(car.teamId);
           if (!driver || !team) return null;
           const isRetired = car.incidentStatus === "RETIRED";
-          const pendingPenalty = snapshot?.penalties.find((penalty) => penalty.carId === car.carId && (penalty.status === "PENDING" || penalty.status === "SERVING" || penalty.status === "ESCALATED"));
+          const pendingPenalty = snapshot?.penalties.find((penalty) => penalty.carId === car.carId && penalty.status !== "EXPIRED");
           const investigation = snapshot?.investigations.find((candidate) => candidate.carId === car.carId && (candidate.status === "NOTED" || candidate.status === "UNDER_INVESTIGATION" || candidate.status === "DECISION_PENDING"));
+          const positionChange = positionChanges[car.carId];
+          const positionChangeLabel = positionChange === "UP" ? "Gained position" : positionChange === "DOWN" ? "Lost position" : undefined;
           const warningTitle = pendingPenalty
             ? `${penaltyLabel(pendingPenalty.type)} · ${pendingPenalty.reason} · ${pendingPenalty.status}`
             : investigation ? `${investigation.status.replaceAll("_", " ")} · ${investigation.reason}` : undefined;
           return (
             <div
-              aria-label={`Select ${driver.name}`}
-              className={`timing-row ${selectedCarId === car.carId ? "is-selected" : ""} ${car.teamId === snapshot?.playerTeamId ? "is-player" : ""} ${isRetired ? "is-retired" : ""}`}
+              aria-label={`Select ${driver.name}${positionChangeLabel ? ` · ${positionChangeLabel}` : ""}`}
+              className={`timing-row ${selectedCarId === car.carId ? "is-selected" : ""} ${car.teamId === snapshot?.playerTeamId ? "is-player" : ""} ${isRetired ? "is-retired" : ""} ${positionChange ? `has-position-change is-position-${positionChange.toLowerCase()}` : ""} ${pendingPenalty ? "has-penalty" : investigation ? "has-investigation" : ""}`}
+              data-position-change={positionChange?.toLowerCase()}
+              data-sporting-status={pendingPenalty ? "penalty" : investigation ? "investigation" : undefined}
               key={car.carId}
               onClick={() => select(car.carId)}
               onKeyDown={(event) => {
@@ -83,7 +134,12 @@ export function TimingTower() {
               role="button"
               tabIndex={0}
             >
-              <span className="timing-position">{car.racePosition.toString().padStart(2, "0")}</span>
+              <span className="timing-position-cell">
+                {positionChange === "UP" && <ArrowUp aria-label="Position gained" className="timing-position-change timing-position-change--up" size={15} strokeWidth={3.2} />}
+                {positionChange === "DOWN" && <ArrowDown aria-label="Position lost" className="timing-position-change timing-position-change--down" size={15} strokeWidth={3.2} />}
+                {!positionChange && <span aria-hidden="true" className="timing-position-change-placeholder" />}
+                <span className="timing-position">{car.racePosition.toString().padStart(2, "0")}</span>
+              </span>
               <span className="driver-cell">
                 <i style={{ backgroundColor: `#${team.primaryColor.toString(16).padStart(6, "0")}` }} />
                 <strong title={driver.name}>{driver.shortName}</strong>
@@ -100,7 +156,7 @@ export function TimingTower() {
                     onClick={(event) => { event.stopPropagation(); setSportingNoticeCarId(car.carId); }}
                     title={`${warningTitle} · Click for details`}
                     type="button"
-                  ><CircleAlert aria-hidden="true" fill="currentColor" size={18} strokeWidth={2.8} /></button>
+                  ><span aria-hidden="true">!</span></button>
                 : <span aria-hidden="true" className="timing-warning" />}
             </div>
           );

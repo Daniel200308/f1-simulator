@@ -65,9 +65,9 @@
 .sessionMasthead > div > strong {
   flex: 0 0 auto;
   color: var(--accent);
-  font: italic 950 17px/.9 var(--font-mono);
-  letter-spacing: -.045em;
-  text-shadow: 0 0 16px rgba(123, 133, 143, .22);
+  font: 900 17px/1 var(--font-display);
+  letter-spacing: .02em;
+  text-shadow: none;
 }
 
 .sessionMasthead > div > i {
@@ -81,7 +81,7 @@
 .sessionMasthead > div b {
   overflow: hidden;
   color: #eef5f7;
-  font: italic 900 12px/1 var(--font-sans);
+  font: 700 12px/1 "Arial Pitwall", Arial, sans-serif;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -96,15 +96,16 @@
 }
 
 .sessionRail {
+  position: relative;
   min-width: 0;
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
   align-items: stretch;
-  gap: 3px;
+  gap: 0;
   grid-column: 1;
   grid-row: 2;
   margin: 0;
-  padding: 9px 18px 11px;
+  padding: 10px 24px 12px;
   list-style: none;
   overflow: hidden;
 }
@@ -114,85 +115,92 @@
   min-width: 0;
   display: grid;
   place-items: center;
-  min-height: 78px;
-  padding: 12px 18px 15px;
-  border: 1px solid rgba(92, 120, 130, .44);
-  border-radius: 14px;
-  color: #cad9dd;
-  background: linear-gradient(135deg, #121e26, #0a131a 68%, #0c171e);
-  filter: drop-shadow(0 7px 9px rgba(0, 0, 0, .22));
-  overflow: hidden;
-  transition: transform .28s cubic-bezier(.16, 1, .3, 1), filter .28s ease, background .28s ease, color .28s ease;
+  min-height: 76px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 0;
+  color: #a8b8be;
+  background: transparent;
+  overflow: visible;
+  transition: color .2s ease, transform .2s ease;
 }
 
 .sessionRail li::after {
   position: absolute;
-  right: 18px;
-  bottom: 10px;
-  left: 18px;
+  top: 15px;
+  right: calc(-50% + 16px);
+  left: calc(50% + 16px);
   height: 2px;
-  border-radius: 999px;
-  background: #2c4149;
+  border-radius: 0;
+  background: #26363e;
   content: "";
-  opacity: .9;
-  transition: background .28s ease, box-shadow .28s ease, transform .28s ease;
+  opacity: 1;
+  transition: background .2s ease;
 }
 
-.sessionRail li:hover { transform: translateY(-2px); filter: drop-shadow(0 10px 13px rgba(0, 0, 0, .32)); }
+.sessionRail li:last-child::after { display: none; }
+.sessionRail li:hover { transform: translateY(-1px); }
 
 .sessionContent {
   width: 100%;
   min-width: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  padding-inline: 4px;
+  display: grid;
+  grid-template-rows: 32px auto;
+  justify-items: center;
+  gap: 8px;
+  padding: 0;
   text-align: center;
 }
 
-.sessionIcon { flex: 0 0 auto; color: #91a6ad; }
+.sessionNode {
+  position: relative;
+  z-index: 1;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: 2px solid #3b4d56;
+  border-radius: 50%;
+  color: #7c8d95;
+  background: #080e13;
+}
+
+.sessionNode > i { width: 9px; height: 9px; border-radius: 50%; background: currentColor; }
 
 .sessionCopy { min-width: 0; display: grid; align-items: center; }
 
 .sessionCopy b {
   display: block;
   overflow: hidden;
-  font-family: var(--font-mono);
+  color: #b5c3c8;
+  font-family: var(--font-display);
+  font-size: clamp(18px, 1.35vw, 23px);
+  font-style: normal;
+  font-weight: 900;
+  letter-spacing: .02em;
+  line-height: 1;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.sessionCopy b { color: #edf4f5; font-size: clamp(19px, 1.55vw, 25px); font-style: italic; font-weight: 950; letter-spacing: -.035em; line-height: 1; }
-
 .sessionRail li[data-state="completed"] {
-  border-color: rgba(67, 213, 142, .72);
-  color: #d6f7e4;
-  background: linear-gradient(135deg, #173f31 0%, #0d2b22 68%, #0a201a 100%);
-  filter: drop-shadow(0 7px 12px rgba(18, 129, 80, .24));
+  color: #6de0b2;
 }
 
-.sessionRail li[data-state="completed"] .sessionIcon { color: #4de092; }
-.sessionRail li[data-state="completed"] .sessionCopy b { color: #e2ffed; }
-.sessionRail li[data-state="completed"]::after { background: #3ed18a; box-shadow: 0 0 13px rgba(75, 222, 149, .52); }
+.sessionRail li[data-state="completed"] .sessionNode { border-color: #16a88b; color: #f2fffa; background: #0f806f; }
+.sessionRail li[data-state="completed"] .sessionCopy b { color: #6de0b2; }
+.sessionRail li[data-state="completed"]::after { background: #168d79; }
 
 .sessionRail li[data-state="current"] {
   z-index: 2;
-  border-color: #d7f6fb;
-  color: #061016;
-  background: linear-gradient(135deg, #f4f8f7 0%, #e6eff0 71%, #cde7ec 100%);
-  filter: drop-shadow(0 9px 16px rgba(123, 133, 143, .2));
-  animation: session-tab-glow 3.8s ease-in-out infinite;
+  color: #d8ebff;
 }
 
-.sessionRail li[data-state="current"] .sessionIcon { color: #07151a; }
-.sessionRail li[data-state="current"] .sessionCopy b { color: #08151a; }
-.sessionRail li[data-state="current"]::after { background: linear-gradient(90deg, #414a52, #7b858f); box-shadow: 0 0 11px rgba(123, 133, 143, .65); transform: scaleX(1.04); }
+.sessionRail li[data-state="current"] .sessionNode { border-color: #4a9aff; color: #a4d0ff; background: #135aa5; box-shadow: 0 0 0 3px rgba(74, 154, 255, .14); }
+.sessionRail li[data-state="current"] .sessionCopy b { color: #d8ebff; }
+.sessionRail li[data-state="current"]::after { background: linear-gradient(90deg, #2e83ed, #26363e); }
 
-@keyframes session-tab-glow {
-  0%, 100% { filter: drop-shadow(0 9px 16px rgba(123, 133, 143, .16)); }
-  50% { filter: drop-shadow(0 11px 23px rgba(123, 133, 143, .32)); }
-}
+.sessionRail li[data-state="upcoming"] .sessionCopy b { color: #9aaab0; }
 
 .workspace {
   min-width: 0;
@@ -1729,12 +1737,12 @@
   .sessionMasthead > div > strong { font-size: 15px; }
   .sessionMasthead > div b { font-size: 11px; }
   .sessionMasthead > div small { font-size: 7px; }
-  .sessionRail { gap: 2px; padding: 8px 10px 10px; }
-  .sessionRail li { min-height: 72px; padding: 10px 10px 13px; }
-  .sessionContent { gap: 9px; }
-  .sessionIcon { width: 16px; height: 16px; }
+  .sessionRail { gap: 0; padding: 8px 14px 10px; }
+  .sessionRail li { min-height: 70px; padding: 0 6px; }
+  .sessionContent { grid-template-rows: 28px auto; gap: 7px; }
+  .sessionNode { width: 28px; height: 28px; }
+  .sessionRail li::after { top: 13px; right: calc(-50% + 14px); left: calc(50% + 14px); }
   .sessionCopy b { font-size: 18px; }
-  .sessionRail li::after { right: 17px; bottom: 8px; left: 17px; }
   .workspace { grid-template-columns: minmax(0, 1fr) 320px; }
   .classification > header,
   .classification > div > div { grid-template-columns: 30px minmax(60px, 1fr) 34px 68px 60px; column-gap: 4px; }
@@ -1755,7 +1763,7 @@
   .sessionMasthead > div > i { gap: 5px; }
   .sessionMasthead > div b { max-width: 108px; font-size: 9px; }
   .sessionMasthead > div small { display: none; }
-  .sessionRail { grid-template-columns: repeat(7, minmax(112px, 1fr)); overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+  .sessionRail { grid-template-columns: repeat(7, minmax(112px, 1fr)); overflow-x: auto; overflow-y: hidden; scrollbar-width: none; padding-inline: 10px; }
   .sessionRail::-webkit-scrollbar { display: none; }
   .reportBackdrop { place-items: start center; padding: 0; overflow-y: auto; }
   .sessionReport { width: 100%; min-height: 100dvh; max-height: none; grid-template-rows: auto auto auto; overflow: visible; border-inline: 0; }
@@ -1792,8 +1800,11 @@
   .sessionMasthead > div b { font-size: 10px; }
   .sessionMasthead > div small { font-size: 7px; }
   .sessionRail { padding-block: 6px 8px; }
-  .sessionRail li { min-height: 64px; padding-block: 10px 14px; }
-  .sessionRail li::after { bottom: 7px; }
+  .sessionRail li { min-height: 64px; padding: 0 4px; }
+  .sessionContent { grid-template-rows: 26px auto; gap: 6px; }
+  .sessionNode { width: 26px; height: 26px; }
+  .sessionRail li::after { top: 12px; right: calc(-50% + 13px); bottom: auto; left: calc(50% + 13px); }
+  .sessionCopy b { font-size: 17px; }
   .garageCanvas { grid-template-rows: 38px minmax(0, 1fr); }
   .setupCar { grid-template-rows: 44px minmax(0, 1fr); }
   .setupCar > header { padding-inline: 11px; }
@@ -1870,7 +1881,8 @@
 .header,
 .timingPanel,
 .debriefArea { background: linear-gradient(180deg, var(--surface-deep), #000000); }
-.sessionRail li { border-color: var(--surface-line); background: linear-gradient(135deg, color-mix(in srgb, var(--surface-raised) 78%, #000), var(--surface-deep)); }
+.sessionRail { background: var(--surface-deep); }
+.sessionRail li { border-color: transparent; background: transparent; }
 .garageCanvas,
 .setupCar,
 .debriefCard,

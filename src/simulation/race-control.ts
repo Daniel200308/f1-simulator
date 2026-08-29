@@ -17,7 +17,16 @@ export const SAFETY_CAR_MINIMUM_BUNCHING_SECONDS = 18;
 export const SAFETY_CAR_RESTART_SECONDS = 8;
 /** Time spent leaving the pit lane before the physical Safety Car is on track. */
 export const SAFETY_CAR_PIT_RELEASE_SECONDS = 3.2;
-export const SAFETY_CAR_DEPLOYMENT_SLOW_SPEED_KPH = 96;
+/** Crawl speed while the Safety Car is clear of the pit exit but P1 has not joined. */
+export const SAFETY_CAR_DEPLOYMENT_SLOW_SPEED_KPH = 58;
+/** Hard ceiling before the first car has physically joined the Safety Car queue. */
+export const SAFETY_CAR_PRE_CONTACT_MAX_SPEED_KPH = 80;
+/** The physical car leaves the pit lane at a deliberately cautious pace. */
+export const SAFETY_CAR_PIT_RELEASE_SPEED_KPH = 42;
+/** Distance at which P1 is considered attached to the physical Safety Car. */
+export const SAFETY_CAR_FIRST_CONTACT_DISTANCE_METERS = 64;
+/** Once the lead car is attached, the Safety Car uses 60% of local green pace. */
+export const SAFETY_CAR_FOLLOWING_SPEED_FACTOR = 0.6;
 export const SAFETY_CAR_APPROACH_SPEED_KPH = 155;
 
 export type TrackSector = 1 | 2 | 3;
@@ -78,6 +87,8 @@ export interface SafetyCarPositionInput {
   pitExitDistance?: number;
   /** Absolute distance of the lead car, used for the pit-exit approach cue. */
   firstCarDistance?: number | null;
+  /** Local green-flag reference speed used after the lead car joins the queue. */
+  referenceRaceSpeedKph?: number;
 }
 
 export interface SafetyCarCandidate {
@@ -338,16 +349,25 @@ function positiveModulo(value: number, modulus: number): number {
   return ((value % modulus) + modulus) % modulus;
 }
 
-function safetyCarSpeedFor(phase: Exclude<SafetyCarPhase, "NONE">): number {
-  if (phase === "DEPLOYED") return 155;
-  if (phase === "BUNCHING") return 125;
+function safetyCarFollowingSpeedFor(referenceRaceSpeedKph?: number): number {
+  const normalRaceSpeedKph = Number.isFinite(referenceRaceSpeedKph)
+    ? referenceRaceSpeedKph as number
+    : SAFETY_CAR_APPROACH_SPEED_KPH / SAFETY_CAR_FOLLOWING_SPEED_FACTOR;
+  return Math.max(45, normalRaceSpeedKph * SAFETY_CAR_FOLLOWING_SPEED_FACTOR);
+}
+
+function safetyCarSpeedFor(phase: Exclude<SafetyCarPhase, "NONE">, referenceRaceSpeedKph?: number): number {
+  if (phase === "DEPLOYED") return SAFETY_CAR_DEPLOYMENT_SLOW_SPEED_KPH;
+  if (phase === "BUNCHING") return safetyCarFollowingSpeedFor(referenceRaceSpeedKph);
   return 185;
 }
 
 /**
  * Advances the physical Safety Car. It is born at the next pit-lane rejoin,
  * holds there while the marshal release is shown, then rolls slowly until P1
- * is close enough to require the regulated deployment pace.
+ * is close enough to join the queue. The pre-contact ceiling applies across
+ * the deployment transition so the phase timer cannot make the car accelerate
+ * away from an approaching leader.
  */
 export function advanceSafetyCarPosition(input: SafetyCarPositionInput): SafetyCarPosition {
   if (input.circuitLengthMeters <= 0) throw new RangeError("circuitLengthMeters must be greater than 0");
@@ -361,13 +381,16 @@ export function advanceSafetyCarPosition(input: SafetyCarPositionInput): SafetyC
   const distanceToFirstCar = input.firstCarDistance === null || input.firstCarDistance === undefined
     ? Number.POSITIVE_INFINITY
     : input.firstCarDistance - currentDistance;
-  const firstCarApproaching = input.phase === "DEPLOYED"
-    && !leavingPit
-    && distanceToFirstCar <= 240
-    && distanceToFirstCar >= -120;
-  const speedKph = input.phase === "DEPLOYED"
-    ? leavingPit ? 65 : firstCarApproaching ? SAFETY_CAR_APPROACH_SPEED_KPH : SAFETY_CAR_DEPLOYMENT_SLOW_SPEED_KPH
-    : safetyCarSpeedFor(input.phase);
+  const firstCarJoined = !leavingPit
+    && Number.isFinite(distanceToFirstCar)
+    && Math.abs(distanceToFirstCar) <= SAFETY_CAR_FIRST_CONTACT_DISTANCE_METERS;
+  const speedKph = leavingPit
+    ? SAFETY_CAR_PIT_RELEASE_SPEED_KPH
+    : firstCarJoined
+      ? input.phase === "DEPLOYED"
+        ? safetyCarFollowingSpeedFor(input.referenceRaceSpeedKph)
+        : safetyCarSpeedFor(input.phase, input.referenceRaceSpeedKph)
+      : Math.min(SAFETY_CAR_DEPLOYMENT_SLOW_SPEED_KPH, SAFETY_CAR_PRE_CONTACT_MAX_SPEED_KPH);
   const totalDistance = input.previousTotalDistance === null
     ? initializedDistance
     : leavingPit

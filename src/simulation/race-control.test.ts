@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { SafetyCarCandidate } from "@/simulation/race-control";
 import {
   SAFETY_CAR_DEPLOYMENT_SECONDS,
+  SAFETY_CAR_PRE_CONTACT_MAX_SPEED_KPH,
   advanceSafetyCarPosition,
   advanceSafetyCarProcedure,
   buildSafetyCarSchedule,
@@ -206,14 +207,58 @@ describe("safety car position and queue", () => {
       phaseElapsedSeconds: 3.2,
       pitExitDistance: 155,
       firstCarDistance: 6_030,
+      referenceRaceSpeedKph: 300,
     });
 
     expect(initial.totalDistance).toBe(6_046);
     expect(initial.lapDistance).toBe(155);
     expect(initial.speedKph).toBeLessThan(100);
     expect(held.totalDistance).toBe(initial.totalDistance);
+
+    const approaching = advanceSafetyCarPosition({
+      previousTotalDistance: held.totalDistance,
+      leaderTotalDistance: 6_400,
+      circuitLengthMeters: 5_891,
+      phase: "DEPLOYED",
+      stepSeconds: 1,
+      phaseElapsedSeconds: 3.2,
+      pitExitDistance: 155,
+      firstCarDistance: 6_400,
+    });
+
+    expect(approaching.speedKph).toBe(58);
+    expect(approaching.totalDistance).toBeGreaterThan(held.totalDistance);
     expect(joined.totalDistance).toBeGreaterThan(held.totalDistance);
-    expect(joined.speedKph).toBe(155);
+    expect(joined.speedKph).toBe(180);
+  });
+
+  it("keeps the Safety Car below the pre-contact ceiling after deployment rolls into bunching", () => {
+    const beforeContact = advanceSafetyCarPosition({
+      previousTotalDistance: 6_046,
+      leaderTotalDistance: 6_240,
+      circuitLengthMeters: 5_891,
+      phase: "BUNCHING",
+      stepSeconds: 1,
+      phaseElapsedSeconds: 12,
+      pitExitDistance: 155,
+      firstCarDistance: 6_240,
+      referenceRaceSpeedKph: 300,
+    });
+    const afterContact = advanceSafetyCarPosition({
+      previousTotalDistance: 6_046,
+      leaderTotalDistance: 6_080,
+      circuitLengthMeters: 5_891,
+      phase: "BUNCHING",
+      stepSeconds: 1,
+      phaseElapsedSeconds: 12,
+      pitExitDistance: 155,
+      firstCarDistance: 6_080,
+      referenceRaceSpeedKph: 300,
+    });
+
+    expect(beforeContact.speedKph).toBeLessThanOrEqual(SAFETY_CAR_PRE_CONTACT_MAX_SPEED_KPH);
+    expect(beforeContact.speedKph).toBe(58);
+    expect(afterContact.speedKph).toBe(180);
   });
 
   it("creates unique compressed targets in frozen race order", () => {

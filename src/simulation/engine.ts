@@ -1,5 +1,5 @@
 import type { EnergyDeploymentMode, EnergyManagementContext, EnergySystemState } from "@/domain/energy";
-import type { ActiveAeroMode, ActiveIncident, BattleStatus, CoolingMode, DriverMoment, EnergyMode, EnergyState, PaceMode, PitStopIssue, RaceCarState, RaceControlStatus, RaceEvent, RaceReliabilityInput, RaceSnapshot, RaceStatus, RacingLineMode, RadioMessage, TeamOrderType, TyreCompound, TyreMode, TyreSetState, TyreTemperatureState, WeatherState, WeekendTyreInventory, WeekendTyreUsage } from "@/domain/race";
+import type { ActiveAeroMode, ActiveIncident, BattleStatus, CoolingMode, DamageScenario, DriverMoment, EnergyMode, EnergyState, PaceMode, PitStopIssue, RaceCarState, RaceControlStatus, RaceEvent, RaceReliabilityInput, RaceSnapshot, RaceStatus, RacingLineMode, RadioMessage, TeamOrderType, TyreCompound, TyreMode, TyreSetState, TyreTemperatureState, WeatherState, WeekendTyreInventory, WeekendTyreUsage } from "@/domain/race";
 import { DEFAULT_PLAYER_TEAM_ID, DRIVER_BY_ID, DRIVERS, TEAM_BY_ID } from "@/fixtures/grid";
 import { buildAiStrategyDecision, weatherSurfaceSignal } from "@/simulation/ai-strategy";
 import { pitMistakeRiskBias, raceIncidentRiskMultiplier } from "@/simulation/driver-risk";
@@ -45,6 +45,7 @@ import {
   SILVERSTONE_CIRCUIT,
 } from "@/simulation/track";
 import { createSpatialWeather, effectiveWaterAtDistance, updateSpatialWeather, WEATHER_SURFACE_ZONE_COUNT } from "@/simulation/weather";
+import { damageScenarioDurationSeconds, damageScenarioEngineerCall, damageScenarioLabel, selectDamageScenario } from "@/simulation/damage-response";
 import type { EnergyDebugAction } from "@/simulation/protocol";
 
 export const FIXED_STEP_SECONDS = 0.1;
@@ -263,7 +264,6 @@ function createCar(
     gearboxTemperature: 86,
     energyStoreTemperature: 43,
     coolingMode: "NORMAL",
-    brakeBiasPercent: 56.5,
     powerUnitStress: 0,
     gearboxStress: 0,
     energyStoreStress: 0,
@@ -331,6 +331,9 @@ function createCar(
     incidentDirection: index % 2 === 0 ? 1 : -1,
     lastIncidentAt: null,
     damageLevel: 0,
+    damageScenario: null,
+    damageScenarioTimer: 0,
+    damageScenarioStartedAt: null,
     retiredReason: null,
     vscDeltaSeconds: 0,
     vscViolationSeconds: 0,
@@ -1350,6 +1353,11 @@ function incidentSeverity(status: "SPUN" | "DAMAGED" | "RETIRED", safetyCarAvail
   return { control: "YELLOW", duration: 16 };
 }
 
+function damageScenarioRollFor(car: RaceCarState, carIndex: number, seed: number, elapsedTime: number): number {
+  const incidentSecond = Math.max(0, Math.round(car.incidentStartedAt ?? elapsedTime));
+  return (signedNoise(seed, 68_000 + carIndex, incidentSecond) + 1) / 2;
+}
+
 function nearestCornerAtDistance(distanceMeters: number, circuitId?: string) {
   const circuit = circuitById(circuitId);
   const distance = normalizeLapDistance(distanceMeters, circuit.lengthMeters);
@@ -1715,6 +1723,13 @@ function updateIncidents(snapshot: RaceSnapshot, weather: WeatherState, tick: nu
       const variantRoll = (signedNoise(snapshot.seed, 60_000 + index, tick) + 1) / 2;
       const retirementSlotsOpen = cars.filter((candidate) => candidate.incidentStatus === "RETIRED").length < retirementTarget;
       const incidentStatus = outcomeRoll < 0.64 ? "SPUN" : outcomeRoll < 0.88 || !retirementSlotsOpen ? "DAMAGED" : "RETIRED";
+      const incidentDamageLevel = incidentStatus === "DAMAGED" ? Math.max(car.damageLevel, 0.45 + outcomeRoll * 0.35) : car.damageLevel;
+      const damageScenario: DamageScenario | null = incidentStatus === "DAMAGED"
+        ? selectDamageScenario(variantRoll, incidentDamageLevel)
+        : null;
+      const damageScenarioTimer = damageScenario
+        ? damageScenarioDurationSeconds(damageScenario, variantRoll)
+        : 0;
       const beachedSpin = incidentStatus === "SPUN" && variantRoll > 0.82;
       const severeRedFlag = incidentStatus === "RETIRED"
         && redFlagDeployments === 0
@@ -1755,10 +1770,22 @@ function updateIncidents(snapshot: RaceSnapshot, weather: WeatherState, tick: nu
       const location = `T${corner.number} ${corner.name}`;
       const message = incidentStatus === "SPUN"
         ? `${driver?.shortName ?? car.driverId} ${beachedSpin ? "spun and stopped briefly" : "spun and rejoined"} at ${location} · ${cause}`
-        : incidentStatus === "DAMAGED" ? `${driver?.shortName ?? car.driverId} has vehicle damage at ${location} · ${cause}` : `${driver?.shortName ?? car.driverId} retired at ${location} · ${cause}`;
+        : incidentStatus === "DAMAGED"
+          ? `${driver?.shortName ?? car.driverId} has vehicle damage at ${location} · ${cause} · ${damageScenarioLabel(damageScenario!)}`
+          : `${driver?.shortName ?? car.driverId} retired at ${location} · ${cause}`;
       newEvents.push({ id: `${tick}-${car.carId}`, elapsedTime, type: "INCIDENT", message, carId: car.carId });
       const investigationMessage = `INCIDENT INVOLVING CAR ${driver?.number ?? "—"} (${driver?.shortName ?? car.driverId}) AT ${location.toUpperCase()} · UNDER INVESTIGATION`;
       newRadio.push({ id: `${tick}-${car.carId}-radio`, elapsedTime, carId: car.carId, source: "RACE CONTROL", message: investigationMessage, priority: incidentStatus === "RETIRED" ? "URGENT" : "WARNING" });
+      if (damageScenario) {
+        newRadio.push({
+          id: `${tick}-${car.carId}-damage-scenario-radio`,
+          elapsedTime: elapsedTime + 0.02,
+          carId: car.carId,
+          source: "ENGINEER",
+          message: damageScenarioEngineerCall(damageScenario),
+          priority: damageScenario === "STOP_AND_RETIRE" ? "URGENT" : "WARNING",
+        });
+      }
       incidentCreated = true;
       return {
         ...car,
@@ -1767,7 +1794,10 @@ function updateIncidents(snapshot: RaceSnapshot, weather: WeatherState, tick: nu
         incidentStartedAt: elapsedTime,
         incidentDirection: variantRoll >= 0.5 ? 1 : -1,
         lastIncidentAt: elapsedTime,
-        damageLevel: incidentStatus === "DAMAGED" ? Math.max(car.damageLevel, 0.45 + outcomeRoll * 0.35) : car.damageLevel,
+        damageLevel: incidentDamageLevel,
+        damageScenario,
+        damageScenarioTimer,
+        damageScenarioStartedAt: damageScenario ? elapsedTime : null,
         retiredReason: incidentStatus === "RETIRED" ? "MECHANICAL / INCIDENT" : car.retiredReason,
         finished: incidentStatus === "RETIRED" ? true : car.finished,
         currentSpeed: incidentStatus === "RETIRED" ? 0 : car.currentSpeed,
@@ -1806,6 +1836,7 @@ function updateIncidents(snapshot: RaceSnapshot, weather: WeatherState, tick: nu
         phaseElapsedSeconds: safetyCarPhaseElapsedSeconds,
         pitExitDistance: circuit.pitLane.exitEnd,
         firstCarDistance: leader.totalDistance,
+        referenceRaceSpeedKph: telemetrySpeedAtDistance(leader.lapDistance),
       });
       safetyCarDistance = safetyCar.totalDistance;
       safetyCarSpeed = safetyCar.speedKph;
@@ -1950,7 +1981,13 @@ function updateIncidents(snapshot: RaceSnapshot, weather: WeatherState, tick: nu
         state: { phase: safetyCarPhase, phaseElapsedSeconds: safetyCarPhaseElapsedSeconds },
         stepSeconds: FIXED_STEP_SECONDS,
         fieldBunched: safetyCarFieldBunched,
-        endingSectorReached: safetyCarEndingStartDistance !== null && safetyCar.totalDistance >= safetyCarEndingStartDistance,
+        endingSectorReached: safetyCarEndingStartDistance !== null
+          && safetyCar.totalDistance >= safetyCarEndingStartDistance
+          // A two-lap deployment reserves the late-sector-three withdrawal
+          // window for wave-by cars. If that window was missed while they
+          // cleared the queue, wait for the next sector-three pass instead of
+          // announcing SC ENDING in the middle of the circuit.
+          && (safetyCarTargetLaps !== 2 || sectorAtDistance(safetyCar.lapDistance, circuit) === 3),
         waveByComplete: safetyCarWaveBy.every((waveBy) => waveBy.completed),
         safetyCarInPitLane,
         leaderReachedRestartLine,
@@ -2066,6 +2103,13 @@ function enforceRaceControlOrder(
   for (const previous of previousOrder) {
     const car = byId.get(previous.carId);
     if (!car) continue;
+    if (control === "VSC" && car.incidentStatus === "DAMAGED") {
+      // A damaged car may be passed safely under VSC. Keeping it as a blocker
+      // in the frozen order made a slow or stationary car retain its position
+      // forever, even after the rest of the field had physically cleared it.
+      updates.set(car.carId, car);
+      continue;
+    }
     if (control === "SAFETY_CAR" && exempt.has(car.carId)) {
       updates.set(car.carId, car);
       continue;
@@ -2264,6 +2308,8 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
   const driverMomentEvents: RaceEvent[] = [];
   const sportingEvents: RaceEvent[] = [];
   const sportingRadio: RadioMessage[] = [];
+  const damageEvents: RaceEvent[] = [];
+  const damageRadio: RadioMessage[] = [];
   const servedPenaltyIds = new Set<string>();
   const servingPenaltyIds = new Set<string>();
   const crossedLineCarIds = new Set<string>();
@@ -2409,6 +2455,9 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
     let lastPenaltyHoldSeconds = car.lastPenaltyHoldSeconds ?? 0;
     let lastPenaltyServedAt = car.lastPenaltyServedAt ?? null;
     let servePenaltyRequested = car.servePenaltyRequested ?? false;
+    let damageScenario: DamageScenario | null = car.damageScenario ?? null;
+    let damageScenarioTimer = Math.max(0, car.damageScenarioTimer ?? 0);
+    let damageScenarioStartedAt = car.damageScenarioStartedAt ?? null;
     const pendingMandatoryPenalty = pendingMandatoryPenaltyByCar.get(car.carId);
     const pendingTimePenalties = pendingTimePenaltiesByCar.get(car.carId) ?? [];
     const localWater = effectiveWaterAtDistance(weather, lapDistanceBefore, circuit.lengthMeters);
@@ -2416,6 +2465,24 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
     let driverMoment: DriverMoment = car.driverMoment ?? "NONE";
     let driverMomentTimer = Math.max(0, (car.driverMomentTimer ?? 0) - FIXED_STEP_SECONDS);
     let lastDriverMomentAt = car.lastDriverMomentAt ?? null;
+    if (car.incidentStatus === "DAMAGED" && damageScenario === null) {
+      const scenarioRoll = damageScenarioRollFor(car, index, snapshot.seed, elapsedTime);
+      damageScenario = selectDamageScenario(scenarioRoll, car.damageLevel);
+      damageScenarioTimer = damageScenarioDurationSeconds(damageScenario, scenarioRoll);
+      damageScenarioStartedAt = car.incidentStartedAt ?? elapsedTime;
+      const driver = DRIVER_BY_ID.get(car.driverId)?.shortName ?? car.driverId;
+      const responseMessage = `${driver} DAMAGE RESPONSE · ${damageScenarioLabel(damageScenario)}`;
+      damageEvents.push({ id: `${tick}-${car.carId}-damage-response`, elapsedTime, type: "INCIDENT", message: responseMessage, carId: car.carId });
+      damageRadio.push({ id: `${tick}-${car.carId}-damage-response-radio`, elapsedTime: elapsedTime + 0.02, carId: car.carId, source: "ENGINEER", message: damageScenarioEngineerCall(damageScenario), priority: damageScenario === "STOP_AND_RETIRE" ? "URGENT" : "WARNING" });
+    }
+    const damageScenarioTimerBeforeStep = damageScenarioTimer;
+    if (car.incidentStatus === "DAMAGED") damageScenarioTimer = Math.max(0, damageScenarioTimer - FIXED_STEP_SECONDS);
+    const damageStopScenario = damageScenario === "STOP_AND_REJOIN" || damageScenario === "STOP_AND_RETIRE";
+    const damageStopActive = car.incidentStatus === "DAMAGED" && damageStopScenario && damageScenarioTimerBeforeStep > 0;
+    const damageStopFinishedThisStep = car.incidentStatus === "DAMAGED"
+      && damageStopScenario
+      && damageScenarioTimerBeforeStep > 0
+      && damageScenarioTimer === 0;
     if (driverMoment !== "NONE" && driverMomentTimer <= 0) driverMoment = "NONE";
     const previousDriverState = snapshot.cars.find((candidate) => candidate.carId === car.carId);
     const spunThisStep = car.incidentStatus === "SPUN" && previousDriverState?.incidentStatus !== "SPUN";
@@ -2484,6 +2551,7 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
       && incidentUpdate.raceControl !== "SAFETY_CAR"
       && incidentUpdate.raceControl !== "RED_FLAG"
       && incidentUpdate.pitLaneOpen;
+    let damagePitRetireTriggered = false;
     /*
      * The pit entry can only be taken in the window that begins at the entry line
      * and ends before the box. Allowing it anywhere past the entry line meant a
@@ -2503,6 +2571,17 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
       pitTyreServiceElapsedSeconds = 0;
       servePenaltyRequested = false;
       servingPenaltyIds.add(pendingMandatoryPenalty.id);
+    } else if (
+      pitStatus === "TRACK"
+      && car.incidentStatus === "DAMAGED"
+      && damageScenario === "PIT_AND_RETIRE"
+      && damageScenarioTimer <= 0
+      && !scheduledPitCompound
+    ) {
+      // No tyre choice is implied by a terminal damage response. The existing
+      // compound is used as a routing token so the damaged car can reach its
+      // garage without spending another prepared set before retiring.
+      scheduledPitCompound = tyreCompound;
     } else if (pitStatus === "TRACK" && scheduledPitCompound && incidentUpdate.pitLaneOpen && car.totalDistance >= 0 && inPitEntryWindow) {
       pitStatus = "PIT_ENTRY";
       pitLaneTimer = 0;
@@ -2562,66 +2641,77 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
       }
       if (pitServicePhase === "TYRE_SERVICE") pitTyreServiceElapsedSeconds = Math.min(pitTyreServiceTargetSeconds, Math.max(0, pitTimer - penaltyHoldSeconds));
       if (pitTimer >= pitStopTargetSeconds) {
-        const releaseTraffic = tacticalCars.filter((candidate) => (
-          candidate.carId !== car.carId
-          && !candidate.finished
-          && candidate.incidentStatus !== "RETIRED"
-          && (candidate.pitStatus === "PIT_LANE" || candidate.pitStatus === "PIT_EXIT")
-        ));
-        const nearestReleaseTraffic = releaseTraffic.reduce(
-          (nearest, candidate) => Math.min(nearest, Math.abs(candidate.totalDistance - car.totalDistance)),
-          Number.POSITIVE_INFINITY,
-        );
-        const nearestApproachingTraffic = releaseTraffic.reduce((nearest, candidate) => {
-          const gapBehind = car.totalDistance - candidate.totalDistance;
-          return gapBehind >= 0 ? Math.min(nearest, gapBehind) : nearest;
-        }, Number.POSITIVE_INFINITY);
-        const plannedReleaseMistake = car.carId === plannedUnsafeReleaseCarId && nearestApproachingTraffic < 18;
-        const hasReleasePriority = readyPitReleaseCarId === null || readyPitReleaseCarId === car.carId;
-        const releaseBlocked = !plannedReleaseMistake
-          && (!hasReleasePriority || nearestReleaseTraffic < PIT_RELEASE_SAFE_GAP_METERS);
-
-        if (releaseBlocked) {
-          pitServicePhase = "RELEASE_HOLD";
-        } else {
-          pitStatus = "PIT_EXIT";
-          const stopGoOnly = penaltyServiceType === "STOP_GO_10";
-          const dryFallback = stopGoOnly ? null : dryAiServiceFallback(
-            car,
-            scheduledPitCompound,
-            weather,
-            incidentUpdate.raceControl,
-            tacticalCars,
-            snapshot.playerTeamId,
-          );
-          const serviceCompound = dryFallback?.compound ?? scheduledPitCompound ?? tyreCompound;
-          const serviceTyreSetId = dryFallback?.tyreSetId ?? scheduledPitTyreSetId;
-          lastPitStopTime = stopGoOnly ? lastPitStopTime : pitTyreServiceTargetSeconds;
+        if (car.incidentStatus === "DAMAGED" && damageScenario === "PIT_AND_RETIRE") {
+          damagePitRetireTriggered = true;
+          damageScenarioTimer = 0;
+          pitStops += 1;
+          lastPitStopTime = pitTyreServiceTargetSeconds;
           lastPitStopCompletedAt = elapsedTime;
-          lastPenaltyHoldSeconds = penaltyHoldSeconds;
-          if (penaltyServiceIds.length > 0) lastPenaltyServedAt = elapsedTime;
-          pitTimer = 0;
-          if (!stopGoOnly) pitStops += 1;
-          tyreCompound = stopGoOnly ? tyreCompound : serviceCompound;
-          if (!stopGoOnly && serviceTyreSetId) {
-            tyreSets = tyreSets.map((set) => set.id === activeTyreSetId
-              ? { ...set, status: "USED" as const, condition: tyreLife, lapsUsed: tyreAgeLaps }
-              : set.id === serviceTyreSetId
-                ? { ...set, status: "FITTED" as const }
-                : set);
-            activeTyreSetId = serviceTyreSetId;
-          }
-          if (!stopGoOnly) {
-            usedTyreCompounds = [...usedTyreCompounds, tyreCompound];
-            scheduledPitCompound = null;
-            scheduledPitTyreSetId = null;
-            tyreAgeLaps = 0;
-            tyreLife = 100;
-            tyreTemperatures = uniformTyreTemperatures(82);
-            tyreTemperature = 82;
-          }
           pitServicePhase = "NONE";
-          for (const id of penaltyServiceIds) servedPenaltyIds.add(id);
+          scheduledPitCompound = null;
+          scheduledPitTyreSetId = null;
+        } else {
+          const releaseTraffic = tacticalCars.filter((candidate) => (
+            candidate.carId !== car.carId
+            && !candidate.finished
+            && candidate.incidentStatus !== "RETIRED"
+            && (candidate.pitStatus === "PIT_LANE" || candidate.pitStatus === "PIT_EXIT")
+          ));
+          const nearestReleaseTraffic = releaseTraffic.reduce(
+            (nearest, candidate) => Math.min(nearest, Math.abs(candidate.totalDistance - car.totalDistance)),
+            Number.POSITIVE_INFINITY,
+          );
+          const nearestApproachingTraffic = releaseTraffic.reduce((nearest, candidate) => {
+            const gapBehind = car.totalDistance - candidate.totalDistance;
+            return gapBehind >= 0 ? Math.min(nearest, gapBehind) : nearest;
+          }, Number.POSITIVE_INFINITY);
+          const plannedReleaseMistake = car.carId === plannedUnsafeReleaseCarId && nearestApproachingTraffic < 18;
+          const hasReleasePriority = readyPitReleaseCarId === null || readyPitReleaseCarId === car.carId;
+          const releaseBlocked = !plannedReleaseMistake
+            && (!hasReleasePriority || nearestReleaseTraffic < PIT_RELEASE_SAFE_GAP_METERS);
+
+          if (releaseBlocked) {
+            pitServicePhase = "RELEASE_HOLD";
+          } else {
+            pitStatus = "PIT_EXIT";
+            const stopGoOnly = penaltyServiceType === "STOP_GO_10";
+            const dryFallback = stopGoOnly ? null : dryAiServiceFallback(
+              car,
+              scheduledPitCompound,
+              weather,
+              incidentUpdate.raceControl,
+              tacticalCars,
+              snapshot.playerTeamId,
+            );
+            const serviceCompound = dryFallback?.compound ?? scheduledPitCompound ?? tyreCompound;
+            const serviceTyreSetId = dryFallback?.tyreSetId ?? scheduledPitTyreSetId;
+            lastPitStopTime = stopGoOnly ? lastPitStopTime : pitTyreServiceTargetSeconds;
+            lastPitStopCompletedAt = elapsedTime;
+            lastPenaltyHoldSeconds = penaltyHoldSeconds;
+            if (penaltyServiceIds.length > 0) lastPenaltyServedAt = elapsedTime;
+            pitTimer = 0;
+            if (!stopGoOnly) pitStops += 1;
+            tyreCompound = stopGoOnly ? tyreCompound : serviceCompound;
+            if (!stopGoOnly && serviceTyreSetId) {
+              tyreSets = tyreSets.map((set) => set.id === activeTyreSetId
+                ? { ...set, status: "USED" as const, condition: tyreLife, lapsUsed: tyreAgeLaps }
+                : set.id === serviceTyreSetId
+                  ? { ...set, status: "FITTED" as const }
+                  : set);
+              activeTyreSetId = serviceTyreSetId;
+            }
+            if (!stopGoOnly) {
+              usedTyreCompounds = [...usedTyreCompounds, tyreCompound];
+              scheduledPitCompound = null;
+              scheduledPitTyreSetId = null;
+              tyreAgeLaps = 0;
+              tyreLife = 100;
+              tyreTemperatures = uniformTyreTemperatures(82);
+              tyreTemperature = 82;
+            }
+            pitServicePhase = "NONE";
+            for (const id of penaltyServiceIds) servedPenaltyIds.add(id);
+          }
         }
       }
     }
@@ -2718,9 +2808,11 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
     // Entry-road braking is legal before the limiter line. At and beyond that
     // line a normal car is hard-capped at 80 km/h; only the race's two or three
     // planned, one-tick limiter mistakes may briefly exceed it.
-    const currentSpeed = plannedPitSpeeding
-      ? limiterMistakeKph
-      : inPitLimiterZone ? Math.min(FIA_2026_PENALTY_RULES.pitLaneSpeedLimitKph, unconstrainedCurrentSpeed) : unconstrainedCurrentSpeed;
+    const currentSpeed = damageStopActive || damageStopFinishedThisStep || damagePitRetireTriggered
+      ? 0
+      : plannedPitSpeeding
+        ? limiterMistakeKph
+        : inPitLimiterZone ? Math.min(FIA_2026_PENALTY_RULES.pitLaneSpeedLimitKph, unconstrainedCurrentSpeed) : unconstrainedCurrentSpeed;
     const distanceDelta = (currentSpeed / 3.6) * FIXED_STEP_SECONDS;
     const pitSpeedTolerance = FIA_2026_PENALTY_RULES.pitLaneSpeeding.sensorToleranceKph;
     if (inPitLimiterZone && currentSpeed > FIA_2026_PENALTY_RULES.pitLaneSpeedLimitKph + pitSpeedTolerance) {
@@ -2908,7 +3000,6 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
       localWater,
       airTemperature: weather.airTemperature,
       pitStopped: stoppedInBox,
-      brakeBiasPercent: tacticalCar.brakeBiasPercent ?? 56.5,
       coolingMode: tacticalCar.coolingMode ?? "NORMAL",
     }, FIXED_STEP_SECONDS);
     brakeTemperature = averageCornerTemperature(brakeTemperatures);
@@ -2940,11 +3031,38 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
     tyreAgeLaps += distanceDelta / circuit.lengthMeters;
     tyreSets = tyreSets.map((set) => set.id === activeTyreSetId ? { ...set, condition: tyreLife, lapsUsed: tyreAgeLaps } : set);
     const fuelRemainingKg = Math.max(0, car.fuelRemainingKg - distanceDelta * 0.00032 * PACE_FUEL[car.paceMode] * COOLING_FUEL[tacticalCar.coolingMode ?? "NORMAL"]);
-    const finished = totalDistance >= raceDistance;
+    let finished = totalDistance >= raceDistance;
     let incidentStatus = car.incidentStatus;
     let incidentTimer = car.incidentTimer;
+    let retiredReason = car.retiredReason;
     const thermalDamage = Math.max(0, thermalRiskPercent - 24) * 0.000002 * FIXED_STEP_SECONDS;
-    const damageLevel = Math.min(1, car.damageLevel + thermalDamage);
+    const responseDamage = car.incidentStatus === "DAMAGED" && damageScenario === "PIT_AND_RETIRE"
+      ? 0.0045 * FIXED_STEP_SECONDS
+      : 0;
+    const damageLevel = Math.min(1, car.damageLevel + thermalDamage + responseDamage);
+    if (damageStopFinishedThisStep) {
+      const driver = DRIVER_BY_ID.get(car.driverId)?.shortName ?? car.driverId;
+      if (damageScenario === "STOP_AND_RETIRE") {
+        incidentStatus = "RETIRED";
+        finished = true;
+        retiredReason = "DAMAGE STOP · TERMINAL VEHICLE DAMAGE";
+        incidentTimer = 0;
+        damageEvents.push({ id: `${tick}-${car.carId}-damage-retirement`, elapsedTime, type: "INCIDENT", message: `${driver} stopped under VSC · RETIRED DUE TO TERMINAL DAMAGE`, carId: car.carId });
+        damageRadio.push({ id: `${tick}-${car.carId}-damage-retirement-radio`, elapsedTime: elapsedTime + 0.02, carId: car.carId, source: "ENGINEER", message: "The car is stopped. Damage is terminal; confirm retirement.", priority: "URGENT" });
+      } else if (damageScenario === "STOP_AND_REJOIN") {
+        damageEvents.push({ id: `${tick}-${car.carId}-damage-rejoin`, elapsedTime, type: "INCIDENT", message: `${driver} stopped briefly under VSC · REJOINING WITH DAMAGE`, carId: car.carId });
+        damageRadio.push({ id: `${tick}-${car.carId}-damage-rejoin-radio`, elapsedTime: elapsedTime + 0.02, carId: car.carId, source: "ENGINEER", message: "Car check is complete. Rejoin carefully and keep reporting the damage level.", priority: "WARNING" });
+      }
+    }
+    if (damagePitRetireTriggered) {
+      const driver = DRIVER_BY_ID.get(car.driverId)?.shortName ?? car.driverId;
+      incidentStatus = "RETIRED";
+      finished = true;
+      retiredReason = "DAMAGE RETIREMENT AFTER PIT STOP";
+      incidentTimer = 0;
+      damageEvents.push({ id: `${tick}-${car.carId}-damage-pit-retirement`, elapsedTime, type: "INCIDENT", message: `${driver} entered the garage under VSC · RETIRED AFTER DAMAGE CHECK`, carId: car.carId });
+      damageRadio.push({ id: `${tick}-${car.carId}-damage-pit-retirement-radio`, elapsedTime: elapsedTime + 0.02, carId: car.carId, source: "ENGINEER", message: "Damage check complete. We are retiring the car; no further running.", priority: "URGENT" });
+    }
     if (incidentStatus === "SPUN") {
       incidentTimer = Math.max(0, incidentTimer - FIXED_STEP_SECONDS);
       if (incidentTimer === 0) {
@@ -3020,6 +3138,9 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
       driverMomentTimer,
       lastDriverMomentAt,
       damageLevel,
+      damageScenario,
+      damageScenarioTimer,
+      damageScenarioStartedAt,
       vscDeltaSeconds,
       vscViolationSeconds,
       vscComplianceStatus,
@@ -3032,7 +3153,8 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
       safetyCarGapToTargetMeters: safetyQueueEntry ? safetyQueueEntry.targetTotalDistance - totalDistance : null,
       fuelRemainingKg,
       finished,
-      finishTime: finished ? elapsedTime : null,
+      finishTime: finished && incidentStatus !== "RETIRED" ? elapsedTime : null,
+      retiredReason,
     });
     return positioned;
   });
@@ -3238,6 +3360,14 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
   const status: RaceStatus = classifiedFieldHasFinished(cars)
     ? "FINISHED"
     : "RUNNING";
+  const activeIncident = incidentUpdate.activeIncident
+    ? (() => {
+        const incidentCar = cars.find((car) => car.carId === incidentUpdate.activeIncident?.carId);
+        return incidentCar?.incidentStatus && incidentCar.incidentStatus !== "RUNNING"
+          ? { ...incidentUpdate.activeIncident, status: incidentCar.incidentStatus }
+          : incidentUpdate.activeIncident;
+      })()
+    : null;
   return {
     ...snapshot,
     tick,
@@ -3269,13 +3399,13 @@ export function stepSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
     scheduledSafetyCarDistance: incidentUpdate.scheduledSafetyCarDistance,
     pitLaneOpen: incidentUpdate.pitLaneOpen,
     pitLaneStatus: incidentUpdate.pitLaneStatus,
-    activeIncident: incidentUpdate.activeIncident,
+    activeIncident,
     teamOrder,
     stewardStrictness: snapshot.stewardStrictness ?? "BALANCED",
     investigations: stewarding.investigations,
     penalties: stewarding.penalties,
-    events: [...stewarding.events, ...sportingEvents, ...teamOrderEvents, ...pitEvents, ...thermalEvents, ...battleEvents, ...driverMomentEvents, ...vscEvents, ...incidentUpdate.events].slice(0, 24),
-    radioMessages: [...stewarding.radioMessages, ...sportingRadio, ...teamOrderRadio, ...pitRadio, ...energyRadio, ...thermalRadio, ...weatherStrategyRadio, ...weatherTransitionRadio, ...battleRadio, ...operationalRadio, ...vscRadio, ...incidentUpdate.radioMessages].slice(0, 30),
+    events: [...stewarding.events, ...sportingEvents, ...damageEvents, ...teamOrderEvents, ...pitEvents, ...thermalEvents, ...battleEvents, ...driverMomentEvents, ...vscEvents, ...incidentUpdate.events].slice(0, 24),
+    radioMessages: [...stewarding.radioMessages, ...sportingRadio, ...damageRadio, ...teamOrderRadio, ...pitRadio, ...energyRadio, ...thermalRadio, ...weatherStrategyRadio, ...weatherTransitionRadio, ...battleRadio, ...operationalRadio, ...vscRadio, ...incidentUpdate.radioMessages].slice(0, 30),
     cars,
     checksum: checksumFor(tick, cars, weather, {
       raceControl: incidentUpdate.raceControl,
@@ -3395,16 +3525,6 @@ export function setCarCoolingMode(snapshot: RaceSnapshot, carId: string, mode: C
   };
 }
 
-export function setCarBrakeBias(snapshot: RaceSnapshot, carId: string, brakeBiasPercent: number): RaceSnapshot {
-  if (!canReceiveCarCommand(snapshot, carId)) return snapshot;
-  const bias = Math.round(clamp(brakeBiasPercent, 50, 64) * 10) / 10;
-  return {
-    ...snapshot,
-    cars: snapshot.cars.map((car) => car.carId === carId ? { ...car, brakeBiasPercent: bias } : car),
-    radioMessages: appendRadio(snapshot, carId, `Brake balance ${bias.toFixed(1)} percent forward.`, "NORMAL", "brake-bias"),
-  };
-}
-
 export function setCarPit(snapshot: RaceSnapshot, carId: string, compound: TyreCompound, tyreSetId?: string): RaceSnapshot {
   const requestedCar = snapshot.cars.find((car) => car.carId === carId);
   if (!canReceiveCarCommand(snapshot, carId) || requestedCar?.pitStatus !== "TRACK") return snapshot;
@@ -3508,7 +3628,6 @@ function appendRadio(snapshot: RaceSnapshot, carId: string, message: string, pri
     tyre: "Understood. Managing the tyres.",
     energy: "Copy. Energy target confirmed.",
     cooling: "Copy. Cooling instruction confirmed.",
-    "brake-bias": "Brake balance confirmed.",
     box: "Copy. Boxing this lap.",
     "stay-out": "Copy. Staying out.",
   };
@@ -3537,6 +3656,10 @@ export function checksumFor(
         : car.driverMoment === "REAR_SNAP" ? 3
           : car.driverMoment === "SPRAY" ? 4
             : car.driverMoment === "SPIN_RECOVERY" ? 5 : 0;
+    const damageScenarioCode = car.damageScenario === "STOP_AND_REJOIN" ? 1
+      : car.damageScenario === "STOP_AND_RETIRE" ? 2
+        : car.damageScenario === "PIT_AND_RETIRE" ? 3
+          : car.damageScenario === "CONTINUE_SLOW" ? 4 : 0;
     const tyreTemperatures = car.tyreTemperatures ?? uniformTyreTemperatures(car.tyreTemperature);
     const energySystem = migrateEnergySystemState(car.energySystem, car.batteryPercent, car.energyStoreTemperature);
     const opponentHistoryCode = Object.entries(car.overtakeOpponentTimes ?? {}).sort(([left], [right]) => left.localeCompare(right)).reduce(
@@ -3556,6 +3679,8 @@ export function checksumFor(
       ^ Math.round((car.lastOvertakeAt ?? 0) * 10)
       ^ (driverMomentCode << 20)
       ^ Math.round((car.driverMomentTimer ?? 0) * 100)
+      ^ (damageScenarioCode << 24)
+      ^ Math.round((car.damageScenarioTimer ?? 0) * 100)
       ^ Math.round(energySystem.currentDeployPowerKW * 10)
       ^ Math.round(energySystem.currentHarvestPowerKW * 10)
       ^ Math.round(energySystem.totalDeployedEnergyMJ * 1_000)
